@@ -61,6 +61,7 @@ Reference: [skenv init](commands/skenv_init.md).
 skenv import --dry-run   # the manifest diff and the lock changes, nothing written
 skenv import
 skenv import --sync      # then skenv sync --adopt
+skenv import --project   # in a project: its skills-lock.json into [project]
 ```
 
 Adds the skills installed on the machine that the manifest does not have
@@ -68,7 +69,11 @@ yet: entries of the lock of the `skills` CLI (`~/.agents/.skill-lock.json`)
 become vendor entries pinned to the commit their `skillFolderHash` names,
 links into git working copies become own repositories, and anything else is
 reported as `unmanaged`. It then removes the skills now in the manifest from
-that lock, after a backup. Idempotent. See
+that lock, after a backup. Idempotent. With `--project`, the same for the
+`skills-lock.json` of the current repository: its entries become
+`[[project.vendor]]`, pinned to the commit whose files have their
+`computedHash`, and project-own skills that differ between agent
+directories are reported. See
 [Adopting an existing setup](adopting.md). Reference:
 [skenv import](commands/skenv_import.md).
 
@@ -185,6 +190,7 @@ skenv doctor --project                                  # fail outside a project
 skenv vendor add <owner>/<repo> --path <skill-dir> --project
 skenv vendor update [name...] --project
 skenv vendor remove <name> --project
+skenv import --project                                  # adopt the skills-lock.json of npx skills
 skenv sync --manifest ~/src/my-skills                   # the machine, from inside a project
 ```
 

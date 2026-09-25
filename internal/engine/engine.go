@@ -63,6 +63,10 @@ type base struct {
 	// written: the next edit of the same command builds on it.
 	pending []byte
 
+	// fetched maps a repository to its clone cache, fetched once per
+	// import.
+	fetched map[string]string
+
 	changes  int
 	warnings int
 	errs     int
@@ -111,9 +115,6 @@ type Engine struct {
 	// selected by skills/exclude of its own repository, or skipped on this
 	// host. Set by skills.
 	unselected map[string]string
-	// fetched maps a repository to its clone cache, fetched once per
-	// import.
-	fetched map[string]string
 }
 
 // ErrNoManifest means no manifest location is configured. skenv does not

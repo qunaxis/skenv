@@ -54,6 +54,11 @@ git add skenv.toml .agents/skills .claude/skills
 git commit -m "chore(skills): add project skills"
 ```
 
+A project with skills from `npx skills add` (a `skills-lock.json` in its
+root) starts with `skenv import --project` instead, which writes the
+section and the entries for you; see
+[Adopting an existing setup](adopting.md#project-skills-import---project).
+
 After a clone nothing needs to run: the skills are in the repository.
 `skenv sync` in the project is only needed after you edit `[project]` by
 hand or add a skill to `dir`.
@@ -288,6 +293,7 @@ the repository works.
 | `skenv vendor add <repo> --project`      | adds a `[[project.vendor]]` entry, then syncs the project                                                       |
 | `skenv vendor update [name...] --project` | moves entries to HEAD of their default branch (or `--rev`), then syncs; a skill of a `[[project.from]]` entry moves the whole entry |
 | `skenv vendor remove <name> --project`   | removes a `[[project.vendor]]` entry, its copy and its mirrors                                                   |
+| `skenv import --project`                 | pins the skills of `skills-lock.json` (`npx skills add`) in `[project]` and cleans the lock; see [Adopting](adopting.md#project-skills-import---project) |
 
 - `sync` and `doctor` work on the project whenever they run inside one;
   `--project` makes that explicit and fails outside a project, and
@@ -472,20 +478,29 @@ git add skenv.toml .agents/skills .claude/skills
 git commit -m "chore(skills): remove karpathy-coder"
 ```
 
-Take over copies another tool installed (for example `npx skills add`,
-which keeps no pinned commit): add an entry per skill with `--adopt`, which
-backs up the old copy and replaces it with the pinned one, then check and
-remove the other tool's lock file:
+Take over the skills `npx skills add` installed, which keeps no pinned
+commit: `skenv import --project` pins each entry of its `skills-lock.json`
+to the commit it was installed from, adds `[project]` when the skenv file
+has none, reports project-own skills that differ between agent
+directories, and removes the imported entries from the lock; see
+[Adopting an existing setup](adopting.md#project-skills-import---project):
 
 ```sh
-skenv vendor add <owner>/<repo> --path <skill-dir> --project --adopt --dry-run
-skenv vendor add <owner>/<repo> --path <skill-dir> --project --adopt
+skenv import --project --dry-run
+skenv import --project --sync
 skenv doctor
-git rm skills-lock.json
+git add -- skenv.toml .agents/skills .claude/skills skills-lock.json
+git commit -m "chore(skills): import project skills"
 ```
 
+A single copy another tool installed, without a lock: add an entry with
+`--adopt`, which backs up the old copy and replaces it with the pinned one.
 Entries written by hand work the same way: `skenv sync --adopt` replaces
 every directory an entry names.
+
+```sh
+skenv vendor add <owner>/<repo> --path <skill-dir> --project --adopt
+```
 
 ## With `[repo]` and `[environment]`
 

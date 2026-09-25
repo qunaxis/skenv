@@ -22,13 +22,20 @@ import (
 	"github.com/qunaxis/skenv/internal/manifest"
 )
 
-// skillsLockVersion is the version of ~/.agents/.skill-lock.json that the
-// vercel `skills` CLI writes (checked against skills 1.7.0).
-const skillsLockVersion = 3
+// The versions of the lock files that the vercel `skills` CLI writes
+// (checked against skills 1.7.0): the global ~/.agents/.skill-lock.json
+// and the skills-lock.json of a project.
+const (
+	skillsLockVersion  = 3
+	projectLockVersion = 1
+	projectLockName    = "skills-lock.json"
+)
 
-// lockEntry is one skill of the global lock of the `skills` CLI. It pins no
-// commit: skillFolderHash is the git tree id of the skill folder at
-// install or update time, taken from the GitHub Trees API.
+// lockEntry is one skill of a lock of the `skills` CLI. It pins no commit:
+// skillFolderHash (global lock) is the git tree id of the skill folder at
+// install or update time, taken from the GitHub Trees API, or for other
+// sources the sha256 of computeSkillFolderHash; computedHash (project
+// lock) is always the latter.
 type lockEntry struct {
 	Source          string `json:"source"`
 	SourceType      string `json:"sourceType"`
@@ -36,16 +43,26 @@ type lockEntry struct {
 	Ref             string `json:"ref"`
 	SkillPath       string `json:"skillPath"`
 	SkillFolderHash string `json:"skillFolderHash"`
+	ComputedHash    string `json:"computedHash"`
 	InstalledAt     string `json:"installedAt"`
 	UpdatedAt       string `json:"updatedAt"`
 }
 
-// skillsLock is the global lock file of the `skills` CLI as read.
+// hash is the content fingerprint of the entry and the name of its field.
+func (le lockEntry) hash() (value, field string) {
+	if le.ComputedHash != "" {
+		return le.ComputedHash, "computedHash"
+	}
+	return le.SkillFolderHash, "skillFolderHash"
+}
+
+// skillsLock is a lock file of the `skills` CLI as read.
 type skillsLock struct {
-	path   string
-	mode   fs.FileMode
-	top    map[string]json.RawMessage
-	skills map[string]json.RawMessage
+	path    string
+	version int
+	mode    fs.FileMode
+	top     map[string]json.RawMessage
+	skills  map[string]json.RawMessage
 	// entries are keyed by the directory the skills CLI installs a skill
 	// in (dirName of the key); keys maps that name back to the key.
 	entries map[string]lockEntry
@@ -78,9 +95,10 @@ func (e *Engine) skillsLockPath() string {
 	return filepath.Join(e.env.Home, ".agents", ".skill-lock.json")
 }
 
-// readSkillsLock reads the lock at p; a missing file is an empty lock.
-func readSkillsLock(p string) (*skillsLock, error) {
-	l := &skillsLock{path: p, mode: 0o644, skills: map[string]json.RawMessage{}, entries: map[string]lockEntry{}, keys: map[string]string{}}
+// readSkillsLock reads the lock at p, which must have the given version; a
+// missing file is an empty lock.
+func readSkillsLock(p string, version int) (*skillsLock, error) {
+	l := &skillsLock{path: p, version: version, mode: 0o644, skills: map[string]json.RawMessage{}, entries: map[string]lockEntry{}, keys: map[string]string{}}
 	data, err := os.ReadFile(p)
 	if errors.Is(err, fs.ErrNotExist) {
 		return l, nil
@@ -94,9 +112,9 @@ func readSkillsLock(p string) (*skillsLock, error) {
 	if err := json.Unmarshal(data, &l.top); err != nil {
 		return nil, fmt.Errorf("%s: %w", p, err)
 	}
-	var version int
-	if err := json.Unmarshal(l.top["version"], &version); err != nil || version != skillsLockVersion {
-		return nil, fmt.Errorf("%s: version %s is not supported; skenv reads version %d (skills CLI 1.x)", p, l.top["version"], skillsLockVersion)
+	var got int
+	if err := json.Unmarshal(l.top["version"], &got); err != nil || got != version {
+		return nil, fmt.Errorf("%s: version %s is not supported; skenv reads version %d (skills CLI 1.x)", p, l.top["version"], version)
 	}
 	if raw, ok := l.top["skills"]; ok {
 		if err := json.Unmarshal(raw, &l.skills); err != nil {
@@ -117,9 +135,10 @@ func readSkillsLock(p string) (*skillsLock, error) {
 
 // without writes the lock without the skills installed in the named
 // directories; every other key and entry stays. The file is read again
-// first, so an entry added since readSkillsLock is kept.
+// first, so an entry added since readSkillsLock is kept. A project lock
+// left without skills is removed: the skills CLI has nothing to restore.
 func (l *skillsLock) without(names []string) error {
-	now, err := readSkillsLock(l.path)
+	now, err := readSkillsLock(l.path, l.version)
 	if err != nil {
 		return err
 	}
@@ -133,13 +152,24 @@ func (l *skillsLock) without(names []string) error {
 			skills[key] = raw
 		}
 	}
-	l.top = now.top
-	top := map[string]any{}
-	for k, v := range l.top {
-		top[k] = v
+	if l.version == projectLockVersion && len(skills) == 0 {
+		return os.Remove(l.path)
 	}
-	top["skills"] = skills
-	// Like JSON.stringify(lock, null, 2) of the skills CLI: no HTML escapes.
+	l.top = now.top
+	var top any = struct {
+		Version json.RawMessage            `json:"version"`
+		Skills  map[string]json.RawMessage `json:"skills"`
+	}{now.top["version"], skills} // the order writeLocalLock writes
+	if l.version != projectLockVersion {
+		all := map[string]any{}
+		for k, v := range l.top {
+			all[k] = v
+		}
+		all["skills"] = skills
+		top = all
+	}
+	// Like JSON.stringify(lock, null, 2) of the skills CLI: no HTML escapes,
+	// and a final newline in the project lock only.
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
@@ -152,12 +182,17 @@ func (l *skillsLock) without(names []string) error {
 	if p, err := filepath.EvalSymlinks(l.path); err == nil {
 		target = p
 	}
-	return atomicfile.Write(target, bytes.TrimSuffix(b.Bytes(), []byte("\n")), l.mode)
+	out := b.Bytes()
+	if l.version != projectLockVersion {
+		out = bytes.TrimSuffix(out, []byte("\n"))
+	}
+	return atomicfile.Write(target, out, l.mode)
 }
 
-// lockRepo is the manifest repo of a lock entry: owner/repo for GitHub,
-// the clone URL for other git hosts.
-func lockRepo(le lockEntry) (string, error) {
+// lockRepo is the repo value of a lock entry: owner/repo for GitHub; for
+// other git hosts the short form on a built-in host or one of hosts
+// ("gitlab:group/repo", "<alias>:path"), else the clone URL.
+func lockRepo(le lockEntry, hosts manifest.Hosts) (string, error) {
 	switch le.SourceType {
 	case "github":
 		if manifest.IsShortRepo(le.Source) {
@@ -167,11 +202,18 @@ func lockRepo(le lockEntry) (string, error) {
 			return repo, nil
 		}
 	case "git", "gitlab":
-		if le.SourceURL != "" {
-			if hasCredentials(le.SourceURL) {
+		u := le.SourceURL
+		if u == "" && strings.Contains(le.Source, "://") {
+			u = le.Source // a project lock records the URL as source
+		}
+		if u != "" {
+			if hasCredentials(u) {
 				return "", errors.New("its sourceUrl carries credentials; add it with `skenv vendor add` and a URL without them")
 			}
-			return le.SourceURL, nil
+			if repo, ok := hosts.ShortForm(u); ok {
+				return repo, nil
+			}
+			return u, nil
 		}
 	}
 	return "", fmt.Errorf("installed from a %q source, not a git repository; `skenv vendor add` needs one", le.SourceType)
@@ -200,18 +242,20 @@ func lockFolder(skillPath string) string {
 
 // How a rev was found for a lock entry.
 const (
-	revByHash = iota // a commit's folder tree is skillFolderHash
+	revByHash = iota // a commit's folder has the hash of the entry
 	revByCopy        // a commit's folder has the files of the installed copy
 	revByHead        // nothing matched: HEAD of ref or the default branch
 )
 
 // lockRev resolves the commit of a lock entry: the newest commit on its
-// ref (or the default branch) whose skill folder tree is skillFolderHash,
-// searched from updatedAt (else installedAt) back. When no commit matches
-// (history rewritten, ref deleted), the commit whose folder holds the files
-// of the installed copy at dir, and at last the tip. tip names the branch
+// ref (or the default branch) whose skill folder has the hash of the
+// entry, searched from updatedAt (else installedAt) back. A tree id is
+// compared with the folder's tree, a sha256 with computeSkillFolderHash of
+// the folder's files. When no commit matches (history rewritten, ref
+// deleted), the commit whose folder holds the files of the installed copy
+// at dir (when there is one), and at last the tip. tip names the branch
 // searched.
-func (e *Engine) lockRev(cache, repo string, le lockEntry, dir string) (rev string, how int, tip string, err error) {
+func (e *base) lockRev(cache, repo string, le lockEntry, dir string) (rev string, how int, tip string, err error) {
 	tip = "the default branch"
 	if le.Ref != "" {
 		tip = le.Ref
@@ -225,15 +269,25 @@ func (e *Engine) lockRev(cache, repo string, le lockEntry, dir string) (rev stri
 	if err != nil {
 		return "", 0, tip, err
 	}
-	// Only GitHub installs record a git tree id; other sources get a
-	// sha256 over the files (computeSkillFolderHash), which the installed
-	// copy stands in for.
-	if le.SourceType == "github" && le.SkillFolderHash != "" {
+	hash, _ := le.hash()
+	switch {
+	case treeIDRe.MatchString(hash):
 		for _, c := range commits {
-			if tree, err := e.folderTree(cache, c, folder); err == nil && tree == le.SkillFolderHash {
+			if tree, err := e.folderTree(cache, c, folder); err == nil && tree == hash {
 				return c, revByHash, tip, nil
 			}
 		}
+	case folderHashRe.MatchString(hash):
+		c, err := e.matchFolderHash(cache, commits, folder, hash)
+		if err != nil {
+			return "", 0, tip, err
+		}
+		if c != "" {
+			return c, revByHash, tip, nil
+		}
+	}
+	if dir == "" {
+		return head, revByHead, tip, nil
 	}
 	if files, err := copyBlobs(dir); err == nil {
 		for _, c := range commits {
@@ -247,7 +301,7 @@ func (e *Engine) lockRev(cache, repo string, le lockEntry, dir string) (rev stri
 
 // lockTip is the commit at ref: a branch, a tag or a commit SHA (short
 // ones too); HEAD of the default branch when ref is empty.
-func (e *Engine) lockTip(cache, repo, ref string) (string, error) {
+func (e *base) lockTip(cache, repo, ref string) (string, error) {
 	if ref == "" {
 		return e.resolveRev(cache, repo, "")
 	}
@@ -278,7 +332,7 @@ func (e *Engine) lockTip(cache, repo, ref string) (string, error) {
 // starting with the ones made by updatedAt (else installedAt): the
 // installed version cannot be newer. Later commits follow, in case of
 // clock skew.
-func (e *Engine) candidates(cache, head, folder string, le lockEntry) ([]string, error) {
+func (e *base) candidates(cache, head, folder string, le lockEntry) ([]string, error) {
 	args := []string{"log", "--format=%H %ct", head}
 	if folder != "" {
 		args = append(args, "--", folder)
@@ -310,7 +364,7 @@ func (e *Engine) candidates(cache, head, folder string, le lockEntry) ([]string,
 }
 
 // folderTree is the tree id of folder at commit.
-func (e *Engine) folderTree(cache, commit, folder string) (string, error) {
+func (e *base) folderTree(cache, commit, folder string) (string, error) {
 	return e.env.Git.Run(e.ctx, cache, "rev-parse", "--verify", "--quiet", commit+":"+folder)
 }
 
@@ -325,7 +379,7 @@ func skipCopied(name string, dir bool) bool {
 
 // commitBlobs maps each file of folder at commit to its blob id, without
 // the files the `skills` CLI does not copy.
-func (e *Engine) commitBlobs(cache, commit, folder string) (map[string]string, error) {
+func (e *base) commitBlobs(cache, commit, folder string) (map[string]string, error) {
 	out, err := e.env.Git.Run(e.ctx, cache, "ls-tree", "-r", "-z", commit+":"+folder)
 	if err != nil {
 		return nil, err
@@ -356,7 +410,11 @@ func copiedOut(rel string) bool {
 
 // copyBlobs maps each file of the installed copy at dir to its git blob
 // id.
-func copyBlobs(dir string) (map[string]string, error) {
+func copyBlobs(dir string) (map[string]string, error) { return dirBlobs(dir, skipCopied) }
+
+// dirBlobs maps each file and symlink under dir to its git blob id, a
+// symlink by its target, without what skip says to leave out.
+func dirBlobs(dir string, skip func(name string, dir bool) bool) (map[string]string, error) {
 	files := map[string]string{}
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -365,7 +423,7 @@ func copyBlobs(dir string) (map[string]string, error) {
 		if p == dir {
 			return nil
 		}
-		if skipCopied(d.Name(), d.IsDir()) {
+		if skip(d.Name(), d.IsDir()) {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}

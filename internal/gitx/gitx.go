@@ -47,10 +47,20 @@ func (e *Error) Unwrap() error { return e.Err }
 
 // Run executes git in dir and returns trimmed stdout.
 func (g Git) Run(ctx context.Context, dir string, args ...string) (string, error) {
+	out, err := g.Output(ctx, dir, nil, args...)
+	return strings.TrimSpace(string(out)), err
+}
+
+// Output executes git in dir with stdin as its input and returns stdout as
+// it is: for binary content and batch output.
+func (g Git) Output(ctx context.Context, dir string, stdin []byte, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	// Never block on a credential prompt: autostart runs without a terminal.
 	cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C"), g.Env...)
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -59,9 +69,9 @@ func (g Git) Run(ctx context.Context, dir string, args ...string) (string, error
 		if out == "" {
 			out = stdout.String()
 		}
-		return "", &Error{Args: args, Dir: dir, Output: out, Err: err}
+		return nil, &Error{Args: args, Dir: dir, Output: out, Err: err}
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	return stdout.Bytes(), nil
 }
 
 // OK runs git and reports only whether it succeeded.

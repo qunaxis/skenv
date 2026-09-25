@@ -2,7 +2,6 @@ package manifest
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -43,21 +42,73 @@ const (
 // text; YAML and JSON are edited in place, so comments and key order of
 // the rest stay. The caller adds the schema directive.
 func AddEnvironment(data []byte, ext string, own *Own) ([]byte, error) {
+	section := envLead + "[environment]\n\n" + ownComment
+	env := docedit.Map{}
+	if own != nil {
+		section += fmt.Sprintf("[[environment.own]]\nrepo = %s\npath = %s\n", quote(own.Repo), quote(own.Path)) + ownSelection
+		env = docedit.Map{{Key: "own", Value: []docedit.Map{{{Key: "repo", Value: own.Repo}, {Key: "path", Value: own.Path}}}}}
+	} else {
+		section += ownExample
+	}
+	out, err := addSection(data, ext, skenvfile.Environment, section+"\n"+vendorExample, env, envLead+envYAMLHint)
+	if err != nil {
+		return nil, err
+	}
+	// The result must read back as a manifest.
+	if _, err := Parse(out, ext); err != nil {
+		return nil, fmt.Errorf("adding [environment] would make the file invalid: %w", err)
+	}
+	return out, nil
+}
+
+// projectLead is the comment above a [project] section that `skenv import
+// --project` adds.
+const projectLead = "# The skills this project carries, committed with it: `skenv sync` copies the\n" +
+	"# pinned ones into dir and mirrors dir. Reference: https://qunaxis.github.io/skenv/project-skills\n"
+
+// AddProject returns data, a skenv file in the format of ext (empty for a
+// new file), with a [project] section added that has the default dir and
+// the given mirrors. The file must not have [project] yet; it is edited as
+// AddEnvironment edits it.
+func AddProject(data []byte, ext string, mirrors []string) ([]byte, error) {
+	section := projectLead + "[project]\n"
+	value := docedit.Map{}
+	if len(mirrors) > 0 {
+		q := make([]string, len(mirrors))
+		for i, m := range mirrors {
+			q[i] = quote(m)
+		}
+		section += fmt.Sprintf("mirrors = [%s]\n", strings.Join(q, ", "))
+		value = docedit.Map{{Key: "mirrors", Value: mirrors}}
+	}
+	out, err := addSection(data, ext, skenvfile.Project, section, value, projectLead)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := ParseProject(out, ext); err != nil {
+		return nil, fmt.Errorf("adding [project] would make the file invalid: %w", err)
+	}
+	return out, nil
+}
+
+// addSection returns data with the top-level section added, which it must
+// not have yet: in TOML the text toml after a blank line, in YAML and JSON
+// the key with value, and in YAML lead as a comment above it. Added lines
+// take the line endings of the file.
+func addSection(data []byte, ext, section, toml string, value docedit.Map, lead string) ([]byte, error) {
 	doc, err := skenvfile.Parse(data, ext)
 	if err != nil {
 		return nil, err
 	}
-	if doc.Has(skenvfile.Environment) {
-		return nil, errors.New("the skenv file has [environment] already")
+	if doc.Has(section) {
+		return nil, fmt.Errorf("the skenv file has [%s] already", section)
 	}
-	// Added lines take the line endings of the file.
 	nl := func(s string) string {
 		if bytes.Contains(data, []byte("\r\n")) {
 			return strings.ReplaceAll(s, "\n", "\r\n")
 		}
 		return s
 	}
-	var out []byte
 	switch ext {
 	case ".toml":
 		var b strings.Builder
@@ -68,40 +119,22 @@ func AddEnvironment(data []byte, ext string, own *Own) ([]byte, error) {
 			}
 			b.WriteString(nl("\n"))
 		}
-		section := envLead + "[environment]\n\n" + ownComment
-		if own != nil {
-			section += fmt.Sprintf("[[environment.own]]\nrepo = %s\npath = %s\n", quote(own.Repo), quote(own.Path)) + ownSelection
-		} else {
-			section += ownExample
-		}
-		b.WriteString(nl(section + "\n" + vendorExample))
-		out = []byte(b.String())
+		b.WriteString(nl(toml))
+		return []byte(b.String()), nil
 	case ".yaml", ".yml", ".json":
 		d, err := docedit.Open(data, ext)
 		if err != nil {
 			return nil, err
 		}
-		env := docedit.Map{}
-		if own != nil {
-			env = docedit.Map{{Key: "own", Value: []docedit.Map{{{Key: "repo", Value: own.Repo}, {Key: "path", Value: own.Path}}}}}
-		}
-		if err := d.Put(nil, skenvfile.Environment, env, false); err != nil {
+		if err := d.Put(nil, section, value, false); err != nil {
 			return nil, err
 		}
-		out = d.Bytes()
-		if ext != ".json" {
-			if out, err = commentYAMLKey(out, skenvfile.Environment, nl(envLead+envYAMLHint)); err != nil {
-				return nil, err
-			}
+		if ext == ".json" {
+			return d.Bytes(), nil
 		}
-	default:
-		return nil, fmt.Errorf("unsupported format %q", ext)
+		return commentYAMLKey(d.Bytes(), section, nl(lead))
 	}
-	// The result must read back as a manifest.
-	if _, err := Parse(out, ext); err != nil {
-		return nil, fmt.Errorf("adding [environment] would make the file invalid: %w", err)
-	}
-	return out, nil
+	return nil, fmt.Errorf("unsupported format %q", ext)
 }
 
 // commentYAMLKey inserts comment lines above the top-level key of a block

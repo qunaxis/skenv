@@ -189,7 +189,7 @@ func TestImport(t *testing.T) {
 	}
 	for _, want := range []string{
 		"vendor lost: skillFolderHash 000000000000 is not in the history of the default branch; pinned " + revs["lost"][:12] + ", whose files match the installed copy",
-		"vendor drifted: neither skillFolderHash 111111111111 nor the installed copy matches a commit of the default branch; pinned its HEAD " + revs["drifted"][:12],
+		"vendor drifted: skillFolderHash 111111111111 is not in the history of the default branch, and no commit has the files of the installed copy; pinned HEAD " + revs["drifted"][:12] + " of the default branch",
 	} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("missing warning %q:\n%s", want, errOut)

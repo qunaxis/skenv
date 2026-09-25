@@ -258,7 +258,8 @@ The same pages, with search, are published at
   generated from the command definitions by `make docs`.
 - [Adopting an existing setup](docs/adopting.md): `skenv import` and
   `skenv init --import` for a machine with skills installed by `npx skills`
-  or by hand.
+  or by hand, and `skenv import --project` for a project's
+  `skills-lock.json`.
 - [The skenv file](docs/skenv-file.md): `skenv.toml` with its `[repo]`,
   `[environment]` and `[project]` sections, formats, and moving from
   `env.toml`.
