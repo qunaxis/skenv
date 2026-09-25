@@ -26,7 +26,7 @@ $ skenv repo apply
 
 ### SEE ALSO
 
-* [skenv](skenv.md)	 - Keep agent skills (Claude Code, Codex, pi) in sync with a manifest
+* [skenv](skenv.md)	 - Install agent skills (Claude Code, Codex, pi) from a manifest in git
 * [skenv repo apply](skenv_repo_apply.md)	 - Regenerate the managed files of the harness
 * [skenv repo check](skenv_repo_check.md)	 - Compare the managed files with the harness templates
 * [skenv repo init](skenv_repo_init.md)	 - Set up the harness of a skills repository

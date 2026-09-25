@@ -23,6 +23,10 @@ import (
 	"github.com/qunaxis/skenv/schemas"
 )
 
+// The help lists commands in the order they are added, by task, not
+// alphabetically.
+func init() { cobra.EnableCommandSorting = false }
+
 // Main runs skenv with args (without the program name) and returns the
 // exit code.
 func Main(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -70,21 +74,27 @@ func Command() *cobra.Command {
 func newRoot(a *app) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "skenv",
-		Short: "Keep agent skills (Claude Code, Codex, pi) in sync with a manifest",
-		Long: `skenv keeps agent skills (Claude Code, Codex, pi) in sync with a manifest.
+		Short: "Install agent skills (Claude Code, Codex, pi) from a manifest in git",
+		Long: `skenv installs agent skills (Claude Code, Codex, pi) from a manifest you
+keep in git, and keeps every machine in line with it. The manifest is the
+[environment] section of skenv.toml in a git repository: your own skills
+come from editable git working copies ("own" repositories), third-party
+skills are copies pinned to a commit ("vendor" entries).
 
-Configuration: a setting comes from, highest first, its flag, the SKENV_<KEY>
-environment variable, the config file, the default. The config file is
-~/.config/skenv/config.toml, config.yaml, config.yml or config.json (only
-one of them); its one key today is "manifest", which --manifest and
-$SKENV_MANIFEST override. "skenv init" records it.
+First steps, by situation:
+- No manifest yet: ` + "`skenv init`" + ` in a git repository starts one.
+- Skills already installed (npx skills, copies): ` + "`skenv init --import`" + `
+  starts one and takes them over.
+- Another machine: ` + "`skenv init <repo>`" + ` clones your manifest repository
+  and syncs it.
 
-The manifest is the [environment] section of a skenv file: skenv.toml (or
-skenv.yaml, skenv.yml, skenv.json) in the root of a repository. The same
-file holds the harness of a skills repository in its [repo] section, and
-the skills a project repository carries in its [project] section.
-"manifest" names that file or the directory that holds it. Inside a
-project, sync and doctor work on its [project] section.
+Then ` + "`skenv vendor add <repo>`" + ` installs a third-party skill, ` + "`skenv sync`" + `
+applies the manifest and ` + "`skenv doctor`" + ` checks the machine.
+
+In a project repository whose skenv file has a [project] section, sync and
+doctor work on the skills of the project instead. The manifest location and
+the config file: https://qunaxis.github.io/skenv/configuration and
+"skenv schema config".
 
 Exit codes: 0 success, 1 problems found, 2 error. Warnings do not change
 the exit code; "skenv doctor" exits 0 only when the machine matches.`,
@@ -98,13 +108,7 @@ skenv sync`,
 		SilenceUsage:      true,
 		DisableAutoGenTag: true,
 		Args:              cobra.NoArgs,
-		// Without a command: usage on stderr and exit 2.
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			a.ran = true
-			a.code = engine.ExitFatal
-			cmd.SetOut(a.stderr)
-			return cmd.Help()
-		},
+		RunE:              groupRun,
 	}
 	root.SetOut(a.stdout)
 	root.SetErr(a.stderr)
@@ -112,24 +116,47 @@ skenv sync`,
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return usageError{fmt.Sprintf("%s (see `%s --help`)", err, cmd.CommandPath())}
 	})
-	root.AddCommand(
-		initCmd(a), syncCmd(a, "sync"), syncCmd(a, "link"), doctorCmd(a),
-		vendorCmd(a), importCmd(a), autostartCmd(a), lintCmd(a), newCmd(a), repoCmd(a), schemaCmd(a),
-		&cobra.Command{
-			Use:     "version",
-			Short:   "Print the skenv version",
-			Example: "skenv version",
-			Args:    cobra.NoArgs,
-			RunE: func(cmd *cobra.Command, _ []string) error {
-				a.ran = true
-				fmt.Fprintln(cmd.OutOrStdout(), buildinfo.Get())
-				return nil
-			},
-		},
+	root.AddGroup(
+		&cobra.Group{ID: groupStart, Title: "Get started:"},
+		&cobra.Group{ID: groupEveryday, Title: "Everyday:"},
+		&cobra.Group{ID: groupAuthor, Title: "Write skills:"},
+		&cobra.Group{ID: groupMachine, Title: "Machine:"},
 	)
+	addTo(root, groupStart, initCmd(a), importCmd(a))
+	addTo(root, groupEveryday, syncCmd(a, "sync"), doctorCmd(a), vendorCmd(a), syncCmd(a, "link"))
+	addTo(root, groupAuthor, newCmd(a), lintCmd(a), repoCmd(a))
+	addTo(root, groupMachine, autostartCmd(a), schemaCmd(a), &cobra.Command{
+		Use:     "version",
+		Short:   "Print the skenv version",
+		Example: "skenv version",
+		Args:    nArgs(0),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			a.ran = true
+			fmt.Fprintln(cmd.OutOrStdout(), buildinfo.Get())
+			return nil
+		},
+	})
+	root.SetHelpCommandGroupID(groupMachine)
+	root.SetCompletionCommandGroupID(groupMachine)
 	addCompletion(root)
 	indentExamples(root)
 	return root
+}
+
+// The command groups of the root help, by task.
+const (
+	groupStart    = "start"
+	groupEveryday = "everyday"
+	groupAuthor   = "author"
+	groupMachine  = "machine"
+)
+
+// addTo adds cmds to root in the help group id.
+func addTo(root *cobra.Command, id string, cmds ...*cobra.Command) {
+	for _, c := range cmds {
+		c.GroupID = id
+		root.AddCommand(c)
+	}
 }
 
 // indentExamples indents every Example by two spaces, like the Usage
@@ -195,13 +222,33 @@ func cmdName(cmd *cobra.Command) string {
 }
 
 // nArgs requires exactly n positional arguments.
-func nArgs(n int) cobra.PositionalArgs {
+func nArgs(n int) cobra.PositionalArgs { return rangeArgs(n, n) }
+
+// rangeArgs requires min to max positional arguments. The error names the
+// missing or the unexpected argument, with the usage line and an example:
+// a count alone does not say what to type.
+func rangeArgs(minimum, maximum int) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
-		if len(args) != n {
-			return usageError{fmt.Sprintf("%s: expected %d argument(s), got %d (see `%s --help`)", cmdName(cmd), n, len(args), cmd.CommandPath())}
+		switch {
+		case len(args) < minimum:
+			// The Use line names the arguments in order: "add <repo>".
+			return argError(cmd, "missing "+strings.Fields(cmd.Use)[1+len(args)])
+		case len(args) > maximum:
+			return argError(cmd, fmt.Sprintf("unexpected argument %q", args[maximum]))
 		}
 		return nil
 	}
+}
+
+func argError(cmd *cobra.Command, problem string) error {
+	msg := fmt.Sprintf("%s: %s\nUsage: %s", cmdName(cmd), problem, cmd.UseLine())
+	for _, line := range strings.Split(cmd.Example, "\n") {
+		if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+			msg += "\nExample: " + line
+			break
+		}
+	}
+	return usageError{msg}
 }
 
 // group is a command that only holds subcommands.
@@ -211,16 +258,17 @@ func group(use, short string, subs ...*cobra.Command) *cobra.Command {
 	return c
 }
 
-// groupRun rejects a group command run without a known subcommand.
+// groupRun prints the help of a group run without a subcommand, which
+// lists its subcommands, and rejects an unknown one.
 func groupRun(cmd *cobra.Command, args []string) error {
-	if len(args) > 0 {
-		var names []string
-		for _, s := range cmd.Commands() {
-			names = append(names, s.Name())
-		}
-		return usageError{fmt.Sprintf("%s: unknown subcommand %q (%s)", cmdName(cmd), args[0], strings.Join(names, ", "))}
+	if len(args) == 0 {
+		return cmd.Help()
 	}
-	return usageError{fmt.Sprintf("%s: missing subcommand (see `%s --help`)", cmdName(cmd), cmd.CommandPath())}
+	var names []string
+	for _, s := range cmd.Commands() {
+		names = append(names, s.Name())
+	}
+	return usageError{fmt.Sprintf("%s: unknown subcommand %q (%s)", cmdName(cmd), args[0], strings.Join(names, ", "))}
 }
 
 // formatFlag adds --format with the completion of its values.
@@ -327,12 +375,7 @@ skenv init
 skenv init --import
 # Start one in a repository without an origin yet, to be pushed to gitlab.com
 skenv init --remote gitlab:example-group/my-skills`,
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 1 {
-				return usageError{fmt.Sprintf("init: expected at most 1 argument, got %d (see `%s --help`)", len(args), cmd.CommandPath())}
-			}
-			return nil
-		},
+		Args: rangeArgs(0, 1),
 		RunE: a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
 			if err := fileformat.Valid(format); err != nil {
 				return engine.ExitFatal, usageError{"init: " + err.Error()}
@@ -720,7 +763,7 @@ need no setup. Use this for offline work or a custom mapping, for example a
 JSON Schema mapping in JetBrains IDEs or a rule in .taplo.toml. The same
 schemas are published at ` + schemas.Base + `.`,
 		Example:   "skenv schema > skenv.schema.json\nskenv schema config",
-		Args:      cobra.MaximumNArgs(1),
+		Args:      rangeArgs(0, 1),
 		ValidArgs: []string{"skenv", "config"},
 		RunE: a.action(func(_ context.Context, env engine.Env, args []string) (int, error) {
 			kind := "skenv"

@@ -29,7 +29,7 @@ $ skenv autostart disable
 
 ### SEE ALSO
 
-* [skenv](skenv.md)	 - Keep agent skills (Claude Code, Codex, pi) in sync with a manifest
+* [skenv](skenv.md)	 - Install agent skills (Claude Code, Codex, pi) from a manifest in git
 * [skenv autostart disable](skenv_autostart_disable.md)	 - Unload and remove the autostart job
 * [skenv autostart enable](skenv_autostart_enable.md)	 - Install and load the autostart job
 * [skenv autostart status](skenv_autostart_status.md)	 - Show whether the autostart job is installed and loaded (exit 1 if not)

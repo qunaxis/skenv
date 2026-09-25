@@ -2,24 +2,30 @@
 
 ## skenv
 
-Keep agent skills (Claude Code, Codex, pi) in sync with a manifest
+Install agent skills (Claude Code, Codex, pi) from a manifest in git
 
 ### Synopsis
 
-skenv keeps agent skills (Claude Code, Codex, pi) in sync with a manifest.
+skenv installs agent skills (Claude Code, Codex, pi) from a manifest you
+keep in git, and keeps every machine in line with it. The manifest is the
+`[environment]` section of `skenv.toml` in a git repository: your own skills
+come from editable git working copies (`own` repositories), third-party
+skills are copies pinned to a commit (`vendor` entries).
 
-Configuration: a setting comes from, highest first, its flag, the `SKENV_<KEY>`
-environment variable, the config file, the default. The config file is
-`~/.config/skenv/config.toml`, `config.yaml`, `config.yml` or `config.json` (only
-one of them); its one key today is `manifest`, which `--manifest` and
-`$SKENV_MANIFEST` override. `skenv init` records it.
+First steps, by situation:
+- No manifest yet: `skenv init` in a git repository starts one.
+- Skills already installed (npx skills, copies): `skenv init --import`
+  starts one and takes them over.
+- Another machine: `skenv init <repo>` clones your manifest repository
+  and syncs it.
 
-The manifest is the `[environment]` section of a skenv file: `skenv.toml` (or
-`skenv.yaml`, `skenv.yml`, `skenv.json`) in the root of a repository. The same
-file holds the harness of a skills repository in its `[repo]` section, and
-the skills a project repository carries in its `[project]` section.
-`manifest` names that file or the directory that holds it. Inside a
-project, sync and doctor work on its `[project]` section.
+Then `skenv vendor add <repo>` installs a third-party skill, `skenv sync`
+applies the manifest and `skenv doctor` checks the machine.
+
+In a project repository whose skenv file has a `[project]` section, sync and
+doctor work on the skills of the project instead. The manifest location and
+the config file: https://qunaxis.github.io/skenv/configuration and
+`skenv schema config`.
 
 Exit codes: 0 success, 1 problems found, 2 error. Warnings do not change
 the exit code; `skenv doctor` exits 0 only when the machine matches.

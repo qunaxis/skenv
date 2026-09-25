@@ -4,7 +4,7 @@
 
 Generated from `skenv --help`. Start with [skenv](skenv.md).
 
-- [skenv](skenv.md): Keep agent skills (Claude Code, Codex, pi) in sync with a manifest
+- [skenv](skenv.md): Install agent skills (Claude Code, Codex, pi) from a manifest in git
 - [skenv autostart](skenv_autostart.md): Run `skenv sync --quiet` at login and every hour
 - [skenv autostart disable](skenv_autostart_disable.md): Unload and remove the autostart job
 - [skenv autostart enable](skenv_autostart_enable.md): Install and load the autostart job
