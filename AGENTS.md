@@ -6,10 +6,11 @@ it would stop Claude Code from loading this file.
 - Go CLI, module `github.com/qunaxis/skenv`, binary `cmd/skenv`. Runtime
   dependency: `git` only. No network services, no other executables.
 - Layout: `internal/cli` (flags, integration tests), `internal/engine`
-  (sync, link, doctor, vendor, init), `internal/manifest` (env.toml parsing
+  (sync, link, doctor, vendor, init), `internal/cli/new.go` (`skenv new`), `internal/manifest` (env.toml parsing
   and in-place editing), `internal/agents`, `internal/state`,
   `internal/autostart`, `internal/gitx`, `internal/buildinfo`,
-  `internal/lint` (L1-L6), `internal/harness` (skenv.toml, `repo
+  `internal/lint` (L1-L6; `publish.go`: P1 publication check, stop-list
+  phrases are never printed), `internal/harness` (skenv.toml, `repo
   init|apply|check`, templates in `internal/harness/templates/<harness>/`),
   `internal/release` (tests for `cliff.toml` and the commit check).
 - Templates are versioned: never change a released template set in place.
