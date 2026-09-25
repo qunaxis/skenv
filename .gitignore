@@ -1,3 +1,8 @@
 /skenv
 /dist/
 /man/
+
+# documentation site (make docs-site)
+/node_modules/
+/docs/.vitepress/dist/
+/docs/.vitepress/cache/
