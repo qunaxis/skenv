@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-09-25
 - Issue: [#6](https://github.com/qunaxis/skenv/issues/6)
+- Amended by: [ADR 0002](0002-config-format.md) (section and key names of the skenv file)
 
 ## Context
 
