@@ -37,7 +37,8 @@ It takes no repository: `skenv clone` and `skenv use` connect a machine to
 an existing manifest.
 
 `skenv init --import` also imports the skills already installed on the
-machine into the new manifest and runs `sync --adopt`; see
+machine into the new manifest and runs `sync --adopt`, which leaves a skill
+pinned without a matching commit as installed; see
 [Adopting an existing setup](adopting.md).
 Reference: [skenv init](commands/skenv_init.md).
 
@@ -82,16 +83,21 @@ other machines would not arrive. `sync` warns and `doctor` reports
 ```sh
 skenv import --dry-run   # the manifest diff and the lock changes, nothing written
 skenv import
-skenv import --sync      # then skenv sync --adopt
+skenv import --sync      # then skenv sync --adopt, except for unmatched skills
 skenv import --project   # in a project: its skills-lock.json into [project]
 ```
 
 Adds the skills installed on the machine that the manifest does not have
 yet: entries of the lock of the `skills` CLI (`~/.agents/.skill-lock.json`)
-become vendor entries pinned to the commit their `skillFolderHash` names,
-links into git working copies become own repositories, and anything else is
-reported as `unmanaged`. It then removes the skills now in the manifest from
-that lock, after a backup. Idempotent. With `--project`, the same for the
+become vendor entries pinned to a commit, links into git working copies
+become own repositories, and anything else is reported as not imported. The
+skills now in the manifest leave that lock, after a backup, so the `skills`
+CLI no longer updates them. The report groups the vendor entries by how
+their commit was found: `exact` (the lock's hash), `same files` (the files
+of the installed copy) or `unmatched` (neither: the tip of the branch, a
+warning). `--sync` then takes over everything except the unmatched skills,
+which stay as installed until you run `skenv sync --adopt` or
+`skenv vendor remove <name>`. Idempotent. With `--project`, the same for the
 `skills-lock.json` of the current repository: its entries become
 `[[project.vendor]]`, pinned to the commit whose files have their
 `computedHash`, and project-own skills that differ between agent

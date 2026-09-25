@@ -204,7 +204,9 @@ skenv init                 # or: skenv init --format yaml (json)
 
 Skills already installed on the machine (with `npx skills add -g` or by
 hand)? `skenv init --import` also writes them into the new manifest and
-takes them over; see [Adopting an existing setup](docs/adopting.md).
+takes over those whose installed commit it finds; one it cannot match stays
+as installed until you decide. See
+[Adopting an existing setup](docs/adopting.md).
 
 A minimal manifest lists the repository itself, so skenv keeps its working
 copy up to date (`skenv init` adds this entry from the repository's

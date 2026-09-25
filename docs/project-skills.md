@@ -495,6 +495,10 @@ git add -- skenv.toml .agents/skills .claude/skills skills-lock.json
 git commit -m "chore(skills): import project skills"
 ```
 
+`--sync` leaves a skill whose commit it could not match as installed, and
+`doctor` reports it until you decide: `skenv sync --adopt` replaces it with
+the pinned commit, `skenv vendor remove --project <name>` drops the entry.
+
 A single copy another tool installed, without a lock: add an entry with
 `--adopt`, which backs up the old copy and replaces it with the pinned one.
 Entries written by hand work the same way: `skenv sync --adopt` replaces
