@@ -9,6 +9,7 @@ skills repository, next to your own skills, so every machine that runs
 - [Rules](#rules)
 - [Selecting skills of an own repository](#selecting-skills-of-an-own-repository)
 - [Layout on disk](#layout-on-disk)
+- [How vendoring works](#how-vendoring-works)
 - [Mapping to `skills-lock.json`](#mapping-to-skills-lockjson)
 
 ## Where the manifest is found
@@ -159,8 +160,96 @@ skip = ["gamma"]
 > `layout.targets` replaces the built-in table entirely.
 
 - **State** `~/.local/state/skenv/state.json` lists the paths skenv created.
-  Vendor clones are cached in `~/.cache/skenv/repos/<owner>__<repo>`.
+  Vendor clones are cached in `~/.cache/skenv/repos` (see
+  [How vendoring works](#how-vendoring-works)).
 - **Backups** made by `--adopt` go to `~/.local/state/skenv/backup/<timestamp>/`.
+
+## How vendoring works
+
+`sync` copies each vendored skill from a local clone of its repository, the
+vendor cache, into the store. The copy carries a `.skenv` marker with
+`repo`, `path` and `rev`; while the marker matches the manifest, `sync`
+leaves the copy alone and does not touch the network.
+
+### Where the cache lives
+
+The vendor cache is `~/.cache/skenv/repos`, one partial clone
+(`--filter=blob:none`) per repository. The directory name is derived from
+the URL git really fetches from, after
+[`url.<base>.insteadOf`](https://git-scm.com/docs/git-config#Documentation/git-config.txt-urlltbasegtinsteadOf)
+rewrites in your global git config (`git ls-remote --get-url <repo>`, run in
+the cache so the repository you start skenv in does not matter), normalised to the host and the
+full path:
+
+- the scheme, credentials, trailing slashes and `.git` are dropped, and the
+  host is lowercased; the path keeps its case;
+- `git@host:owner/repo` and `ssh://git@host/owner/repo` are the same
+  repository; a non-default port stays part of the host;
+- local paths and `file://` URLs become absolute paths.
+
+The name is a readable slug of that string plus the first 12 hex digits of
+its SHA-256:
+
+| `repo` in the manifest                   | Cache directory                           |
+| ---------------------------------------- | ----------------------------------------- |
+| `tt-a1i/archify`                         | `github.com-tt-a1i-archify-<hash>`        |
+| `git@github.com:tt-a1i/archify.git`      | `github.com-tt-a1i-archify-<hash>` (same) |
+| `https://gitlab.com/group/sub/tools.git` | `gitlab.com-group-sub-tools-<hash>`       |
+
+So `github.com/x/skills` and `gitlab.com/x/skills` get separate caches, and
+so do the subgroup `gitlab.com/a/x/skills` and `gitlab.com/x/skills`. The hash keeps two
+repositories apart even when their slugs look alike, and the flat layout
+means one repository never sits inside another's directory. Credentials in
+a URL never become part of the name.
+
+### Verification on reuse
+
+Before reusing a cache, skenv checks that `git remote get-url origin` in it
+is the repository the manifest asks for, compared after the same
+normalisation. On a mismatch (someone ran `git remote set-url`, or the
+directory was copied or edited by hand) it prints a notice with credentials
+masked and clones again. Every clone goes into a temporary directory next
+to the cache first and replaces it only when complete, so an interrupted
+clone never leaves a broken cache.
+
+### Deleting the cache
+
+The cache holds nothing that is not upstream, so it is always safe to
+delete; the next `sync` or `vendor` command clones what it needs again.
+This includes `<owner>__<repo>` directories from skenv 0.4 and earlier,
+which are no longer used, and `.skenv-tmp-*` or `.skenv-old-*` directories
+left by an interrupted run:
+
+```sh
+rm -rf ~/.cache/skenv/repos
+```
+
+Store copies are unaffected: they are rebuilt only when their marker no
+longer matches the manifest.
+
+### Troubleshooting: `commit … not found in …`
+
+`sync` fetched the repository and the pinned `rev` is not in it. Common
+causes:
+
+- `repo` and `rev` do not belong together, for example after `repo` was
+  changed to a fork or mirror that lacks the commit, or `rev` was copied
+  from another repository. Check whether the commit exists upstream; the
+  second command prints `commit` if it does:
+
+  ```sh
+  git clone --quiet --filter=blob:none --no-checkout <repo-url> /tmp/skenv-check
+  git -C /tmp/skenv-check cat-file -t <rev>
+  ```
+
+- The commit was force-pushed away upstream. Set `rev` to a commit that
+  still exists and commit the manifest.
+- git cannot reach the repository with your credentials or `insteadOf`
+  rules; `git ls-remote <repo-url>` shows the same error without skenv.
+
+A stale or damaged cache is not the cause on its own: skenv re-clones a
+cache whose origin does not match. To rule it out anyway, delete the cache
+(see above) and run `skenv sync` again.
 
 ## Mapping to `skills-lock.json`
 

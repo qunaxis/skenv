@@ -1,7 +1,10 @@
 package manifest
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -27,21 +30,108 @@ func RepoName(repo string) string {
 	return name
 }
 
-// CacheKey is the directory name of the vendor cache for repo:
-// "<owner>__<repo>".
-func CacheKey(repo string) string {
-	owner, name := ownerRepo(repo)
-	key := name
-	if owner != "" {
-		key = owner + "__" + name
-	}
-	return strings.Map(func(r rune) rune {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
-			return r
+// CacheKey is the directory name of the vendor cache for a clone URL (as
+// resolved by git, after url.<base>.insteadOf): a readable slug of
+// NormalizeURL plus the first 12 hex digits of its SHA-256, for example
+// "github.com-tt-a1i-archify-0123456789ab". The directory is flat, so one
+// repository path never nests inside another (gitlab.com/a/b and
+// gitlab.com/a/b/c), and the hash keeps keys apart when the slug does not
+// (case-insensitive file systems, characters replaced by "-", long paths).
+func CacheKey(resolved string) string {
+	n := NormalizeURL(resolved)
+	sum := sha256.Sum256([]byte(n))
+	slug := strings.Trim(slugRe.ReplaceAllString(n, "-"), "-.")
+	if len(slug) > maxSlug {
+		// Keep the tail, which names the repository, from a segment start.
+		slug = slug[len(slug)-maxSlug:]
+		if _, rest, ok := strings.Cut(slug, "-"); ok {
+			slug = rest
 		}
-		return '_'
-	}, key)
+		slug = strings.TrimLeft(slug, "-.")
+	}
+	if slug == "" {
+		slug = "repo"
+	}
+	return slug + "-" + hex.EncodeToString(sum[:6])
+}
+
+const maxSlug = 64
+
+var slugRe = regexp.MustCompile(`[^A-Za-z0-9._]+`)
+
+var defaultPorts = map[string]string{"https": "443", "http": "80", "ssh": "22", "git": "9418"}
+
+// CloneURL is the URL skenv clones repo from: RepoURL with a relative local
+// path made absolute, so git resolves it the same from any directory.
+func CloneURL(repo string) string {
+	s := RepoURL(repo)
+	if isLocal(s) && !filepath.IsAbs(s) {
+		if abs, err := filepath.Abs(s); err == nil {
+			return abs
+		}
+	}
+	return s
+}
+
+// isLocal reports whether a clone URL is a local path: neither
+// scheme://... nor scp-like [user@]host:path.
+func isLocal(s string) bool {
+	if strings.Contains(s, "://") {
+		return false
+	}
+	i := strings.Index(s, ":")
+	return i <= 0 || strings.Contains(s[:i], "/")
+}
+
+// NormalizeURL reduces a clone URL to what identifies the repository: the
+// host in lower case (with a non-default port) and the full path, without
+// scheme, credentials, surrounding slashes or ".git". So "git@host:o/r",
+// "ssh://git@host/o/r" and "https://user:token@HOST/o/r.git" are all
+// "host/o/r". Local paths and file:// URLs become absolute slash paths.
+// "owner/repo" shorthands are expanded with RepoURL first.
+func NormalizeURL(raw string) string {
+	s := RepoURL(strings.TrimSpace(raw))
+	if isLocal(s) {
+		return localPath(s)
+	}
+	if !strings.Contains(s, "://") {
+		host, p, _ := strings.Cut(s, ":") // scp-like [user@]host:path
+		if j := strings.LastIndex(host, "@"); j >= 0 {
+			host = host[j+1:]
+		}
+		return strings.ToLower(host) + "/" + trimRepoPath(p)
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		// Unparsable: keep what follows the scheme, minus anything up to
+		// an "@" in the authority, so no credentials reach the key.
+		_, rest, _ := strings.Cut(s, "://")
+		authority, p, _ := strings.Cut(rest, "/")
+		if j := strings.LastIndex(authority, "@"); j >= 0 {
+			authority = authority[j+1:]
+		}
+		return strings.ToLower(authority) + "/" + trimRepoPath(p)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme == "file" {
+		return localPath(u.Path)
+	}
+	host := strings.ToLower(u.Hostname())
+	if port := u.Port(); port != "" && port != defaultPorts[scheme] {
+		host += ":" + port
+	}
+	return host + "/" + trimRepoPath(u.Path)
+}
+
+func trimRepoPath(p string) string {
+	return strings.Trim(strings.TrimSuffix(strings.Trim(p, "/"), ".git"), "/")
+}
+
+func localPath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	return "/" + trimRepoPath(filepath.ToSlash(p))
 }
 
 func ownerRepo(repo string) (owner, name string) {

@@ -6,9 +6,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/manifest"
 	"github.com/qunaxis/skenv/internal/state"
 )
@@ -110,16 +112,28 @@ func (e *Engine) syncOwn() {
 }
 
 // ensureCache clones or refreshes the partial clone for repo and makes sure
-// rev (when given) is present.
+// rev (when given) is present. The cache directory is keyed by the URL git
+// really fetches from (after url.<base>.insteadOf), and a cache whose origin
+// is another repository is cloned again, so two repositories never share one.
 func (e *Engine) ensureCache(repo, rev string) (string, error) {
-	dir := filepath.Join(e.layout.Cache(), manifest.CacheKey(repo))
-	url := manifest.RepoURL(repo)
-	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
-		if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-			return "", err
-		}
-		_ = os.RemoveAll(dir)
-		if _, err := e.env.Git.Run(e.ctx, "", "clone", "--quiet", "--filter=blob:none", "--no-checkout", url, dir); err != nil {
+	url := manifest.CloneURL(repo)
+	root := e.layout.Cache()
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return "", err
+	}
+	// Resolve and clone from the cache root with discovery stopped there,
+	// so the config of a repository skenv happens to run in (a local
+	// insteadOf, an includeIf) cannot change the key or the clone, and the
+	// result matches `remote get-url` inside the cache.
+	git := e.env.Git
+	git.Env = append(slices.Clip(git.Env), "GIT_CEILING_DIRECTORIES="+root)
+	resolved, err := git.Run(e.ctx, root, "ls-remote", "--get-url", url)
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(root, manifest.CacheKey(resolved))
+	if !e.cacheIsFor(dir, resolved) {
+		if err := e.cloneCache(git, url, dir); err != nil {
 			return "", err
 		}
 	} else if rev == "" || !e.hasCommit(dir, rev) {
@@ -131,10 +145,47 @@ func (e *Engine) ensureCache(repo, rev string) (string, error) {
 		// Commits that are not on any branch can still be fetched by SHA.
 		_, _ = e.env.Git.Run(e.ctx, dir, "fetch", "--quiet", "origin", rev)
 		if !e.hasCommit(dir, rev) {
-			return "", fmt.Errorf("commit %s not found in %s", rev, repo)
+			return "", fmt.Errorf("commit %s not found in %s (force-pushed away, or rev and repo in the manifest do not match?)", rev, repo)
 		}
 	}
 	return dir, nil
+}
+
+// cacheIsFor reports whether dir is a clone whose origin is resolved,
+// compared after manifest.NormalizeURL. A clone of another repository is
+// reported (credentials masked) so the caller clones again.
+func (e *Engine) cacheIsFor(dir, resolved string) bool {
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		return false
+	}
+	origin, err := e.env.Git.Run(e.ctx, dir, "remote", "get-url", "origin")
+	if err == nil && manifest.NormalizeURL(origin) == manifest.NormalizeURL(resolved) {
+		return true
+	}
+	if err != nil {
+		e.infof("vendor cache %s has no origin; cloning %s again", e.show(dir), resolved)
+		return false
+	}
+	e.infof("vendor cache %s is a clone of %s, not %s; cloning again", e.show(dir), origin, resolved)
+	return false
+}
+
+// cloneCache makes dir a fresh partial clone of url. The clone goes into a
+// temporary sibling first and replaces dir only when it is complete, so an
+// interrupted clone never leaves a broken cache behind.
+func (e *Engine) cloneCache(git gitx.Git, url, dir string) error {
+	tmp, err := os.MkdirTemp(filepath.Dir(dir), ".skenv-tmp-"+filepath.Base(dir)+"-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(tmp) }()
+	if err := os.Chmod(tmp, 0o755); err != nil {
+		return err
+	}
+	if _, err := git.Run(e.ctx, filepath.Dir(dir), "clone", "--quiet", "--filter=blob:none", "--no-checkout", url, tmp); err != nil {
+		return err
+	}
+	return replace(tmp, dir)
 }
 
 func (e *Engine) hasCommit(dir, rev string) bool {
