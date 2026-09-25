@@ -107,8 +107,8 @@ Its design is guided by these mantras:
 Pre-built binaries for darwin/linux × amd64/arm64 are attached to every
 [GitHub release](https://github.com/qunaxis/skenv/releases). Archives are
 named `skenv_<version>_<os>_<arch>.tar.gz`, for example
-`skenv_0.3.0_darwin_arm64.tar.gz`, and contain the `skenv` binary. To
-install the latest one into `~/.local/bin`:
+`skenv_0.3.0_darwin_arm64.tar.gz`, and contain the `skenv` binary and
+its man pages in `man/`. To install the latest binary into `~/.local/bin`:
 
 ```sh
 mkdir -p ~/.local/bin
@@ -123,6 +123,22 @@ instead:
 ```sh
 go install github.com/qunaxis/skenv/cmd/skenv@latest
 ```
+
+The man pages (`man skenv`, `man skenv-vendor-add`, …) go into
+`~/.local/share/man/man1`, which `man` searches when `~/.local/bin` is on
+your `PATH`:
+
+```sh
+tmp="$(mktemp -d)"
+gh release download -R qunaxis/skenv \
+  -p "skenv_*_$(uname -s | tr A-Z a-z)_$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/).tar.gz" -O - \
+  | tar xz -C "$tmp"
+mkdir -p ~/.local/share/man/man1
+cp "$tmp"/man/*.1 ~/.local/share/man/man1/
+rm -rf "$tmp"
+```
+
+From a checkout, `make man` writes the same pages into `man/`.
 
 Then bootstrap the machine from your skills repository, the one whose
 `skenv.toml` has the `[environment]` section:

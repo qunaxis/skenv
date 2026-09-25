@@ -17,7 +17,7 @@ func runMain(args ...string) (int, string, string) {
 // and completion exit 0.
 func TestExitCodes(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	for _, args := range []string{"", "bogus", "sync --bogus", "sync -quiet", "sync extra", "vendor", "vendor frob", "vendor add", "autostart", "autostart frob", "repo", "repo frob", "init"} {
+	for _, args := range []string{"", "bogus", "sync --bogus", "sync -quiet", "sync extra", "vendor", "vendor frob", "vendor add", "autostart", "autostart frob", "repo", "repo frob", "init", "completion", "completion powershell"} {
 		code, _, errOut := runMain(strings.Fields(args)...)
 		if code != 2 || errOut == "" {
 			t.Errorf("skenv %s: exit %d, stderr %q; want exit 2 with a message", args, code, errOut)
@@ -60,5 +60,16 @@ func TestCompletion(t *testing.T) {
 		if code, out, _ := runMain("completion", shell); code != 0 || !strings.Contains(out, "skenv") {
 			t.Errorf("completion %s: exit %d", shell, code)
 		}
+	}
+	// skenv runs on darwin and linux only: no PowerShell script.
+	if code, _, _ := runMain("completion", "powershell"); code != 2 {
+		t.Errorf("completion powershell: exit %d, want 2", code)
+	}
+	code, got, _ := runMain("__complete", "completion", "")
+	if code != 0 || strings.Contains(got, "powershell") {
+		t.Errorf("completion of \"completion \" offers powershell:\n%s", got)
+	}
+	if _, help, _ := runMain("completion", "--help"); strings.Contains(help, "powershell") {
+		t.Errorf("completion --help mentions powershell:\n%s", help)
 	}
 }

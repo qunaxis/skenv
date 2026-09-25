@@ -2,13 +2,16 @@
 
 ## skenv completion
 
-Generate the autocompletion script for the specified shell
+Generate the autocompletion script for bash, zsh or fish
 
 ### Synopsis
 
-Generate the autocompletion script for skenv for the specified shell.
+Generate the autocompletion script for skenv for bash, zsh or fish.
 See each sub-command's help for details on how to use the generated script.
 
+```
+skenv completion [flags]
+```
 
 ### Options
 
@@ -21,6 +24,5 @@ See each sub-command's help for details on how to use the generated script.
 * [skenv](skenv.md)	 - Keep agent skills (Claude Code, Codex, pi) in sync with a manifest
 * [skenv completion bash](skenv_completion_bash.md)	 - Generate the autocompletion script for bash
 * [skenv completion fish](skenv_completion_fish.md)	 - Generate the autocompletion script for fish
-* [skenv completion powershell](skenv_completion_powershell.md)	 - Generate the autocompletion script for powershell
 * [skenv completion zsh](skenv_completion_zsh.md)	 - Generate the autocompletion script for zsh
 

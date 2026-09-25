@@ -5,6 +5,8 @@ project_name: skenv
 before:
   hooks:
     - go mod tidy -diff
+    # Man pages from the command tree; not committed, see `make man`.
+    - go run ./internal/tools/gendocs -man -version {{ .Version }} -date {{ .CommitDate }} man
 
 builds:
   - id: skenv
@@ -29,6 +31,7 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
+      - man/*.1
 
 snapshot:
   version_template: "0.0.0-dev+{{ .ShortCommit }}"

@@ -43,5 +43,5 @@ skenv completion zsh [flags]
 
 ### SEE ALSO
 
-* [skenv completion](skenv_completion.md)	 - Generate the autocompletion script for the specified shell
+* [skenv completion](skenv_completion.md)	 - Generate the autocompletion script for bash, zsh or fish
 
