@@ -6,6 +6,7 @@ those formats. More than one of them in the same directory is an error.
 
 - [Sections](#sections)
 - [Formats and editing](#formats-and-editing)
+- [Creating the file](#creating-the-file)
 - [Editor support](#editor-support)
 - [Where skenv looks](#where-skenv-looks)
 - [Moving from `env.toml` and the old `skenv.toml`](#moving-from-envtoml-and-the-old-skenvtoml)
@@ -19,7 +20,7 @@ ignores), and unknown keys inside a section are errors.
 | Section         | What it is                                                                                            | Who writes it                              | Reference                     |
 | --------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------ | ----------------------------- |
 | `[repo]`        | The harness of a skills repository: `harness`, `visibility`, `runner`.                                | [`skenv repo init`](harness.md#skenv-repo-init), [`skenv repo apply`](harness.md#skenv-repo-apply) | [harness](harness.md)         |
-| `[environment]` | The manifest of your machines: `layout`, `own`, `vendor`, `host`.                                     | you, [`skenv vendor add`](commands.md#skenv-vendor-add), [`bump`](commands.md#skenv-vendor-bump), [`remove`](commands.md#skenv-vendor-remove) | [manifest](manifest.md)       |
+| `[environment]` | The manifest of your machines: `layout`, `own`, `vendor`, `host`.                                     | you, [`skenv init`](#creating-the-file) (starts it), [`skenv vendor add`](commands.md#skenv-vendor-add), [`bump`](commands.md#skenv-vendor-bump), [`remove`](commands.md#skenv-vendor-remove) | [manifest](manifest.md)       |
 
 - A skills repository has `[repo]`.
 - The repository that holds your manifest has `[environment]`, and usually
@@ -80,13 +81,18 @@ environment:
 ## Formats and editing
 
 TOML, YAML and JSON are read the same way; keys are lowercase and
-case-sensitive in every format. skenv edits the file in three places:
+case-sensitive in every format. skenv edits the file in four places:
 
 - `skenv vendor add|bump|remove` change `environment.vendor`;
-- `skenv repo init` adds `[repo]` (it creates `skenv.toml` when the
-  repository has no skenv file);
+- `skenv repo init` adds `[repo]` (it creates the file when the repository
+  has none, see [Creating the file](#creating-the-file));
+- `skenv init` without `<owner/repo>` adds `[environment]` (it creates the
+  file too);
 - `skenv repo apply` sets `repo.harness` when it moves the repository to the
   templates of the installed skenv.
+
+No edit changes the format of the file: `skenv.yaml` stays YAML under the
+same name, `skenv.yml` stays `skenv.yml`, and so on.
 
 Each edit changes only what it has to, in every format: comments, blank
 lines, key order and the formatting of everything else stay. New entries
@@ -100,6 +106,45 @@ skenv can only edit a YAML list or mapping written in block style (one
 `- ` item or `key:` per line); an empty `[]` or `{}` is fine. If
 `environment.vendor` is written in flow style (`[{name: …}]`), the edit
 stops with an error that says so, and the file is left as it is.
+
+## Creating the file
+
+Two commands create a skenv file when the repository has none:
+`skenv repo init` with `[repo]`, and `skenv init` without `<owner/repo>`
+with `[environment]`. Both write `skenv.toml` unless you pass `--format`:
+
+```sh
+skenv repo init --visibility private --format yaml   # skenv.yaml with [repo]
+skenv init --format json                             # skenv.json with [environment]
+```
+
+`--format` takes `toml` (the default), `yaml` or `json`. skenv reads
+`skenv.yml` but never creates it. A new TOML or YAML file starts with a
+comment that says what the section is for, and every new file names its
+schema (see [Editor support](#editor-support)). A new `[environment]` is a
+commented skeleton: your repository becomes its first `[[environment.own]]`
+entry when its `origin` is on GitHub, and `[[environment.vendor]]` is shown
+as a commented example in TOML.
+
+When the repository already has a skenv file, both commands add their
+section to it in its own format. They never convert it: `--format` that
+disagrees with the file is an error (exit code 2), and nothing is written.
+Leave `--format` out to use the file as it is, or convert the file by hand.
+
+`skenv init` without `<owner/repo>` starts a manifest in the git repository
+of the current directory (or `--dir`):
+
+```sh
+cd ~/src/<skills-repo>
+skenv init --dry-run   # show what it would write
+skenv init
+```
+
+It refuses when the file has `[environment]` already, or when its `[repo]`
+says `visibility = "public"`. Then it records the file as `manifest` in the
+[tool config](configuration.md), the same way `skenv init <owner/repo>`
+does, and prints the next steps. It doesn't sync: the new manifest is empty
+until you list skills in it.
 
 ## Editor support
 

@@ -25,6 +25,7 @@ Every command that reads the manifest accepts `--manifest FILE`; see
 ```sh
 skenv init <owner>/<repo>
 skenv init <owner>/<repo> --path ~/src/my-skills
+skenv init <owner>/<repo> --format yaml   # a new config.yaml instead of config.toml
 ```
 
 Clones the repository that holds the manifest (`skenv.toml` with
@@ -32,6 +33,19 @@ Clones the repository that holds the manifest (`skenv.toml` with
 like `git clone`), records the manifest path in
 `~/.config/skenv/config.toml` and runs `sync`. If the repository is already
 cloned, only the path is recorded. Also takes `--adopt` and `--dry-run`.
+
+Without `<owner/repo>` it starts a manifest instead:
+
+```sh
+skenv init                  # in the git repository of the current directory
+skenv init --format json    # skenv.json when the repository has no skenv file
+skenv init --dir ~/src/my-skills --dry-run
+```
+
+It adds `[environment]` to the skenv file of the repository (or creates
+one), records it in the tool config and prints the next steps; see
+[Creating the file](skenv-file.md#creating-the-file). An existing file
+keeps its format: `--format` that disagrees with it exits 2.
 Reference: [skenv init](commands/skenv_init.md).
 
 ### `skenv sync`

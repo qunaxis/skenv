@@ -38,11 +38,12 @@ runner     = ["self-hosted", "linux", "docker"]  # runs-on of the CI jobs
 
 Who writes or updates the directive:
 
-- `skenv init` creates `~/.config/skenv/config.toml` with a directive for
-  the config schema. In an existing config file it moves a skenv directive
+- `skenv init` creates `~/.config/skenv/config.toml` (or `config.yaml`,
+  `config.json` with `--format`) with a directive for the config schema. In an existing config file it moves a skenv directive
   to its own version and adds none.
-- `skenv repo init` adds the directive to the skenv file (creating
-  `skenv.toml` if there is none), and `skenv repo apply` keeps it at the
+- `skenv repo init` and `skenv init` without `<owner/repo>` add the
+  directive to the skenv file (creating `skenv.toml`, or the format of
+  `--format`, if there is none), and `skenv repo apply` keeps it at the
   version of `repo.harness`. `skenv repo check` warns when it is missing or
   points at another version; the warning does not change the exit code,
   because the directive does not change what skenv does.

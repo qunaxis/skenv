@@ -178,8 +178,17 @@ cloned, point `--path` at it: `skenv init <owner>/<skills-repo> --path ~/src/my-
 <!-- #region getting-started -->
 The manifest is the `[environment]` section of `skenv.toml` at the root of
 your skills repository ([the skenv file](docs/skenv-file.md) also holds the
-repository harness in `[repo]`). A minimal one lists the repository itself,
-so skenv keeps its working copy up to date:
+repository harness in `[repo]`). No manifest yet? Start one in your skills
+repository; skenv writes the section and records the file as your manifest:
+
+```sh
+cd ~/src/<skills-repo>
+skenv init                 # or: skenv init --format yaml (json)
+```
+
+A minimal manifest lists the repository itself, so skenv keeps its working
+copy up to date (`skenv init` adds this entry when the repository's `origin`
+is on GitHub):
 
 ```toml
 [[environment.own]]
