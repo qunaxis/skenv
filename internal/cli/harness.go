@@ -55,6 +55,11 @@ skenv lint --publish`,
 func runLint(ctx context.Context, env engine.Env, pos []string, staged, publish, hook bool) (int, error) {
 	var err error
 	if hook {
+		// The hook reads its skill from the event: paths, --staged and
+		// --publish would be ignored, so they are rejected instead.
+		if len(pos) > 0 || staged || publish {
+			return engine.ExitFatal, usageError{"lint: --hook takes the file from the hook event on stdin; it does not combine with paths, --staged or --publish"}
+		}
 		return lintHook(env)
 	}
 	var skills []string
