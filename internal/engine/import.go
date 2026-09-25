@@ -25,7 +25,7 @@ func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) 
 	if err := gitx.Available(); err != nil {
 		return ExitFatal, err
 	}
-	mp, err := ResolveManifest(env, opts.Manifest)
+	mp, err := ResolveManifest(ctx, env, opts.Manifest)
 	if errors.Is(err, ErrNoManifest) {
 		return ExitFatal, errors.New("no manifest configured: run `skenv init --import` in your skills repository to start one " +
 			"and import into it; to import into an existing one, connect it first (`skenv clone <repo>` or `skenv use <path>`) " +

@@ -70,9 +70,12 @@ directory) in the tool config, without its repository address, and names
 the manifest it replaces. skenv never picks a manifest from the current
 directory by itself. Reference: [skenv use](commands/skenv_use.md).
 
-`clone` and `use` warn when the manifest lists its own repository at
-another `path` than the checkout: `sync` would clone a second working copy
-there.
+Without `<dir>`, `clone` puts a new clone at the `path` that the manifest
+gives its own repository, when nothing is there yet. `clone` and `use` warn
+when the manifest checkout is elsewhere: `sync` would keep a second working
+copy at `path` and never pull the manifest checkout, so changes pushed from
+other machines would not arrive. `sync` warns and `doctor` reports
+`manifest-checkout` until you `skenv use` the working copy at `path`.
 
 ### `skenv import`
 
@@ -271,6 +274,7 @@ a machine that already has skills installed is usually `skenv sync --adopt`.
 | ----------------------------- | --------------------------------------------------------------------------------------------------- |
 | `missing`                     | a skill is not in the store, or not linked for any agent; an own repository is not cloned           |
 | `agent-mismatch`              | a skill is linked for some agents but not all                                                       |
+| `manifest-checkout`           | the manifest is not in the working copy its own entry names, so `sync` never pulls it: `skenv use` that working copy, or clone the repository there |
 | `extra-managed`               | a path skenv created is no longer in the manifest, not selected, or skipped on this host (`sync` removes it) |
 | `unmanaged`                   | something in the store or an agent directory that is not from the manifest                          |
 | `conflict`                    | a path the manifest needs is taken by something skenv did not create                                |

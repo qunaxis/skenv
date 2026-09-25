@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,13 +129,13 @@ var ErrNoManifest = errors.New("no manifest configured: start one with `skenv in
 // --manifest, $SKENV_MANIFEST, then `manifest` in the config file
 // (~/.config/skenv/config.{toml,yaml,yml,json}). Each may name the file or
 // the directory that holds it. Without any of them it returns ErrNoManifest.
-func ResolveManifest(env Env, flag string) (string, error) {
+func ResolveManifest(ctx context.Context, env Env, flag string) (string, error) {
 	m, _, err := config.Resolve(env.Home, env.Getenv, "manifest", flag, "")
 	if err != nil {
 		return "", err
 	}
 	if m == "" {
-		return "", noManifest(env)
+		return "", noManifest(ctx, env)
 	}
 	return manifest.Locate(paths.Expand(env.Home, m))
 }
@@ -142,12 +143,12 @@ func ResolveManifest(env Env, flag string) (string, error) {
 // noManifest is ErrNoManifest, pointing at `skenv use .` when the git
 // repository of the current directory holds a manifest: the likely case
 // of a checkout that was never recorded.
-func noManifest(env Env) error {
+func noManifest(ctx context.Context, env Env) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return ErrNoManifest
 	}
-	root, err := env.Git.Run(context.Background(), cwd, "rev-parse", "--show-toplevel")
+	root, err := env.Git.Run(ctx, cwd, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return ErrNoManifest
 	}
@@ -166,7 +167,7 @@ func Open(ctx context.Context, env Env, opts Options) (*Engine, error) {
 	if err := gitx.Available(); err != nil {
 		return nil, err
 	}
-	mp, err := ResolveManifest(env, opts.Manifest)
+	mp, err := ResolveManifest(ctx, env, opts.Manifest)
 	if err != nil {
 		return nil, err
 	}
@@ -260,6 +261,19 @@ func ownFound(dir string) ([]string, error) {
 	return found, nil
 }
 
+// ownSkills lists the skills of the own repository o. A working copy
+// without its skills directory has no skills yet; only a working copy that
+// is missing (not cloned yet) or unreadable is an error.
+func (e *Engine) ownSkills(o *manifest.Own) ([]string, error) {
+	found, err := ownFound(e.ownSkillsDir(o))
+	if errors.Is(err, fs.ErrNotExist) {
+		if fi, serr := os.Stat(e.ownPath(o)); serr == nil && fi.IsDir() {
+			return nil, nil
+		}
+	}
+	return found, err
+}
+
 // skills lists every skill of the manifest that applies to this host.
 // Own repositories that are not cloned yet contribute no skills.
 func (e *Engine) skills() ([]Skill, error) {
@@ -269,7 +283,7 @@ func (e *Engine) skills() ([]Skill, error) {
 	for i := range e.m.Own {
 		o := &e.m.Own[i]
 		dir := e.ownSkillsDir(o)
-		found, err := ownFound(dir)
+		found, err := e.ownSkills(o)
 		if err != nil {
 			e.ownUnavailable = true
 			continue

@@ -344,7 +344,7 @@ func detectCI(ctx context.Context, env engine.Env, root string) (ci, why string)
 	if err != nil || strings.TrimSpace(origin) == "" {
 		return harness.CIGitHub, "the default, the repository has no origin"
 	}
-	r, err := declaredHosts(env, root).Resolve(origin)
+	r, err := declaredHosts(ctx, env, root).Resolve(origin)
 	if err != nil {
 		return harness.CIGitHub, "the default, origin is not a git URL skenv recognises"
 	}
@@ -360,7 +360,7 @@ func detectCI(ctx context.Context, env engine.Env, root string) (ci, why string)
 
 // declaredHosts are the hosts of the manifest that applies to root, nil
 // when there is none or it does not load.
-func declaredHosts(env engine.Env, root string) manifest.Hosts {
+func declaredHosts(ctx context.Context, env engine.Env, root string) manifest.Hosts {
 	file, err := skenvfile.Find(root)
 	if err == nil && file != "" {
 		if doc, err := skenvfile.Read(file); err == nil && doc.Has(skenvfile.Environment) {
@@ -372,7 +372,7 @@ func declaredHosts(env engine.Env, root string) manifest.Hosts {
 			return m.Hosts
 		}
 	}
-	file, err = engine.ResolveManifest(env, "")
+	file, err = engine.ResolveManifest(ctx, env, "")
 	if err != nil {
 		return nil
 	}

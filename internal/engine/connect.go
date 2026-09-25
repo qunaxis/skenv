@@ -30,7 +30,8 @@ func Clone(ctx context.Context, env Env, repo, dir, format string, dryRun bool) 
 	if err != nil {
 		return ExitFatal, fmt.Errorf("%w; a host declared in the manifest is not known before it is cloned, so pass the full URL", err)
 	}
-	if dir == "" {
+	defaultDir := dir == ""
+	if defaultDir {
 		dir = manifest.RepoName(remote.URL)
 	}
 	// The config must hold an absolute path: skenv runs from any directory.
@@ -44,8 +45,8 @@ func Clone(ctx context.Context, env Env, repo, dir, format string, dryRun bool) 
 	if err != nil {
 		return ExitFatal, err
 	}
-	switch _, err := os.Stat(dir); {
-	case errors.Is(err, fs.ErrNotExist):
+	switch fi, err := os.Stat(dir); {
+	case errors.Is(err, fs.ErrNotExist), err == nil && fi.IsDir() && isEmptyDir(dir):
 		if dryRun {
 			fmt.Fprintf(env.Stdout, "would clone %s into %s and record its skenv file in %s\n", gitx.Mask(repo), show(dir), show(cfgPath))
 			return ExitOK, nil
@@ -57,6 +58,9 @@ func Clone(ctx context.Context, env Env, repo, dir, format string, dryRun bool) 
 			return ExitFatal, fmt.Errorf("clone %s: %w (%s)", gitx.Mask(repo), err, remote.AccessHint())
 		}
 		fmt.Fprintf(env.Stdout, "cloned %s into %s\n", gitx.Mask(repo), show(dir))
+		if defaultDir {
+			dir = moveToOwnPath(ctx, env, dir)
+		}
 	case err != nil:
 		return ExitFatal, err
 	default:
@@ -66,6 +70,45 @@ func Clone(ctx context.Context, env Env, repo, dir, format string, dryRun bool) 
 		fmt.Fprintf(env.Stdout, "%s is a working copy of %s already; using it\n", show(dir), gitx.Mask(repo))
 	}
 	return use(ctx, env, dir, format, dryRun)
+}
+
+// moveToOwnPath moves a fresh clone at dir, made without an explicit
+// <dir>, to the path its manifest names for this repository as an own
+// entry, when nothing is there yet: sync keeps that path up to date, so
+// the manifest must live in it. It returns where the clone is now.
+func moveToOwnPath(ctx context.Context, env Env, dir string) string {
+	file, err := manifest.Locate(dir)
+	if err != nil {
+		return dir
+	}
+	m, err := manifest.Load(file)
+	if err != nil {
+		return dir
+	}
+	_, elsewhere, own := ownElsewhere(ctx, env, m, dir)
+	if len(elsewhere) != 1 {
+		return dir
+	}
+	p := elsewhere[0]
+	if _, err := os.Lstat(p); err == nil {
+		return dir
+	}
+	show := homeShow(env.Home)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return dir
+	}
+	if err := os.Rename(dir, p); err != nil {
+		return dir
+	}
+	fmt.Fprintf(env.Stdout, "moved it to %s, the path of own %s in its manifest\n", show(p), gitx.Mask(own[0]))
+	return p
+}
+
+// isEmptyDir reports whether dir is a directory without entries; git
+// clones into one.
+func isEmptyDir(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	return err == nil && len(entries) == 0
 }
 
 // checkoutOf refuses dir unless it is the root of a git working copy whose
@@ -143,28 +186,53 @@ func use(ctx context.Context, env Env, path, format string, dryRun bool) (int, e
 	return ExitOK, nil
 }
 
-// warnOwnPath warns when an own repository of m is the repository checked
-// out at dir but names another path: sync would clone a second working
-// copy there, and the skills would be linked from that one.
-func warnOwnPath(ctx context.Context, env Env, m *manifest.Manifest, dir string) {
+// ownElsewhere returns the own repositories of m that are the repository
+// checked out at dir (the same origin) but name another path, expanded,
+// and the root of that checkout. sync then keeps a second working copy at
+// that path up to date and never pulls the checkout at dir, which holds
+// the manifest: changes pushed from other machines would not arrive.
+func ownElsewhere(ctx context.Context, env Env, m *manifest.Manifest, dir string) (root string, elsewhere []string, own []string) {
 	root, err := env.Git.Run(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return
+		return "", nil, nil
 	}
 	origin, err := env.Git.Run(ctx, root, "config", "--get", "remote.origin.url")
 	if err != nil {
-		return
+		return "", nil, nil
 	}
-	show := homeShow(env.Home)
 	for _, o := range m.Own {
 		r, err := m.Hosts.Resolve(o.Repo)
 		if err != nil || manifest.NormalizeURL(r.URL) != manifest.NormalizeURL(origin) {
 			continue
 		}
 		if p := paths.Expand(env.Home, o.Path); !samePath(p, root) {
-			fmt.Fprintf(env.Stderr, "warning: own %s has path %q, but its checkout is %s: sync would clone a second working copy at %s; set path = %q\n",
-				gitx.Mask(o.Repo), o.Path, show(root), show(p), show(root))
+			elsewhere = append(elsewhere, p)
+			own = append(own, o.Repo)
 		}
+	}
+	return root, elsewhere, own
+}
+
+// elsewhereAdvice says what to do about a manifest checkout at root whose
+// own entry names path p instead: use the working copy at p when it is
+// there, else clone the repository to p.
+func elsewhereAdvice(env Env, repo, p string) string {
+	show := homeShow(env.Home)
+	if _, err := os.Stat(p); err == nil {
+		return fmt.Sprintf("use the manifest of that working copy: `skenv use %s`", show(p))
+	}
+	return fmt.Sprintf("clone the repository there instead: `skenv clone %s %s`", gitx.Mask(repo), show(p))
+}
+
+// warnOwnPath warns when the manifest checkout at dir is not the working
+// copy that its own entry names.
+func warnOwnPath(ctx context.Context, env Env, m *manifest.Manifest, dir string) {
+	root, elsewhere, own := ownElsewhere(ctx, env, m, dir)
+	show := homeShow(env.Home)
+	for i, p := range elsewhere {
+		fmt.Fprintf(env.Stderr, "warning: own %s has path %s, but the manifest is in %s: sync would keep a second working copy at %s "+
+			"and never pull this one, so manifest changes from other machines would not arrive; %s\n",
+			gitx.Mask(own[i]), show(p), show(root), show(p), elsewhereAdvice(env, own[i], p))
 	}
 }
 
@@ -178,4 +246,17 @@ func samePath(a, b string) bool {
 		return filepath.Clean(p)
 	}
 	return resolve(a) == resolve(b)
+}
+
+// manifestElsewhere describes each own entry of the manifest that is the
+// repository holding the manifest but names another working copy: sync
+// never pulls the manifest checkout then. It returns that checkout and one
+// detail per entry.
+func (e *Engine) manifestElsewhere() (root string, details []string) {
+	root, elsewhere, own := ownElsewhere(e.ctx, e.env, e.m, filepath.Dir(e.manifestPath))
+	for i, p := range elsewhere {
+		details = append(details, fmt.Sprintf("the manifest is not in the working copy of own %s (%s): sync pulls that one and never this checkout, "+
+			"so manifest changes from other machines do not arrive; %s", gitx.Mask(own[i]), e.show(p), elsewhereAdvice(e.env, own[i], p)))
+	}
+	return root, details
 }

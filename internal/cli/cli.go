@@ -418,8 +418,9 @@ func cloneCmd(a *app) *cobra.Command {
 		Long: `Clone the repository that holds your manifest into <dir> (default ./<repo>
 in the current directory, like git clone) and record its skenv file as
 "manifest" in the config file, as ` + "`skenv use`" + ` does. When <dir> is a working copy of
-<repo> already, it is used as it is; another repository or a directory that
-is not a git working copy is an error. <repo> is owner/repo on github.com,
+<repo> already, it is used as it is, and an empty directory is cloned into;
+another repository or a directory that is not a git working copy is an
+error. <repo> is owner/repo on github.com,
 gitlab:group/sub/repo, codeberg:owner/repo or a full git URL; hosts declared
 in the manifest are not known before it is cloned, so a self-hosted
 repository takes its URL.
@@ -427,9 +428,13 @@ repository takes its URL.
 It does not sync, whether it cloned or not: run ` + "`skenv sync --dry-run`" + ` to see what
 the manifest would change on this machine, then ` + "`skenv sync`" + `.
 
-The manifest usually lists its own repository as an own repository; when
-its path is not <dir>, clone warns: sync would clone a second working copy
-there.
+The manifest usually lists its own repository as an own repository, whose
+path is the working copy sync keeps up to date. Without <dir>, a new clone
+goes to that path when nothing is there yet. When the manifest ends up
+elsewhere, clone warns: sync would keep a second working copy at the path
+and never pull the manifest checkout, so changes pushed from other machines
+would not arrive (sync warns and doctor reports manifest-checkout until you
+` + "`skenv use`" + ` the working copy at the path).
 
 - Reads: the repository and its skenv file, and the config file.
 - Changes: the new working copy <dir> and "manifest" in the config file
@@ -437,7 +442,7 @@ there.
   YAML or JSON with --format). Nothing is synced.
 - Network: git clone.
 - Conflicts: a <dir> that is not a working copy of <repo> is an error.
-- Preview: --dry-run clones and writes nothing.
+- Preview: --dry-run clones nothing and writes nothing.
 - Next: ` + "`skenv sync --dry-run`" + `, then ` + "`skenv sync`" + ` (with --adopt when skills are installed
   here another way).`,
 		Example: `# Clone the manifest repository into ./skills and record it
@@ -731,7 +736,8 @@ func doctorCmd(a *app) *cobra.Command {
 but runs ` + "`git fetch`" + ` in each own repository (network access; it updates their
 remote-tracking branches) to report unpushed and behind.
 Classes: missing, extra-managed, unmanaged, wrong-rev, broken-link, conflict,
-dirty, unpushed, behind, agent-mismatch.
+dirty, unpushed, behind, agent-mismatch, manifest-checkout (the manifest is
+not in the own working copy of its repository, so sync never pulls it).
 
 In a project (a git repository whose skenv file has [project]), doctor
 compares the project with its [project] section instead, offline, so it can
@@ -992,7 +998,7 @@ func pinnedNames(ctx context.Context, env engine.Env, project bool, manifestFlag
 		}
 		vendors = p.Vendor
 	} else {
-		file, err := engine.ResolveManifest(env, manifestFlag)
+		file, err := engine.ResolveManifest(ctx, env, manifestFlag)
 		if err != nil {
 			return nil, err
 		}

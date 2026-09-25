@@ -45,6 +45,8 @@ type ListReport struct {
 	// NotCloned are own repositories without a working copy yet, whose
 	// skills are unknown until sync clones them.
 	NotCloned []string `json:"not_cloned"`
+	// NoSkills are own repositories whose working copy has no skill yet.
+	NoSkills []string `json:"no_skills"`
 }
 
 // List prints every skill of the manifest with its source and whether it
@@ -55,7 +57,7 @@ func (e *Engine) List(asJSON bool) (int, error) {
 	if err != nil {
 		return ExitFatal, err
 	}
-	r := &ListReport{Manifest: e.show(e.manifestPath), Store: e.show(e.store), Targets: []string{}, Skills: []ListEntry{}, NotCloned: []string{}}
+	r := &ListReport{Manifest: e.show(e.manifestPath), Store: e.show(e.store), Targets: []string{}, Skills: []ListEntry{}, NotCloned: []string{}, NoSkills: []string{}}
 	for _, t := range e.targets {
 		r.Targets = append(r.Targets, e.show(t))
 	}
@@ -66,10 +68,13 @@ func (e *Engine) List(asJSON bool) (int, error) {
 	// holds them once skills() ran.
 	for i := range e.m.Own {
 		o := &e.m.Own[i]
-		found, err := ownFound(e.ownSkillsDir(o))
+		found, err := e.ownSkills(o)
 		if err != nil {
 			r.NotCloned = append(r.NotCloned, fmt.Sprintf("%s (%s)", gitx.Mask(o.Repo), e.show(e.ownPath(o))))
 			continue
+		}
+		if len(found) == 0 {
+			r.NoSkills = append(r.NoSkills, fmt.Sprintf("%s (%s)", gitx.Mask(o.Repo), e.show(e.ownSkillsDir(o))))
 		}
 		for _, name := range found {
 			if _, ok := e.unselected[name]; !ok {
@@ -155,6 +160,9 @@ func (e *Engine) printList(r *ListReport) error {
 		if n := counts[StateConflict]; n > 0 {
 			fmt.Fprintf(out, "%d in conflict with paths skenv does not manage: inspect them, then `skenv sync --adopt`\n", n)
 		}
+	}
+	for _, repo := range r.NoSkills {
+		fmt.Fprintf(out, "no skills yet: %s; `skenv new <name> --dir <repository>` creates one\n", repo)
 	}
 	for _, repo := range r.NotCloned {
 		fmt.Fprintf(out, "not cloned: %s; run `skenv sync`\n", repo)
