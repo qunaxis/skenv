@@ -23,9 +23,11 @@ const (
 		"# vendor: `skenv vendor add <owner/repo> --path <dir>` adds one.\n"
 	ownComment = "# Your own skills repositories, kept as working copies: every skill in\n" +
 		"# <path>/skills/ is linked.\n"
+	ownSelection = "# skills  = [\"<skill>\"]         # only these skills (default: all)\n" +
+		"# exclude = [\"experimental-*\"]  # not these\n"
 	ownExample = "# [[environment.own]]\n" +
 		"# repo = \"<owner>/<skills-repo>\"\n" +
-		"# path = \"~/src/<skills-repo>\"\n"
+		"# path = \"~/src/<skills-repo>\"\n" + ownSelection
 	vendorExample = "# Third-party skills pinned to a commit; `skenv vendor add <owner/repo> --path <dir>`\n" +
 		"# adds one:\n" +
 		"# [[environment.vendor]]\n" +
@@ -69,7 +71,7 @@ func AddEnvironment(data []byte, ext string, own *Own) ([]byte, error) {
 		}
 		section := envLead + "[environment]\n\n" + ownComment
 		if own != nil {
-			section += fmt.Sprintf("[[environment.own]]\nrepo = %s\npath = %s\n", quote(own.Repo), quote(own.Path))
+			section += fmt.Sprintf("[[environment.own]]\nrepo = %s\npath = %s\n", quote(own.Repo), quote(own.Path)) + ownSelection
 		} else {
 			section += ownExample
 		}

@@ -13,12 +13,12 @@ func TestAddEnvironment(t *testing.T) {
 		want          string
 	}{
 		{name: "new toml", ext: ".toml", own: own,
-			want: envLead + "[environment]\n\n" + ownComment + "[[environment.own]]\nrepo = \"me/skills\"\npath = \"~/src/skills\"\n\n" + vendorExample},
+			want: envLead + "[environment]\n\n" + ownComment + "[[environment.own]]\nrepo = \"me/skills\"\npath = \"~/src/skills\"\n" + ownSelection + "\n" + vendorExample},
 		{name: "new toml without a remote", ext: ".toml",
 			want: envLead + "[environment]\n\n" + ownComment + ownExample + "\n" + vendorExample},
 		{name: "toml with [repo]", ext: ".toml", in: "# keep me\n[repo]\nharness = \"0.4.0\" # and me\nvisibility = \"private\"", own: own,
 			want: "# keep me\n[repo]\nharness = \"0.4.0\" # and me\nvisibility = \"private\"\n\n" + envLead + "[environment]\n\n" + ownComment +
-				"[[environment.own]]\nrepo = \"me/skills\"\npath = \"~/src/skills\"\n\n" + vendorExample},
+				"[[environment.own]]\nrepo = \"me/skills\"\npath = \"~/src/skills\"\n" + ownSelection + "\n" + vendorExample},
 		{name: "new yaml", ext: ".yaml", own: own,
 			want: envLead + envYAMLHint + "environment:\n  own:\n    - repo: me/skills\n      path: ~/src/skills\n"},
 		{name: "new yaml without a remote", ext: ".yaml",
