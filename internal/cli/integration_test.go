@@ -47,7 +47,7 @@ func TestInitOnCleanHome(t *testing.T) {
 	w := newWorld(t)
 	rev := w.initStandard("")
 	cfg := readFile(t, w.path(".config/skenv/config.toml"))
-	if !strings.Contains(cfg, `manifest = "~/`+ownPath+`/env.toml"`) {
+	if !strings.Contains(cfg, `manifest = '~/`+ownPath+`/env.toml'`) {
 		t.Fatalf("config.toml does not record the manifest:\n%s", cfg)
 	}
 	assertStandardLayout(t, w)
@@ -399,7 +399,7 @@ func TestInitClonesIntoCurrentDirectory(t *testing.T) {
 		t.Errorf("init output = %q", out)
 	}
 	cfg := readFile(t, w.path(".config/skenv/config.toml"))
-	if !strings.Contains(cfg, `manifest = "~/`+ownPath+`/env.toml"`) {
+	if !strings.Contains(cfg, `manifest = '~/`+ownPath+`/env.toml'`) {
 		t.Fatalf("config.toml does not record the manifest:\n%s", cfg)
 	}
 	assertStandardLayout(t, w)
@@ -431,7 +431,7 @@ rev  = "` + rev + `"
 		"skills/gamma/SKILL.md": skillMD("gamma", ""),
 	}, "feat: initial")
 	w.mustRun(0, "init", "acme/agent-kit", "--path", "~/"+kit)
-	if cfg := readFile(t, w.path(".config/skenv/config.toml")); !strings.Contains(cfg, `manifest = "~/`+kit+`/env.toml"`) {
+	if cfg := readFile(t, w.path(".config/skenv/config.toml")); !strings.Contains(cfg, `manifest = '~/`+kit+`/env.toml'`) {
 		t.Fatalf("config.toml does not record the manifest:\n%s", cfg)
 	}
 	if got, want := w.readlink(".agents/skills/gamma"), w.path(kit+"/skills/gamma"); got != want {
