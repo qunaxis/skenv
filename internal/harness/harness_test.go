@@ -675,6 +675,7 @@ func TestGitLabChangedSkills(t *testing.T) {
 	}{
 		{"merge request", []string{"CI_PIPELINE_SOURCE=merge_request_event", "CI_MERGE_REQUEST_DIFF_BASE_SHA=" + second, "CI_COMMIT_BEFORE_SHA=" + zero}, "beta"},
 		{"merge request over two commits", []string{"CI_PIPELINE_SOURCE=merge_request_event", "CI_MERGE_REQUEST_DIFF_BASE_SHA=" + first, "CI_COMMIT_BEFORE_SHA=" + zero}, "alpha beta"},
+		{"merged results", []string{"CI_PIPELINE_SOURCE=merge_request_event", "CI_MERGE_REQUEST_TARGET_BRANCH_SHA=" + second, "CI_MERGE_REQUEST_DIFF_BASE_SHA=" + first}, "beta"},
 		{"push", []string{"CI_PIPELINE_SOURCE=push", "CI_COMMIT_BEFORE_SHA=" + first}, "alpha beta"},
 		{"push of one commit", []string{"CI_PIPELINE_SOURCE=push", "CI_COMMIT_BEFORE_SHA=" + second}, "beta"},
 		{"first push", []string{"CI_PIPELINE_SOURCE=push", "CI_COMMIT_BEFORE_SHA=" + zero}, "alpha beta"},

@@ -23,6 +23,7 @@ import (
 	"github.com/qunaxis/skenv/internal/atomicfile"
 	"github.com/qunaxis/skenv/internal/docedit"
 	"github.com/qunaxis/skenv/internal/fileformat"
+	"github.com/qunaxis/skenv/internal/manifest"
 	"github.com/qunaxis/skenv/internal/skenvfile"
 	"github.com/qunaxis/skenv/schemas"
 )
@@ -53,7 +54,7 @@ var CIs = []string{CIGitHub, CIGitLab}
 // host of hostType (manifest.TypeGitLab, ...): GitLab CI on GitLab,
 // GitHub Actions on any other host.
 func DetectCI(hostType string) string {
-	if hostType == CIGitLab {
+	if hostType == manifest.TypeGitLab {
 		return CIGitLab
 	}
 	return CIGitHub

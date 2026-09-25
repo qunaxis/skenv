@@ -347,10 +347,12 @@ func declaredHosts(env engine.Env, root string) manifest.Hosts {
 	file, err := skenvfile.Find(root)
 	if err == nil && file != "" {
 		if doc, err := skenvfile.Read(file); err == nil && doc.Has(skenvfile.Environment) {
-			if m, err := manifest.Load(file); err == nil {
-				return m.Hosts
+			m, err := manifest.Load(file)
+			if err != nil {
+				fmt.Fprintf(env.Stderr, "warning: hosts of %s not read, CI detection ignores them: %v\n", filepath.Base(file), err)
+				return nil
 			}
-			return nil
+			return m.Hosts
 		}
 	}
 	file, err = engine.ResolveManifest(env, "")
@@ -359,6 +361,7 @@ func declaredHosts(env engine.Env, root string) manifest.Hosts {
 	}
 	m, err := manifest.Load(file)
 	if err != nil {
+		fmt.Fprintf(env.Stderr, "warning: hosts of the manifest not read, CI detection ignores them: %v\n", err)
 		return nil
 	}
 	return m.Hosts

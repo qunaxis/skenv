@@ -53,7 +53,7 @@ In a project: copy its pinned skills and update the mirrors:
 
 ```console
 $ skenv sync --project
-copy .agents/skills/code-review from example-org/skills@b9b36033a60d (skills/code-review)
+copy .agents/skills/code-review from example-org/skills@b1e543d9c9ba (skills/code-review)
 copy .agents/skills/diagrams from example-vendor/tools@27f221f8f2a4 (tools/diagrams)
 link .claude/skills/code-review → ../../.agents/skills/code-review
 link .claude/skills/deploy → ../../.agents/skills/deploy

@@ -5,8 +5,8 @@
 [[- if .Private ]]
 # Private repository: jobs run on runners with the tags [[ .Tags ]].
 [[- else ]]
-# Public repository: jobs run on the shared runners of the instance, never on
-# self-hosted ones.
+# Public repository: jobs have no tags and run on the runners the project
+# allows for untagged jobs; keep those to the shared runners of the instance.
 [[- end ]]
 
 workflow:
@@ -37,6 +37,10 @@ default:
   tags: [[ .Tags ]]
 [[- end ]]
   interruptible: true
+  before_script:
+    # The checkout may belong to another user than the job (Kubernetes,
+    # custom images); git refuses such a repository without this.
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
 
 # Script fragments, used by the jobs below.
 .scripts:
@@ -63,12 +67,14 @@ default:
   changed-skills: &changed-skills
     - |
       # Skills with an executable ./check that changed: a merge request
-      # against CI_MERGE_REQUEST_DIFF_BASE_SHA, a push against
+      # against CI_MERGE_REQUEST_TARGET_BRANCH_SHA in merged results
+      # pipelines (HEAD is the merge commit), else against
+      # CI_MERGE_REQUEST_DIFF_BASE_SHA; a push against
       # CI_COMMIT_BEFORE_SHA; a base that is empty, all zeros or not in the
       # history (first push of a branch, tags, scheduled pipelines): every
       # skill with ./check.
       if [ "${CI_PIPELINE_SOURCE:-}" = merge_request_event ]; then
-        base=${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}
+        base=${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}}
       else
         base=${CI_COMMIT_BEFORE_SHA:-}
       fi

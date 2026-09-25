@@ -207,7 +207,8 @@ harness version:
 - every job runs in the node:22-bookworm image: the runner needs the Docker
   (or Kubernetes) executor; tools are downloaded at the pinned versions
 - GIT_DEPTH 0: the full history, for gitleaks and the changed skills
-- private: default tags = runner; public: no tags (shared runners)
+- private: default tags = runner; public: no tags (the runners the
+  project allows for untagged jobs, see Runners)
 - one `skills` job per Python version (parallel:matrix PYTHON 3.9, 3.12)
   runs ./check of every changed skill; it fails if any of them fails
 ```
@@ -216,9 +217,16 @@ harness version:
 
 ### Runners
 
-`runner` applies to private repositories only. A public repository always
-runs on the runners of the host, never on self-hosted ones, so code from a
-fork never runs on your machines. The same rule holds for both CI systems.
+`runner` applies to private repositories only. A public repository runs on
+the runners of the host, never on self-hosted ones, so code from a fork
+never runs on your machines. The same rule holds for both CI systems. On
+GitHub the workflow says `runs-on: ubuntu-latest`. On GitLab the jobs of a
+public repository have no tags, and GitLab gives an untagged job to any
+runner the project allows for untagged jobs: in **Settings → CI/CD →
+Runners** of a public project, turn off group runners and do not keep
+project runners with "Run untagged jobs". On a self-managed instance, the
+instance runners are the administrator's machines; the jobs run where the
+administrator allows.
 
 ::: code-group
 
@@ -262,7 +270,9 @@ fallback       every skill with ./check when the base is empty, all zeros
 ```
 
 ```text [GitLab CI]
-merge request  CI_MERGE_REQUEST_DIFF_BASE_SHA   (CI_PIPELINE_SOURCE = merge_request_event)
+merge request  CI_MERGE_REQUEST_TARGET_BRANCH_SHA in merged results
+               pipelines, else CI_MERGE_REQUEST_DIFF_BASE_SHA
+               (CI_PIPELINE_SOURCE = merge_request_event)
 push           CI_COMMIT_BEFORE_SHA
 fallback       every skill with ./check when the base is empty, all zeros
                (first push of a branch, tags, scheduled or manual
@@ -272,7 +282,9 @@ fallback       every skill with ./check when the base is empty, all zeros
 :::
 
 The job log prints the base and the list, for example
-`all=false base=4f2c… skills=[write-tests]`.
+`all=false base=4f2c… skills=[write-tests]`. On GitHub the matrix job is
+skipped when no skill changed; on GitLab the two `skills` jobs still start
+and finish without running a check.
 
 ### Public repositories: the stop-list
 
@@ -302,8 +314,14 @@ instead: key `SKENV_DENYLIST_B64`, visibility **Masked and hidden** (or
 **Masked**), the base64 text as the value. **Protect** it if pipelines run
 only on protected branches and tags: GitLab passes a protected variable to
 those pipelines only, and on any other branch or merge request the job
-fails with "is not set". Never print the stop-list or its base64 in a job,
-and never commit either.
+fails with "is not set". Protecting it is the safer choice for a public
+project: an unprotected variable reaches every pipeline in the project,
+including a fork's merge request that a maintainer runs in the parent
+project, and only the base64 text is masked, so the fork's
+`.gitlab-ci.yml` or `skills/*/check` could print the decoded stop-list.
+The trade-off is that the publication check then runs only on protected
+branches and tags (the pre-push hook still runs it locally). Never print
+the stop-list or its base64 in a job, and never commit either.
 
 ### Switching the CI system
 
@@ -585,8 +603,10 @@ for merge requests, and for branches only while they have no open merge
 request. Check that CI/CD is enabled for the project (**Settings → General
 → Visibility**) and that `.gitlab-ci.yml` is in the source branch. A merge
 request from a fork runs its pipeline in the fork, without your CI/CD
-variables, so the publication check fails there until a maintainer runs the
-pipeline in the parent project.
+variables, so the publication check fails there. A maintainer can run it
+in the parent project, but that pipeline uses the fork's `.gitlab-ci.yml`
+and `skills/*/check` with your variables: review those files in the merge
+request first, or the fork can print the stop-list.
 
 **gitleaks fails.** The report is redacted. Remove the secret from the
 history (rotate it first), or, for a false positive, add its fingerprint to
