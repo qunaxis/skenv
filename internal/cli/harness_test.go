@@ -104,12 +104,13 @@ func TestLefthookRejectsBadSkill(t *testing.T) {
 			t.Skipf("%s not installed", tool)
 		}
 	}
-	w, repo := harnessRepo(t)
+	// Build before $HOME moves, so the module cache stays where it is.
 	bin := t.TempDir()
 	build := exec.Command("go", "build", "-o", filepath.Join(bin, "skenv"), "github.com/qunaxis/skenv/cmd/skenv")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
+	w, repo := harnessRepo(t)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	run := func(dir string, args ...string) (string, error) {
