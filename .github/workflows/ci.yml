@@ -1,0 +1,74 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  commits:
+    name: conventional commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check every commit (PRD V2)
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -n "$BASE" ]; then
+            scripts/check-commits.sh "$BASE..$HEAD"
+          else
+            # push to main: the whole history must pass, from the first commit
+            scripts/check-commits.sh HEAD
+          fi
+
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff@2.14.2
+      - run: go test -race ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+
+  goreleaser:
+    name: goreleaser snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: v2.18.2
+          args: release --snapshot --clean
