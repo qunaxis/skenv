@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/skenvfile"
+	"github.com/qunaxis/skenv/internal/skillname"
 )
 
 // DefaultSkillsDir is used when an [[own]] entry does not set skills_dir.
@@ -71,9 +72,15 @@ type Host struct {
 }
 
 var (
-	shaRe  = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+	shaRe = regexp.MustCompile(RevPattern)
 )
+
+// RevPattern is a full lowercase commit SHA (M2).
+const RevPattern = `^[0-9a-f]{40}$`
+
+// Reserved is the skill name that skenv never uses:
+// ~/.claude/skills/synced is managed by Claude.
+const Reserved = "synced"
 
 // Locate returns the skenv file that path names: path itself, or the skenv
 // file in path when it is a directory.
@@ -189,15 +196,14 @@ func (m *Manifest) Validate() error {
 	return errors.Join(errs...)
 }
 
-// ValidName reports whether name can be used as a skill directory name.
+// ValidName reports whether name can be used as a skill name: the shared
+// rule of package skillname, and not Reserved.
 func ValidName(name string) error {
-	switch {
-	case name == "":
-		return errors.New("name is required")
-	case !nameRe.MatchString(name):
-		return fmt.Errorf("name %q must match [a-z0-9][a-z0-9._-]*", name)
-	case name == "synced":
-		return errors.New(`name "synced" is reserved (~/.claude/skills/synced is managed by Claude)`)
+	if err := skillname.Check(name); err != nil {
+		return err
+	}
+	if name == Reserved {
+		return fmt.Errorf("name %q is reserved (~/.claude/skills/%s is managed by Claude)", Reserved, Reserved)
 	}
 	return nil
 }

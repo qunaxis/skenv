@@ -305,6 +305,10 @@ func TestVendorAddAndRemove(t *testing.T) {
 		t.Errorf("several skills must be listed:\n%s", errOut)
 	}
 	w.mustRun(2, "vendor", "add", "ext/tools", "--path", "tools/archify") // duplicate name
+	// One skill-name rule everywhere: dots and underscores are rejected.
+	if _, errOut = w.mustRun(2, "vendor", "add", "ext/tools", "--path", "tools/other", "--name", "foo.bar_v2"); !strings.Contains(errOut, "single hyphens") {
+		t.Errorf("vendor add --name foo.bar_v2: %s", errOut)
+	}
 
 	out, _ := w.mustRun(0, "vendor", "add", "ext/tools", "--path", "tools/other")
 	if !strings.Contains(out, "git -C ~/"+ownPath+" commit") {

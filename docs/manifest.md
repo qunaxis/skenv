@@ -61,6 +61,11 @@ skip = ["bpmn-process-modeler"]
 > only when you run `skenv vendor bump` (or edit `rev`) and commit the
 > manifest.
 
+- Skill names (a vendor `name`, a skill directory in an own repository)
+  follow the [Agent Skills](https://agentskills.io/specification) rule:
+  1 to 64 lowercase letters, digits and single hyphens, with no hyphen at
+  the start or end (`^[a-z0-9]+(-[a-z0-9]+)*$`). `synced` is reserved.
+  `skenv lint` and `skenv new` apply the same rule.
 - Skill names are unique across own and vendor skills; a clash is an error.
 - `owner/repo` is cloned from `https://github.com/owner/repo.git`. To use ssh,
   map it in git: `git config --global url."git@github.com:".insteadOf https://github.com/`.

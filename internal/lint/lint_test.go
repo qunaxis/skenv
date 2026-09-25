@@ -93,6 +93,8 @@ func TestRules(t *testing.T) {
 		// L2
 		{"L2 name differs from dir", map[string]string{"SKILL.md": fm("name: other\ndescription: x\n")}, []string{"L2"}, `must equal the directory name "demo"`},
 		{"L2 bad characters", map[string]string{"SKILL.md": fm("name: Demo_1\ndescription: x\n")}, []string{"L2", "L2"}, "lowercase letters"},
+		{"L2 double hyphen", map[string]string{"SKILL.md": fm("name: foo--bar\ndescription: x\n")}, []string{"L2", "L2"}, "single hyphens"},
+		{"L2 leading hyphen", map[string]string{"SKILL.md": fm("name: -foo\ndescription: x\n")}, []string{"L2", "L2"}, "single hyphens"},
 		// L3
 		{"L3 empty description", map[string]string{"SKILL.md": fm("name: demo\ndescription: \"  \"\n")}, []string{"L3"}, "description is empty"},
 		{"L3 long description", map[string]string{"SKILL.md": fm("name: demo\ndescription: " + long + "\n")}, []string{"L3"}, "the limit is 1024"},
