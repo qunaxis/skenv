@@ -86,6 +86,15 @@ var exampleScenarios = map[string]func(f *exampleWorld){
 	"skenv import/1": func(f *exampleWorld) { f.initialized(); f.npxInstalled() },
 	"skenv import/2": func(f *exampleWorld) { f.initialized(); f.npxInstalled() },
 	"skenv import/3": func(f *exampleWorld) {
+		// release-notes edited since it was installed, and a hash in the lock
+		// that no commit has (a rewritten history): unmatched.
+		f.initialized()
+		f.npxInstalled()
+		writeFile(f.t, f.path(".agents/skills/release-notes/SKILL.md"),
+			exampleSkill("release-notes", "Draft release notes from merged changes.", "Edited here."))
+		f.writeLock(map[string]lockEntry{"release-notes": githubEntry("example-vendor/tools", "tools/release-notes/SKILL.md", strings.Repeat("0", 40))})
+	},
+	"skenv import/4": func(f *exampleWorld) {
 		// A project with a skill of `npx skills add` and one of its own.
 		f.pushRemotes()
 		dir := f.path("src/web-app")

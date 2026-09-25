@@ -95,14 +95,39 @@ func (e *Engine) Sync() (int, error) {
 	if err != nil {
 		return ExitFatal, err
 	}
-	for _, s := range skills {
+	kept := e.kept(skills)
+	take := slices.DeleteFunc(slices.Clone(skills), func(s Skill) bool { return kept[s.Name] })
+	for _, s := range take {
 		if s.Vendor != nil {
 			e.syncVendor(s)
 		}
 	}
-	e.linkAll(skills)
+	e.linkAll(take)
 	e.prune(skills)
 	return e.finish("sync")
+}
+
+// kept is the skills of opts.Keep that have an unmanaged path in the way;
+// sync leaves each of them as it is installed.
+func (e *Engine) kept(skills []Skill) map[string]bool {
+	out := map[string]bool{}
+	for _, s := range skills {
+		if !slices.Contains(e.opts.Keep, s.Name) {
+			continue
+		}
+		paths := []string{e.storePath(s.Name)}
+		for _, t := range e.targets {
+			paths = append(paths, filepath.Join(t, s.Name))
+		}
+		for _, p := range paths {
+			if _, err := os.Lstat(p); err == nil && !e.owned(p) {
+				e.infof("leave %s as it is: %s was pinned without a matching commit, so it is not taken over", e.show(p), s.Name)
+				out[s.Name] = true
+				break
+			}
+		}
+	}
+	return out
 }
 
 // Link runs `skenv link`.

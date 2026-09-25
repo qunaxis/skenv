@@ -40,6 +40,10 @@ type Options struct {
 	Adopt    bool   // B2
 	Quiet    bool   // sync --quiet
 	ReadOnly bool   // doctor: no lock, no writes
+	// Keep names skills whose installed copies sync leaves as they are,
+	// even under --adopt: the import --sync of skills pinned without a
+	// matching commit.
+	Keep []string
 }
 
 // Exit codes shared by all commands.

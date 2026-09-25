@@ -20,7 +20,8 @@ import (
 // that the manifest does not have yet, vendored ones from the global lock
 // of the `skills` CLI and own ones from links into git working copies, and
 // removes the imported entries from that lock. A manifest file without
-// [environment] gets one first. With sync, `skenv sync --adopt` follows.
+// [environment] gets one first. With sync, `skenv sync --adopt` follows,
+// leaving the skills pinned without a matching commit as installed.
 func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) {
 	if err := gitx.Available(); err != nil {
 		return ExitFatal, err
@@ -79,11 +80,12 @@ func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) 
 		return code, err
 	}
 	e.Close()
-	return syncAdopt(ctx, env, mp)
+	return syncAdopt(ctx, env, mp, r)
 }
 
 // InitImport runs `skenv init --import`: start a manifest in the git
-// repository of dir, import into it and run `skenv sync --adopt`. The
+// repository of dir, import into it and run `skenv sync --adopt` as
+// Import does with sync. The
 // repository itself becomes an own repository (from origin, or remote when
 // it has none) unless the import added it already.
 func InitImport(ctx context.Context, env Env, dir, format, remote string, dryRun bool) (int, error) {
@@ -122,17 +124,37 @@ func InitImport(ctx context.Context, env Env, dir, format, remote string, dryRun
 		return code, err
 	}
 	e.Close()
-	return syncAdopt(ctx, env, p.file)
+	return syncAdopt(ctx, env, p.file, r)
 }
 
-// syncAdopt runs `skenv sync --adopt` on the manifest mp.
-func syncAdopt(ctx context.Context, env Env, mp string) (int, error) {
-	e, err := Open(ctx, env, Options{Manifest: mp, Adopt: true})
+// syncAdopt runs `skenv sync --adopt` on the manifest mp after the import
+// r, leaving the unmatched skills as installed, and reports which skills
+// it took over.
+func syncAdopt(ctx context.Context, env Env, mp string, r *imported) (int, error) {
+	e, err := Open(ctx, env, Options{Manifest: mp, Adopt: true, Keep: r.unmatched})
 	if err != nil {
 		return ExitFatal, err
 	}
 	defer e.Close()
-	return e.Sync()
+	code, err := e.Sync()
+	if err != nil {
+		return code, err
+	}
+	e.reportTakeover(r, e.show(mp), "", func(name string) bool { return e.owned(e.storePath(name)) })
+	return code, nil
+}
+
+// The groups of imported entries: revByHash, revByCopy and revByHead for
+// vendored skills, then own repositories.
+const byOwn = revByHead + 1
+
+var groupNames = [...]string{revByHash: "exact", revByCopy: "same files", revByHead: "unmatched", byOwn: "own"}
+
+var groupTitles = [...]string{
+	revByHash: "the commit has the hash recorded in the lock",
+	revByCopy: "the commit has the files of the installed copy (no commit has the hash in the lock)",
+	revByHead: "no commit matched, pinned to the tip of the branch; the installed copy may differ",
+	byOwn:     "repositories kept as git working copies",
 }
 
 // imported is the outcome of importUser.
@@ -142,6 +164,40 @@ type imported struct {
 	unmanaged   int
 	lock        *skillsLock
 	unlock      []string // lock entries to remove
+	diff        string   // of the skenv file
+
+	managed   [byOwn + 1][]string // report lines of the entries, by group
+	names     []string            // the installed skills the entries cover
+	unmatched []string            // vendored skills of the revByHead group
+	skipped   []string            // what is not imported, and why
+	failed    []string            // lock entries that could not be imported
+}
+
+// addVendor records the vendor entry v, found by how.
+func (r *imported) addVendor(v manifest.Vendor, how int, note string) {
+	line := fmt.Sprintf("%s from %s (%s) at %.12s", v.Name, v.Repo, v.Path, v.Rev)
+	if note != "" {
+		line += ": " + note
+	}
+	r.managed[how] = append(r.managed[how], line)
+	r.names = append(r.names, v.Name)
+	if how == revByHead {
+		r.unmatched = append(r.unmatched, v.Name)
+	}
+}
+
+// groups counts the entries per group, "(2 exact, 1 own)"; "" without any.
+func (r *imported) groups() string {
+	var parts []string
+	for i, g := range r.managed {
+		if len(g) > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", len(g), groupNames[i]))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(parts, ", ") + ")"
 }
 
 func (r *imported) changed() bool { return string(r.before) != string(r.out) }
@@ -182,11 +238,9 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 	for _, s := range skills {
 		inManifest[s.Name] = true
 	}
-	// Unmanaged paths are reported after the imports.
-	var report []string
 	unmanaged := func(p, why string) {
 		r.unmanaged++
-		report = append(report, fmt.Sprintf("unmanaged %s: %s", e.show(p), why))
+		r.skipped = append(r.skipped, fmt.Sprintf("%s: %s", e.show(p), why))
 	}
 
 	// Everything installed in the store and the agent directories, once per
@@ -269,28 +323,30 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 		}
 		own = append(own, *g)
 	}
+	var vend []manifest.Vendor
+	for _, name := range sortedKeys(vendors) {
+		v, how, note, err := e.lockVendor(name, lock.entries[name], vendors[name].resolved)
+		if err != nil {
+			r.failed = append(r.failed, fmt.Sprintf("cannot import %s: %v", name, err))
+			continue
+		}
+		r.addVendor(v, how, note)
+		vend = append(vend, v)
+	}
 	for _, g := range own {
 		detail := "every skill"
 		if g.own.Skills != nil {
 			detail = "skills " + strings.Join(g.own.Skills, ", ")
 		}
-		e.changef("import own %s at %s (%s)", g.own.Repo, g.own.Path, detail)
+		r.managed[byOwn] = append(r.managed[byOwn], fmt.Sprintf("%s at %s (%s)", g.own.Repo, g.own.Path, detail))
+		r.names = append(r.names, g.names...)
 	}
-	var vend []manifest.Vendor
-	for _, name := range sortedKeys(vendors) {
-		v, ok := e.lockVendor(name, lock.entries[name], vendors[name].resolved)
-		if !ok {
-			continue
-		}
-		vend = append(vend, v)
-	}
+	slices.Sort(r.names)
 	for _, name := range sortedKeys(lock.entries) {
 		if _, ok := seen[name]; !ok && !inManifest[name] {
-			e.infof("skip %s of %s: not installed in %s or an agent directory", name, e.show(lock.path), e.show(e.store))
+			r.skipped = append(r.skipped, fmt.Sprintf("%s, in %s: not installed in %s or an agent directory; it stays in the lock",
+				name, e.show(lock.path), e.show(e.store)))
 		}
-	}
-	for _, line := range report {
-		e.infof("%s", line)
 	}
 
 	// The manifest text, validated with the own repositories listed.
@@ -319,7 +375,8 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 			e.warnf("not adding %s as an own repository: %v", extraOwn.Repo, err)
 		} else {
 			out = withExtra
-			e.changef("add own %s at %s (the repository of the manifest)", extraOwn.Repo, extraOwn.Path)
+			r.entries++
+			r.managed[byOwn] = append(r.managed[byOwn], fmt.Sprintf("%s at %s (the repository of the manifest)", extraOwn.Repo, extraOwn.Path))
 		}
 	}
 	if string(out) != string(start) || fresh {
@@ -344,9 +401,8 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 		}
 	}
 	slices.Sort(r.unlock)
-	if d := lineDiff(e.show(e.manifestPath), before, out); d != "" {
-		e.infof("%s", strings.TrimSuffix(d, "\n"))
-	}
+	r.diff = strings.TrimSuffix(lineDiff(e.show(e.manifestPath), before, out), "\n")
+	e.report(r, e.show(e.manifestPath))
 	return r, nil
 }
 
@@ -433,20 +489,16 @@ func (e *Engine) ownOf(f found) (g *ownGroup, why string) {
 	}, ""
 }
 
-// lockVendor turns a lock entry into a vendor entry, reporting how its rev
-// was found; ok is false when it cannot be imported. dir is the installed
+// lockVendor turns a lock entry into a vendor entry: how says how its rev
+// was found, and note why it is not an exact match. dir is the installed
 // copy, "" when there is none.
-func (e *base) lockVendor(name string, le lockEntry, dir string) (manifest.Vendor, bool) {
-	fail := func(format string, args ...any) (manifest.Vendor, bool) {
-		e.errorf("cannot import %s: %s", name, fmt.Sprintf(format, args...))
-		return manifest.Vendor{}, false
-	}
+func (e *base) lockVendor(name string, le lockEntry, dir string) (v manifest.Vendor, how int, note string, err error) {
 	if err := manifest.ValidName(name); err != nil {
-		return fail("%v", err)
+		return v, 0, "", err
 	}
 	repo, err := lockRepo(le, e.hosts)
 	if err != nil {
-		return fail("%v", err)
+		return v, 0, "", err
 	}
 	// One fetch per repository, however many of its skills are installed.
 	if e.fetched == nil {
@@ -454,57 +506,136 @@ func (e *base) lockVendor(name string, le lockEntry, dir string) (manifest.Vendo
 	}
 	cache, ok := e.fetched[repo]
 	if !ok {
-		var err error
 		if cache, err = e.ensureCache(repo, ""); err != nil {
-			return fail("%v", err)
+			return v, 0, "", err
 		}
 		e.fetched[repo] = cache
 	}
 	rev, how, tip, err := e.lockRev(cache, repo, le, dir)
 	if err != nil {
-		return fail("%v", err)
+		return v, 0, "", err
 	}
 	folder := lockFolder(le.SkillPath)
-	v := manifest.Vendor{Name: name, Repo: repo, Path: vendorPath(folder), Rev: rev}
+	v = manifest.Vendor{Name: name, Repo: repo, Path: vendorPath(folder), Rev: rev}
 	file := "SKILL.md"
 	if folder != "" {
 		file = folder + "/SKILL.md"
 	}
 	if !e.env.Git.OK(e.ctx, cache, "cat-file", "-e", rev+":"+file) {
-		return fail("no %s in %s at %.12s", file, repo, rev)
+		return v, 0, "", fmt.Errorf("no %s in %s at %.12s", file, repo, rev)
 	}
-	e.changef("import vendor %s from %s (%s) at %.12s", name, repo, v.Path, rev)
 	hash, field := le.hash()
-	if how == revByHash {
-		what := "the tree"
-		if folderHashRe.MatchString(hash) {
-			what = "the sha256 of the files"
-		}
-		e.infof("  its %s %.12s is %s of %s at that commit", field, hash, what, v.Path)
-		return v, true
-	}
-	why := fmt.Sprintf("%s %.12s is not in the history of %s", field, hash, tip)
+	note = fmt.Sprintf("%s %.12s is not in the history of %s", field, hash, tip)
 	if hash == "" {
-		why = "the lock records no hash"
+		note = "the lock records no hash"
 	}
 	switch {
-	case how == revByCopy:
-		e.warnf("vendor %s: %s; pinned %.12s, whose files match the installed copy", name, why, rev)
-	case dir == "":
-		e.warnf("vendor %s: %s, and there is no installed copy to compare; pinned HEAD %.12s of %s, check the skill before syncing", name, why, rev, tip)
-	default:
-		e.warnf("vendor %s: %s, and no commit has the files of the installed copy; pinned HEAD %.12s of %s, check the skill before syncing", name, why, rev, tip)
+	case how == revByHash:
+		note = ""
+	case how == revByHead && dir == "":
+		note += fmt.Sprintf(", and there is no installed copy to compare; HEAD of %s", tip)
+	case how == revByHead:
+		note += fmt.Sprintf(", and no commit has the files of the installed copy; HEAD of %s", tip)
 	}
-	return v, true
+	return v, how, note, nil
 }
 
-// finishImport cleans the lock, prints the summary and the next step, and
-// returns the exit code. sync says `skenv sync --adopt` follows.
+// report prints what the import makes managed in file, grouped by how
+// the entries match what is installed, and what it does not import.
+func (e *base) report(r *imported, file string) {
+	n := 0
+	for _, g := range r.managed {
+		n += len(g)
+	}
+	if n > 0 {
+		verb := "becomes managed"
+		if e.opts.DryRun {
+			verb = "would become managed"
+		}
+		entries := "entries"
+		if n == 1 {
+			entries = "entry"
+		}
+		e.infof("%s: %d %s in %s", verb, n, entries, file)
+		for i, g := range r.managed {
+			if len(g) == 0 {
+				continue
+			}
+			e.infof("  %s: %s", groupNames[i], groupTitles[i])
+			for _, line := range g {
+				e.infof("    %s", line)
+			}
+		}
+	}
+	if len(r.unmatched) > 0 {
+		e.warnf("%s: pinned without a matching commit, the installed copy may differ from it; compare the two before taking the copy over",
+			strings.Join(r.unmatched, ", "))
+	}
+	if n := len(r.skipped) + len(r.failed); n > 0 {
+		e.infof("not imported: %d", n)
+		for _, line := range r.skipped {
+			e.infof("  %s", line)
+		}
+		for _, line := range r.failed {
+			e.errorf("%s", line)
+		}
+	}
+}
+
+// decide tells how to settle each unmatched skill that sync left as
+// installed; flag is the --project flag of vendor remove, or "".
+func (e *base) decide(names []string, flag string) {
+	for _, name := range names {
+		e.infof("  %s: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to %s), "+
+			"or `skenv vendor remove%s %s` drops the entry and leaves the copy unmanaged", name, e.show(e.layout.Backup()), flag, name)
+	}
+}
+
+// reportTakeover prints, after the sync of the import r into file, which
+// of the recorded skills sync took over (managed says whether skenv
+// manages a skill now) and which it left as installed.
+func (e *base) reportTakeover(r *imported, file, flag string, managed func(string) bool) {
+	if len(r.names) == 0 {
+		return
+	}
+	var took, kept, failed []string
+	for _, name := range r.names {
+		switch {
+		case managed(name):
+			took = append(took, name)
+		case slices.Contains(r.unmatched, name):
+			kept = append(kept, name)
+		default:
+			failed = append(failed, name)
+		}
+	}
+	list := func(names []string) string {
+		if len(names) == 0 {
+			return "none"
+		}
+		return strings.Join(names, ", ")
+	}
+	e.infof("recorded in %s: %s", file, list(r.names))
+	e.infof("taken over: %s", list(took))
+	if len(kept) > 0 {
+		e.infof("left as installed (unmatched): %s; decide for each:", list(kept))
+		e.decide(kept, flag)
+	}
+	if len(failed) > 0 {
+		e.infof("not taken over: %s (see the errors above)", list(failed))
+	}
+}
+
+// finishImport cleans the lock, prints the diff, the summary and the next
+// step, and returns the exit code. sync says `skenv sync --adopt` follows.
 func (e *Engine) finishImport(r *imported, sync bool) (int, error) {
 	if len(r.unlock) > 0 {
 		if err := e.cleanLock(r.lock, r.unlock, e.show); err != nil {
 			return ExitFatal, err
 		}
+	}
+	if r.diff != "" {
+		e.infof("%s", r.diff)
 	}
 	switch {
 	case r.entries == 0 && len(r.unlock) == 0 && !r.changed():
@@ -518,19 +649,11 @@ func (e *Engine) finishImport(r *imported, sync bool) (int, error) {
 		if r.entries == 1 {
 			entries = "entry"
 		}
-		fmt.Fprintf(e.env.Stdout, "import: %s%d manifest %s, %d removed from the skills lock", verb, r.entries, entries, len(r.unlock))
+		fmt.Fprintf(e.env.Stdout, "import: %s%d manifest %s%s, %d removed from the skills lock", verb, r.entries, entries, r.groups(), len(r.unlock))
 	}
 	fmt.Fprintf(e.env.Stdout, ", %d unmanaged, %d warnings, %d errors\n", r.unmanaged, e.warnings, e.errs)
 	if r.changed() || len(r.unlock) > 0 {
-		switch {
-		case e.opts.DryRun && sync:
-			e.infof("would run skenv sync --adopt")
-		case sync && !e.opts.DryRun && e.errs > 0:
-			e.infof("not running skenv sync --adopt: fix the errors above, then run it")
-		case !sync && !e.opts.DryRun:
-			e.infof("next: `skenv sync --adopt` replaces the copies and links found with managed ones (the old ones go to %s)",
-				e.show(e.layout.Backup()))
-		}
+		e.nextAfterImport(r, sync, "")
 		if r.changed() {
 			e.commitHint("import installed skills")
 		}
@@ -541,12 +664,33 @@ func (e *Engine) finishImport(r *imported, sync bool) (int, error) {
 	return ExitOK, nil
 }
 
+// nextAfterImport prints what follows the import r: the sync of --sync
+// under --dry-run, or the next step without --sync. flag is the --project
+// flag of vendor remove, or "".
+func (e *base) nextAfterImport(r *imported, sync bool, flag string) {
+	switch {
+	case sync && e.errs > 0:
+		e.infof("not running skenv sync --adopt: fix the errors above, then run it")
+	case sync && e.opts.DryRun && len(r.unmatched) > 0:
+		e.infof("would run skenv sync --adopt, leaving the unmatched as installed: %s; then decide for each:", strings.Join(r.unmatched, ", "))
+		e.decide(r.unmatched, flag)
+	case sync && e.opts.DryRun:
+		e.infof("would run skenv sync --adopt")
+	case !sync && !e.opts.DryRun && len(r.unmatched) > 0:
+		e.infof("next: `skenv sync --adopt` replaces the installed copies with managed ones, the unmatched %s included "+
+			"(the old ones go to %s); compare the unmatched ones first", strings.Join(r.unmatched, ", "), e.show(e.layout.Backup()))
+	case !sync && !e.opts.DryRun:
+		e.infof("next: `skenv sync --adopt` replaces the installed copies with managed ones (the old ones go to %s)", e.show(e.layout.Backup()))
+	}
+}
+
 // cleanLock removes the imported entries names from a lock of the
 // `skills` CLI, so `npx skills update` does not fight skenv over them,
 // after a copy to the backup directory. show shows the lock path.
 func (e *base) cleanLock(lock *skillsLock, names []string, show func(string) string) error {
 	backup := e.backupPath(lock.path)
-	e.changef("remove %s from %s (a copy goes to %s)", strings.Join(names, ", "), show(lock.path), e.show(backup))
+	e.changef("remove %s from %s, so that skenv manages these skills and the skills CLI no longer updates them (a copy of the lock goes to %s)",
+		strings.Join(names, ", "), show(lock.path), e.show(backup))
 	if e.opts.DryRun {
 		return nil
 	}
