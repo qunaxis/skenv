@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+project_name: skenv
+
+before:
+  hooks:
+    - go mod tidy -diff
+
+builds:
+  - id: skenv
+    main: ./cmd/skenv
+    binary: skenv
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/qunaxis/skenv/internal/buildinfo.Version={{ if .IsSnapshot }}0.0.0-dev+{{ .ShortCommit }}{{ else }}{{ .Tag }}{{ end }}
+      - -X github.com/qunaxis/skenv/internal/buildinfo.Commit={{ .FullCommit }}
+      - -X github.com/qunaxis/skenv/internal/buildinfo.Date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: skenv
+    formats: [tar.gz]
+    # skenv_0.1.0_darwin_arm64.tar.gz; README install command depends on it.
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+
+snapshot:
+  version_template: "0.0.0-dev+{{ .ShortCommit }}"
+
+checksum:
+  name_template: checksums.txt
+
+# Release notes come from git-cliff (--release-notes), see scripts/release.sh.
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: qunaxis
+    name: skenv
+  mode: replace
