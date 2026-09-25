@@ -10,11 +10,17 @@
 ```sh
 make hooks     # lefthook: commit-msg check, gofmt
 make check     # go vet, staticcheck, golangci-lint, go test -race, commit check
+make docs      # regenerate the command reference in docs/commands
+make schemas   # regenerate the JSON Schemas in schemas/ from the Go types
 make snapshot  # local goreleaser build into dist/
 make demo      # re-record docs/demo/demo.gif with vhs
 ```
 
-`make help` lists every target. Integration tests run skenv against a
+`make help` lists every target. The command reference and the JSON
+Schemas are generated and committed; tests fail when they are stale, so run
+`make docs` after changing a command and `make schemas` after changing the
+types or doc comments of the skenv file or the tool config
+(`internal/manifest`, `internal/harness`, `internal/config`). Integration tests run skenv against a
 temporary `$HOME` with local bare repositories standing in for GitHub; they
 never touch your real home.
 
@@ -76,5 +82,12 @@ goreleaser builds darwin/linux × amd64/arm64 binaries into archives named
 that name) plus `checksums.txt`. Each archive holds `skenv`, `README.md` and
 the man pages in `man/`, which a goreleaser `before` hook generates from the
 command tree (`make man` does the same locally; they are not committed).
+The release also carries `skenv.schema.json` and `config.schema.json`, with
+the `"$id"` of that version. After the `release` workflow finishes, the
+`docs` workflow rebuilds the site, which then serves the schemas of the new
+tag under `https://qunaxis.github.io/skenv/schemas/v<X.Y.Z>/` and at the
+unversioned URLs (see [Editor support](editor-support.md)). A local
+`make release` pushes the release commit and the tag with your own
+credentials, and that push to `main` rebuilds the site as well.
 
 [`CHANGELOG.md`](../CHANGELOG.md) is generated; do not edit it by hand.

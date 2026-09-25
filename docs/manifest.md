@@ -75,10 +75,11 @@ skip = ["bpmn-process-modeler"]
   the `peon-ping` Homebrew package). `doctor` does not report them as
   `unmanaged`, and `sync`/`link` never touch them, not even with
   `--adopt`. A manifest skill whose name matches a pattern is an error.
-- `vendor add|bump|remove` edit `skenv.toml` as text, keeping comments and
-  order: keep `[[environment.vendor]]` tables in the multi-line form above
-  with double-quoted `name` and `rev`. A YAML or JSON skenv file is
-  rewritten from its data instead, so its comments and key order are lost.
+- `vendor add|bump|remove` edit the skenv file in place, keeping comments
+  and order in every format. In TOML, keep `[[environment.vendor]]` tables
+  in the multi-line form above with double-quoted `name` and `rev`; in
+  YAML, write `vendor` as a block list (see
+  [formats and editing](skenv-file.md#formats-and-editing)).
 - A vendored skill is copied as is, symlinks included; vendor only
   repositories you trust.
 
