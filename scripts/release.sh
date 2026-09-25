@@ -64,5 +64,7 @@ git push --quiet --atomic origin HEAD:main "refs/tags/$version"
 notes=$(mktemp)
 trap 'rm -f "$notes"' EXIT
 git cliff --latest --strip header -o "$notes"
+# An empty file would make goreleaser fall back to its own changelog.
+[[ -s $notes ]] || die "git-cliff produced empty release notes for $version"
 goreleaser release --clean --release-notes "$notes"
 echo "release: published $version"

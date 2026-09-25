@@ -36,9 +36,12 @@ snapshot:
 checksum:
   name_template: checksums.txt
 
-# Release notes come from git-cliff (--release-notes), see scripts/release.sh.
+# Release notes come from git-cliff via --release-notes (scripts/release.sh);
+# goreleaser never generates its own. `disable: true` cannot be used for
+# that: goreleaser 2.18 then skips the whole changelog pipe, including
+# --release-notes, and publishes an empty release body (seen on v0.1.0).
 changelog:
-  disable: true
+  disable: false
 
 release:
   github:
