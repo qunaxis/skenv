@@ -3,8 +3,10 @@
 Every command prints its own usage with `skenv <command> --help`
 (`skenv vendor add --help`, `skenv repo apply --help`, …). This page
 collects them in one place. The per-command pages in [commands/](commands/README.md) are
-generated from the same definitions by `make docs`; shell completion comes
-from `skenv completion bash|zsh|fish`.
+generated from the same definitions by `make docs`, and so are the man pages
+shipped in the release archives (`make man` writes them into `man/`; see
+[Install](../README.md#install)); shell completion comes from
+`skenv completion bash|zsh|fish`.
 
 - [Machine: init, sync, link, doctor, vendor, autostart](#machine)
 - [`--dry-run` and `--adopt`](#--dry-run-and---adopt)

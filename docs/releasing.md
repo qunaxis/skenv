@@ -68,6 +68,8 @@ GITHUB_TOKEN="$(gh auth token)" make release
 
 goreleaser builds darwin/linux × amd64/arm64 binaries into archives named
 `skenv_<version>_<os>_<arch>.tar.gz` (the README install command depends on
-that name) plus `checksums.txt`.
+that name) plus `checksums.txt`. Each archive holds `skenv`, `README.md` and
+the man pages in `man/`, which a goreleaser `before` hook generates from the
+command tree (`make man` does the same locally; they are not committed).
 
 [`CHANGELOG.md`](../CHANGELOG.md) is generated; do not edit it by hand.

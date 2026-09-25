@@ -1,20 +1,47 @@
-// Command gendocs writes the command reference: go run ./internal/tools/gendocs docs/commands
+// Command gendocs writes the command reference from the cobra command tree.
+//
+//	go run ./internal/tools/gendocs docs/commands            # Markdown
+//	go run ./internal/tools/gendocs -man [-version V] [-date RFC3339] man
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/qunaxis/skenv/internal/clidocs"
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: gendocs DIR")
+	man := flag.Bool("man", false, "write section-1 man pages instead of Markdown")
+	version := flag.String("version", "", "skenv version for the man page footer")
+	date := flag.String("date", "", "man page date, RFC 3339 (default: SOURCE_DATE_EPOCH or today)")
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: gendocs [-man [-version V] [-date RFC3339]] DIR")
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+	if flag.NArg() != 1 {
+		flag.Usage()
 		os.Exit(2)
 	}
-	if err := clidocs.Generate(os.Args[1]); err != nil {
+	if err := run(*man, *version, *date, flag.Arg(0)); err != nil {
 		fmt.Fprintln(os.Stderr, "gendocs:", err)
 		os.Exit(1)
 	}
+}
+
+func run(man bool, version, date, dir string) error {
+	if !man {
+		return clidocs.Generate(dir)
+	}
+	var d time.Time
+	if date != "" {
+		var err error
+		if d, err = time.Parse(time.RFC3339, date); err != nil {
+			return fmt.Errorf("-date: %w", err)
+		}
+	}
+	return clidocs.GenerateMan(dir, version, d)
 }

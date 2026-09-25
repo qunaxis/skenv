@@ -1,6 +1,7 @@
-// Package clidocs generates the command reference (docs/commands) from
-// the cobra command tree, so it cannot drift from --help. It is used by
-// `make docs` and by a test; the skenv binary does not link it.
+// Package clidocs generates the command reference (docs/commands) and the
+// man pages from the cobra command tree, so they cannot drift from --help.
+// It is used by `make docs`, `make man`, the goreleaser hook and tests; the
+// skenv binary does not link it.
 package clidocs
 
 import (
