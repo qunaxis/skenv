@@ -468,3 +468,36 @@ func TestDoctorWarnsAboutOldHarness(t *testing.T) {
 		t.Errorf("json warnings: %s", out)
 	}
 }
+
+// Coordinator decision beyond the PRD: layout.ignore hides paths of other
+// tools (e.g. the peon-ping brew package) from doctor, and sync/link never
+// touch them, not even with --adopt.
+func TestLayoutIgnore(t *testing.T) {
+	w := newWorld(t)
+	rev := w.standard("")
+	text := strings.Replace(manifestText(rev, ""), "# test manifest\n", "# test manifest\n[layout]\nignore = [\"peon-ping-*\"]\n\n", 1)
+	w.push("me/skills-private", map[string]string{"env.toml": text}, "chore: ignore peon-ping")
+	writeFile(t, w.path(".claude/skills/peon-ping-toggle/SKILL.md"), "brew\n")
+	writeFile(t, w.path(".agents/skills/peon-ping-use/SKILL.md"), "brew\n")
+	writeFile(t, w.path(".claude/skills/manual/SKILL.md"), "hand\n")
+
+	w.mustRun(0, "init", "me/skills-private", "--path", "~/"+ownPath)
+	out, _ := w.mustRun(1, "doctor", "--json")
+	if strings.Contains(out, "peon-ping") || !strings.Contains(out, "manual") {
+		t.Errorf("doctor must hide ignored paths only:\n%s", out)
+	}
+	w.mustRun(0, "sync", "--adopt")
+	for _, p := range []string{".claude/skills/peon-ping-toggle/SKILL.md", ".agents/skills/peon-ping-use/SKILL.md"} {
+		if readFile(t, w.path(p)) != "brew\n" {
+			t.Errorf("%s was touched", p)
+		}
+	}
+	backups, _ := filepath.Glob(w.path(".local/state/skenv/backup/*/*/skills/peon-ping-*"))
+	if len(backups) != 0 {
+		t.Errorf("ignored paths were backed up: %v", backups)
+	}
+	if err := os.RemoveAll(w.path(".claude/skills/manual")); err != nil {
+		t.Fatal(err)
+	}
+	w.mustRun(0, "doctor")
+}

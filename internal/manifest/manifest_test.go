@@ -139,3 +139,24 @@ func TestRepo(t *testing.T) {
 		}
 	}
 }
+
+func TestLayoutIgnore(t *testing.T) {
+	m, err := Parse([]byte("[layout]\nignore = [\"peon-ping-*\", \"tmp?\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]bool{"peon-ping-toggle": true, "peon-ping": false, "tmp1": true, "archify": false} {
+		if got := m.Layout.Ignored(name); got != want {
+			t.Errorf("Ignored(%q) = %v", name, got)
+		}
+	}
+	for _, bad := range []string{`ignore = ["[x"]`, `ignore = ["a/b"]`, `ignore = [""]`} {
+		if _, err := Parse([]byte("[layout]\n" + bad + "\n")); err == nil || !strings.Contains(err.Error(), "layout.ignore") {
+			t.Errorf("%s: err = %v", bad, err)
+		}
+	}
+	m, _ = Parse([]byte("[layout]\nignore = [\"peon-*\"]\n[[vendor]]\nname = \"peon-x\"\nrepo = \"a/b\"\nrev = \"" + sha + "\"\n"))
+	if _, err := m.CheckNames(nil); err == nil || !strings.Contains(err.Error(), "matches layout.ignore") {
+		t.Errorf("skill matching ignore: %v", err)
+	}
+}

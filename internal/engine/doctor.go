@@ -109,7 +109,7 @@ func (e *Engine) Doctor(asJSON bool) (int, error) {
 		}
 		for _, de := range entries {
 			p := filepath.Join(dir, de.Name())
-			if strings.HasPrefix(de.Name(), ".") || e.isClaudeSynced(p) || e.owned(p) {
+			if strings.HasPrefix(de.Name(), ".") || e.isClaudeSynced(p) || e.m.Layout.Ignored(de.Name()) || e.owned(p) {
 				continue
 			}
 			if _, ok := want[p]; ok {

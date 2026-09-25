@@ -32,6 +32,20 @@ type Layout struct {
 	// Targets overrides the built-in agent table when non-nil (A3). An
 	// explicitly empty list means "no agent directories besides the store".
 	Targets []string `toml:"targets"`
+	// Ignore lists glob patterns (path.Match) of entry names in the store and
+	// targets that belong to other tools: doctor does not report them and
+	// sync/link never touch them, not even with --adopt.
+	Ignore []string `toml:"ignore"`
+}
+
+// Ignored reports whether an entry name matches layout.ignore.
+func (l Layout) Ignored(name string) bool {
+	for _, pat := range l.Ignore {
+		if ok, _ := path.Match(pat, name); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // Own is a skills repository kept as a working copy.
@@ -111,6 +125,11 @@ func Parse(data []byte) (*Manifest, error) {
 // listed.
 func (m *Manifest) Validate() error {
 	var errs []error
+	for _, pat := range m.Layout.Ignore {
+		if _, err := path.Match(pat, ""); err != nil || pat == "" || strings.Contains(pat, "/") {
+			errs = append(errs, fmt.Errorf("layout.ignore: %q must be a glob over entry names (no \"/\")", pat))
+		}
+	}
 	for i, o := range m.Own {
 		if o.Repo == "" {
 			errs = append(errs, fmt.Errorf("own[%d]: repo is required", i))
@@ -203,6 +222,11 @@ func (m *Manifest) CheckNames(ownSkills map[int][]string) ([]SkillRef, error) {
 	for i := range m.Vendor {
 		v := &m.Vendor[i]
 		add(v.Name, "vendor "+v.Repo, SkillRef{Name: v.Name, Vendor: v})
+	}
+	for _, r := range refs {
+		if m.Layout.Ignored(r.Name) {
+			errs = append(errs, fmt.Errorf("skill %q matches layout.ignore; rename it or change the pattern", r.Name))
+		}
 	}
 	sort.Slice(refs, func(a, b int) bool { return refs[a].Name < refs[b].Name })
 	return refs, errors.Join(errs...)
