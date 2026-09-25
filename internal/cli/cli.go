@@ -171,11 +171,16 @@ type usageError struct{ msg string }
 
 func (u usageError) Error() string { return u.msg }
 
+// cmdName is the command path without "skenv ", as in "vendor add".
+func cmdName(cmd *cobra.Command) string {
+	return strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
+}
+
 // nArgs requires exactly n positional arguments.
 func nArgs(n int) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
 		if len(args) != n {
-			return usageError{fmt.Sprintf("%s: expected %d argument(s), got %d (see `%s --help`)", cmd.Name(), n, len(args), cmd.CommandPath())}
+			return usageError{fmt.Sprintf("%s: expected %d argument(s), got %d (see `%s --help`)", cmdName(cmd), n, len(args), cmd.CommandPath())}
 		}
 		return nil
 	}
@@ -192,9 +197,9 @@ func group(use, short string, subs ...*cobra.Command) *cobra.Command {
 				for _, s := range cmd.Commands() {
 					names = append(names, s.Name())
 				}
-				return usageError{fmt.Sprintf("%s: unknown subcommand %q (%s)", cmd.Name(), args[0], strings.Join(names, ", "))}
+				return usageError{fmt.Sprintf("%s: unknown subcommand %q (%s)", cmdName(cmd), args[0], strings.Join(names, ", "))}
 			}
-			return usageError{fmt.Sprintf("%s: missing subcommand (see `%s --help`)", cmd.Name(), cmd.CommandPath())}
+			return usageError{fmt.Sprintf("%s: missing subcommand (see `%s --help`)", cmdName(cmd), cmd.CommandPath())}
 		},
 	}
 	c.AddCommand(subs...)
