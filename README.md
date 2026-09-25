@@ -53,7 +53,7 @@ Its design is guided by these mantras:
 
 - **Declarative and pinned.** The manifest is the truth. Third-party skills
   are pinned to a full commit SHA, `sync` is idempotent, and upgrading a
-  skill is an explicit `skenv vendor bump` that shows you the log.
+  skill is an explicit `skenv vendor update` that shows you the log.
 - **Never touch what you don't manage.** skenv records every path it
   creates and only ever replaces or removes those. Anything else is reported
   by `skenv doctor` and left alone unless you pass `--adopt`, which backs it
@@ -75,7 +75,7 @@ Its design is guided by these mantras:
 - `skenv doctor` compares the machine with the manifest and classifies every
   discrepancy (missing, conflict, wrong-rev, dirty, unpushed, …), as text or
   JSON.
-- `skenv vendor add|bump|remove` edit the manifest in place, keeping its
+- `skenv vendor add|update|remove` edit the manifest in place, keeping its
   comments and order, in TOML, YAML or JSON.
 - JSON Schemas for the skenv file and the tool config: files skenv writes
   name their schema, so editors complete and check them
@@ -225,8 +225,8 @@ skenv new my-skill
 
 Commit the changes to `skenv.toml` and your new skill as usual; every other
 machine picks them up on its next `skenv sync` (or within the hour, with
-autostart). Later, `skenv vendor bump <name>` moves a vendored skill to a
-new commit and shows what changed.
+autostart). Later, `skenv vendor update` moves your vendored skills to new
+commits and shows what changed.
 
 `skenv new` looks for the own repository whose `[repo]` has the
 requested visibility; set it up once with

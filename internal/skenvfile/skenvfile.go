@@ -6,7 +6,7 @@
 //   - [repo]: the harness of a skills repository (harness, visibility,
 //     runner), written by `skenv repo init|apply`;
 //   - [environment]: the manifest of a user's machines (layout, own,
-//     vendor, host), edited by `skenv vendor add|bump|remove`.
+//     vendor, host), edited by `skenv vendor add|update|remove`.
 //
 // Nothing else may appear at the top level, except "$schema" (a string,
 // ignored) for editors. Each section is decoded strictly: unknown keys are

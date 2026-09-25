@@ -2,7 +2,7 @@
 
 ## skenv vendor
 
-Pin, bump and remove third-party skills
+Pin, update and remove third-party skills
 
 ```
 skenv vendor [flags]
@@ -18,6 +18,6 @@ skenv vendor [flags]
 
 * [skenv](skenv.md)	 - Keep agent skills (Claude Code, Codex, pi) in sync with a manifest
 * [skenv vendor add](skenv_vendor_add.md)	 - Pin a third-party skill in the manifest and sync it
-* [skenv vendor bump](skenv_vendor_bump.md)	 - Move a vendored skill to a new commit
 * [skenv vendor remove](skenv_vendor_remove.md)	 - Remove a vendored skill and its managed paths
+* [skenv vendor update](skenv_vendor_update.md)	 - Move vendored skills to a new commit
 

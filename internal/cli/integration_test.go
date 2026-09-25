@@ -113,16 +113,16 @@ func TestRemoveSkillsFromManifest(t *testing.T) {
 	w.mustRun(0, "doctor")
 }
 
-func TestVendorBump(t *testing.T) {
+func TestVendorUpdate(t *testing.T) {
 	w := newWorld(t)
 	oldRev := w.initStandard("")
 	newRev := w.push("ext/tools", map[string]string{"tools/archify/SKILL.md": skillMD("archify", "v2")}, "fix: archify v2")
 	w.push("ext/tools", map[string]string{"README.md": "unrelated\n"}, "docs: readme")
 	headRev := w.git(filepath.Join(w.work, "ext__tools"), "rev-parse", "HEAD")
 
-	out, _ := w.mustRun(0, "vendor", "bump", "archify", "--rev", newRev)
+	out, _ := w.mustRun(0, "vendor", "update", "archify", "--rev", newRev)
 	if !strings.Contains(out, "fix: archify v2") {
-		t.Errorf("bump must show the log of the path:\n%s", out)
+		t.Errorf("update must show the log of the path:\n%s", out)
 	}
 	if strings.Contains(out, "docs: readme") {
 		t.Error("log must be limited to the vendored path")
@@ -130,18 +130,54 @@ func TestVendorBump(t *testing.T) {
 	manifestFile := w.path(ownPath + "/skenv.toml")
 	text := readFile(t, manifestFile)
 	if !strings.Contains(text, `rev  = "`+newRev+`" # keep this comment`) || strings.Contains(text, oldRev) {
-		t.Errorf("manifest not bumped in place:\n%s", text)
+		t.Errorf("manifest not updated in place:\n%s", text)
 	}
 	if !strings.Contains(readFile(t, w.path(".agents/skills/archify/SKILL.md")), "v2") {
 		t.Error("store content not updated")
 	}
 	// Without --rev: HEAD of the default branch.
-	w.mustRun(0, "vendor", "bump", "archify")
+	w.mustRun(0, "vendor", "update", "archify")
 	if !strings.Contains(readFile(t, manifestFile), headRev) {
-		t.Error("bump without --rev must pin HEAD")
+		t.Error("update without --rev must pin HEAD")
 	}
 	if !strings.Contains(readFile(t, w.path(".agents/skills/archify/.skenv")), headRev) {
 		t.Error("marker not updated")
+	}
+
+	// Without names: every vendored skill; upgrade is an alias.
+	w.mustRun(0, "vendor", "add", "ext/tools", "--path", "tools/other", "--rev", oldRev)
+	nextRev := w.push("ext/tools", map[string]string{
+		"tools/archify/SKILL.md": skillMD("archify", "v3"),
+		"tools/other/SKILL.md":   skillMD("other", "v2"),
+	}, "fix: archify v3, other v2")
+	out, _ = w.mustRun(0, "vendor", "upgrade")
+	if strings.Count(readFile(t, manifestFile), nextRev) != 2 {
+		t.Errorf("update without names must move every vendored skill:\n%s", readFile(t, manifestFile))
+	}
+	if !strings.Contains(out, "update vendor skills archify to "+nextRev[:12]+", other to "+nextRev[:12]) {
+		t.Errorf("commit hint must name both skills:\n%s", out)
+	}
+	for _, name := range []string{"archify", "other"} {
+		if !strings.Contains(readFile(t, w.path(".agents/skills/"+name+"/.skenv")), nextRev) {
+			t.Errorf("%s marker not updated", name)
+		}
+	}
+	out, _ = w.mustRun(0, "vendor", "update")
+	if !strings.Contains(out, "vendor other is already at") {
+		t.Errorf("second update must be a no-op:\n%s", out)
+	}
+
+	// --rev needs exactly one name; unknown names change nothing.
+	for _, args := range [][]string{
+		{"vendor", "update", "--rev", newRev},
+		{"vendor", "update", "archify", "other", "--rev", newRev},
+		{"vendor", "update", "archify", "missing"},
+		{"vendor", "bump", "archify"},
+	} {
+		w.mustRun(2, args...)
+	}
+	if strings.Count(readFile(t, manifestFile), nextRev) != 2 {
+		t.Error("a rejected update changed the manifest")
 	}
 }
 
@@ -384,7 +420,7 @@ func TestManifestFromEnvironment(t *testing.T) {
 // manifest fail and say how to fix it.
 func TestNoManifestConfigured(t *testing.T) {
 	w := newWorld(t)
-	for _, args := range [][]string{{"doctor"}, {"sync"}, {"vendor", "bump", "archify"}} {
+	for _, args := range [][]string{{"doctor"}, {"sync"}, {"vendor", "update", "archify"}} {
 		_, errOut := w.mustRun(2, args...)
 		if !strings.Contains(errOut, "no manifest configured") || !strings.Contains(errOut, "skenv init <owner/repo>") ||
 			!strings.Contains(errOut, "--manifest") {
@@ -627,7 +663,7 @@ func TestConfigFormats(t *testing.T) {
 }
 
 // The manifest may be skenv.yaml or skenv.json, and --manifest may name the
-// directory of the skenv file. vendor add|bump|remove edit it in place:
+// directory of the skenv file. vendor add|update|remove edit it in place:
 // comments, the schema directive (moved to this skenv, the latest URL for
 // a development build), key order and untouched values stay (golden files
 // in testdata/; `go test ./internal/cli -run TestManifestFormats -update`
@@ -682,8 +718,8 @@ environment:
 			golden(t, name+".add", readFile(t, file), revs)
 			newRev := w.push("ext/tools", map[string]string{"tools/archify/SKILL.md": skillMD("archify", "v2")}, "fix: archify v2")
 			revs[newRev] = "<new-rev>"
-			w.mustRun(0, "vendor", "bump", "archify", "--rev", newRev)
-			golden(t, name+".bump", readFile(t, file), revs)
+			w.mustRun(0, "vendor", "update", "archify", "--rev", newRev)
+			golden(t, name+".update", readFile(t, file), revs)
 			w.mustRun(0, "vendor", "remove", "other")
 			w.mustRun(0, "vendor", "remove", "archify")
 			golden(t, name+".remove", readFile(t, file), revs)

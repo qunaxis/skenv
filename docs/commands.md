@@ -97,16 +97,20 @@ edited in place (comments and order kept) but not committed; skenv prints
 the commit command. Also takes `--dry-run`. Reference:
 [skenv vendor add](commands/skenv_vendor_add.md).
 
-### `skenv vendor bump`
+### `skenv vendor update`
 
 ```sh
-skenv vendor bump <name>
-skenv vendor bump <name> --rev <sha>
+skenv vendor update
+skenv vendor update <name>...
+skenv vendor update <name> --rev <sha>
 ```
 
-Moves a vendored skill to a new commit (default: HEAD of the default
-branch), shows `git log --oneline old..new -- path` and syncs it. Also takes
-`--dry-run`. Reference: [skenv vendor bump](commands/skenv_vendor_bump.md).
+Moves vendored skills to a new commit and syncs them: every vendored skill
+without names, only the named ones otherwise. Each goes to HEAD of its
+default branch; `--rev` pins a single named skill. For each skill it shows
+`git log --oneline old..new -- path`. Alias: `upgrade`. Also takes
+`--dry-run`. Reference:
+[skenv vendor update](commands/skenv_vendor_update.md).
 
 ### `skenv vendor remove`
 
@@ -118,7 +122,7 @@ Removes a vendored skill from the manifest and its managed paths. Also takes
 `--dry-run`. Reference:
 [skenv vendor remove](commands/skenv_vendor_remove.md).
 
-`vendor add`, `vendor bump` and `vendor remove` also accept `--adopt`.
+`vendor add`, `vendor update` and `vendor remove` also accept `--adopt`.
 
 ### `skenv autostart`
 
@@ -145,7 +149,7 @@ Prints the version, commit and build date. Reference:
 
 ## `--dry-run` and `--adopt`
 
-`--dry-run` prints the plan and changes nothing (`vendor add|bump --dry-run`
+`--dry-run` prints the plan and changes nothing (`vendor add|update --dry-run`
 still fetch into the clone cache `~/.cache/skenv/repos` to resolve the
 commit).
 

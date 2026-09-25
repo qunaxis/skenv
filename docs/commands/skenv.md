@@ -43,6 +43,6 @@ skenv [flags]
 * [skenv repo](skenv_repo.md)	 - Set up and check the harness of a skills repository
 * [skenv schema](skenv_schema.md)	 - Print the JSON Schema of the skenv file or the tool config
 * [skenv sync](skenv_sync.md)	 - Pull, vendor and link every skill of the manifest
-* [skenv vendor](skenv_vendor.md)	 - Pin, bump and remove third-party skills
+* [skenv vendor](skenv_vendor.md)	 - Pin, update and remove third-party skills
 * [skenv version](skenv_version.md)	 - Print the skenv version
 

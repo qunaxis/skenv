@@ -23,5 +23,5 @@ skenv vendor remove <name> [flags]
 
 ### SEE ALSO
 
-* [skenv vendor](skenv_vendor.md)	 - Pin, bump and remove third-party skills
+* [skenv vendor](skenv_vendor.md)	 - Pin, update and remove third-party skills
 
