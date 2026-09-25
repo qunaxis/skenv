@@ -182,3 +182,57 @@ func TestCommitMessageCheck(t *testing.T) {
 		}
 	}
 }
+
+// V2: the range check used by CI must fail when git cannot list the range,
+// not report "0 commits checked" (issue #1).
+func TestCheckCommitsRange(t *testing.T) {
+	need(t, "bash")
+	script := filepath.Join(root(t), "scripts", "check-commits.sh")
+	r := newRepo(t)
+	r.commit("feat: first", "fix(sync): second")
+	first := r.run("git", "rev-list", "--max-parents=0", "HEAD")
+	base := r.run("git", "rev-parse", "HEAD")
+	check := func(rng string) (int, string) {
+		t.Helper()
+		cmd := exec.Command("bash", script, rng)
+		cmd.Dir = r.dir
+		cmd.Env = r.env
+		out, err := cmd.CombinedOutput()
+		var ee *exec.ExitError
+		switch {
+		case err == nil:
+			return 0, string(out)
+		case errors.As(err, &ee):
+			return ee.ExitCode(), string(out)
+		}
+		t.Fatalf("check-commits.sh %s: %v", rng, err)
+		return 0, ""
+	}
+	const ok = "all Conventional Commits"
+
+	for _, rng := range []string{
+		first + "^..HEAD",                          // the parent of a root commit does not exist
+		strings.Repeat("0123456789", 4) + "..HEAD", // base missing from the clone (force-push, shallow fetch)
+		"no-such-ref",
+	} {
+		code, out := check(rng)
+		if code == 0 || strings.Contains(out, ok) {
+			t.Errorf("range %q: exit %d, want failure:\n%s", rng, code, out)
+		}
+		if !strings.Contains(out, "cannot list commits in range "+rng) {
+			t.Errorf("range %q: no explanation:\n%s", rng, out)
+		}
+	}
+
+	if code, out := check("HEAD"); code != 0 || !strings.Contains(out, "2 commits checked, "+ok) {
+		t.Errorf("HEAD: exit %d:\n%s", code, out)
+	}
+	r.commit("docs: third", "perf: fourth")
+	if code, out := check(base + "..HEAD"); code != 0 || !strings.Contains(out, "2 commits checked, "+ok) {
+		t.Errorf("good range: exit %d:\n%s", code, out)
+	}
+	r.commit("Add something")
+	if code, out := check(base + "..HEAD"); code != 1 || !strings.Contains(out, "1 of 3 commits are not Conventional Commits") {
+		t.Errorf("range with a bad commit: exit %d, want 1:\n%s", code, out)
+	}
+}
