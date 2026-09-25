@@ -14,8 +14,8 @@ store   = "~/.agents/skills"
 targets = ["~/.claude/skills", "~/.pi/agent/skills"]
 
 [[own]]
-repo = "qunaxis/skills-private"
-path = "~/Personal/lab/skills-private"
+repo = "me/my-skills"
+path = "~/src/my-skills"
 
 [[vendor]]
 name = "archify"

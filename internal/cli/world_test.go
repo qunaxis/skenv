@@ -158,9 +158,9 @@ func (w *world) exists(p string) bool {
 	return err == nil
 }
 
-const ownPath = "lab/skills-private"
+const ownPath = "src/skills"
 
-// standard sets up the usual remotes: an own repository me/skills-private
+// standard sets up the usual remotes: an own repository me/skills
 // with skills alpha and beta and the manifest, and a vendor repository
 // ext/tools with skills archify and other. It returns the vendor HEAD.
 func (w *world) standard(extraManifest string) string {
@@ -171,7 +171,7 @@ func (w *world) standard(extraManifest string) string {
 		"tools/archify/scripts/run": "#!/bin/sh\necho run\n",
 		"tools/other/SKILL.md":      skillMD("other", "v1"),
 	}, "feat: initial")
-	w.push("me/skills-private", map[string]string{
+	w.push("me/skills", map[string]string{
 		"env.toml":              manifestText(rev, extraManifest),
 		"skills/alpha/SKILL.md": skillMD("alpha", ""),
 		"skills/beta/SKILL.md":  skillMD("beta", ""),
@@ -183,7 +183,7 @@ func (w *world) standard(extraManifest string) string {
 func manifestText(rev, extra string) string {
 	return `# test manifest
 [[own]]
-repo = "me/skills-private"
+repo = "me/skills"
 path = "~/` + ownPath + `"
 
 # pinned third-party skill
@@ -199,6 +199,6 @@ rev  = "` + rev + `" # keep this comment
 func (w *world) initStandard(extraManifest string) string {
 	w.t.Helper()
 	rev := w.standard(extraManifest)
-	w.mustRun(0, "init", "me/skills-private", "--path", "~/"+ownPath)
+	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
 	return rev
 }
