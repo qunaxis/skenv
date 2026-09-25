@@ -1,0 +1,10 @@
+# Local git hooks: `lefthook install` once after cloning.
+commit-msg:
+  commands:
+    conventional-commit:
+      run: scripts/check-commit-msg.sh {1}
+pre-commit:
+  commands:
+    gofmt:
+      glob: "*.go"
+      run: test -z "$(gofmt -l {staged_files})" || { gofmt -l {staged_files}; echo "run gofmt -w"; exit 1; }
