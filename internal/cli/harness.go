@@ -222,6 +222,9 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility string, d
 		if err != nil {
 			return engine.ExitFatal, err
 		}
+		if len(changes) > 0 && changes[0].Action != "create" {
+			rewriteNote(env, c.File)
+		}
 		fmt.Fprintf(env.Stdout, "harness %s (%s) set up in %s\n", c.Harness, c.Visibility, root)
 		return lefthookInstall(ctx, env, root, dryRun), nil
 	case "apply":
@@ -229,19 +232,29 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility string, d
 		if err != nil {
 			return engine.ExitFatal, err
 		}
-		if c.Harness != harness.Latest {
+		old := c.Harness
+		c.Harness = harness.Latest
+		// Refuse (foreign files without --force) before the version moves.
+		if _, err := harness.Apply(root, c, true, force); err != nil {
+			return engine.ExitFatal, err
+		}
+		if old != harness.Latest {
 			if err := harness.SetHarness(root, harness.Latest, dryRun); err != nil {
 				return engine.ExitFatal, err
 			}
-			fmt.Fprintf(env.Stdout, "harness %s → %s\n", c.Harness, harness.Latest)
-			c.Harness = harness.Latest
+			prefix := ""
+			if dryRun {
+				prefix = "would move "
+			}
+			fmt.Fprintf(env.Stdout, "%sharness %s → %s\n", prefix, old, harness.Latest)
+			rewriteNote(env, c.File)
 		}
 		changes, err := harness.Apply(root, c, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
 			return engine.ExitFatal, err
 		}
-		if len(changes) == 0 {
+		if len(changes) == 0 && old == harness.Latest {
 			fmt.Fprintln(env.Stdout, "repo apply: up to date")
 		}
 		return lefthookInstall(ctx, env, root, dryRun), nil
@@ -259,6 +272,14 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility string, d
 	}
 	fmt.Fprintln(env.Stdout, "repo check: managed files match the harness")
 	return engine.ExitOK, nil
+}
+
+// rewriteNote tells that a YAML or JSON skenv file was rewritten from its
+// data: unlike TOML, its comments and key order are gone.
+func rewriteNote(env engine.Env, file string) {
+	if ext := filepath.Ext(file); ext != ".toml" && file != "" {
+		fmt.Fprintf(env.Stderr, "note: %s is rewritten from its data; only TOML keeps comments and key order\n", filepath.Base(file))
+	}
 }
 
 func printChanges(env engine.Env, changes []harness.Change, dryRun bool) {

@@ -111,3 +111,18 @@ func TestRewrite(t *testing.T) {
 		t.Error("TOML must be edited as text")
 	}
 }
+
+// Keys are case-sensitive in JSON too (encoding/json alone would ignore
+// case).
+func TestJSONKeysAreCaseSensitive(t *testing.T) {
+	d, err := Parse([]byte(`{"repo": {"Harness": "0.4.0"}}`), ".json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var repo struct {
+		Harness string `yaml:"harness" json:"harness"`
+	}
+	if err := d.Decode(Repo, &repo); err == nil {
+		t.Errorf("Harness accepted as harness: %+v", repo)
+	}
+}

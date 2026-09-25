@@ -82,8 +82,7 @@ type Doc struct {
 	ext  string
 	raw  map[string]any // the whole document, for IsDefined
 	data []byte
-	yam  map[string]yaml.Node
-	jsn  map[string]json.RawMessage
+	yam  map[string]yaml.Node // YAML and JSON sections
 }
 
 // Read parses the skenv file at path.
@@ -114,9 +113,11 @@ func Parse(data []byte, ext string) (*Doc, error) {
 			err = yaml.Unmarshal(data, &d.raw)
 		}
 	case ".json":
+		// Sections are decoded as YAML (JSON is a subset of it), whose
+		// decoder matches keys exactly; encoding/json ignores case.
 		if len(bytes.TrimSpace(data)) > 0 {
-			if err = json.Unmarshal(data, &d.jsn); err == nil {
-				err = json.Unmarshal(data, &d.raw)
+			if err = json.Unmarshal(data, &d.raw); err == nil {
+				err = yaml.Unmarshal(data, &d.yam)
 			}
 		}
 	default:
@@ -136,6 +137,11 @@ func Parse(data []byte, ext string) (*Doc, error) {
 	}
 	if len(unknown) > 0 {
 		sort.Strings(unknown)
+		for _, k := range unknown {
+			if k == "harness" || k == "visibility" || k == "runner" {
+				return nil, fmt.Errorf("unknown top-level keys: %s; this is the skenv.toml of skenv before 0.4: move harness, visibility and runner under [repo] (see docs/skenv-file.md)", strings.Join(unknown, ", "))
+			}
+		}
 		return nil, fmt.Errorf("unknown top-level keys: %s (settings live under [repo] and [environment])", strings.Join(unknown, ", "))
 	}
 	for _, s := range []string{Repo, Environment} {
@@ -181,7 +187,7 @@ func (d *Doc) Decode(section string, out any) error {
 			return fmt.Errorf("unknown keys: %s", strings.Join(unknown, ", "))
 		}
 		return nil
-	case ".yaml", ".yml":
+	default: // YAML and JSON
 		node := d.yam[section]
 		b, err := yaml.Marshal(&node)
 		if err != nil {
@@ -190,13 +196,6 @@ func (d *Doc) Decode(section string, out any) error {
 		dec := yaml.NewDecoder(bytes.NewReader(b))
 		dec.KnownFields(true)
 		if err := dec.Decode(out); err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("%s: %w", section, err)
-		}
-		return nil
-	default:
-		dec := json.NewDecoder(bytes.NewReader(d.jsn[section]))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(out); err != nil {
 			return fmt.Errorf("%s: %w", section, err)
 		}
 		return nil

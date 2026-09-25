@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/qunaxis/skenv/internal/harness"
 )
 
 // harnessRepo is a git repository inside a temporary $HOME.
@@ -142,4 +144,24 @@ func TestLefthookRejectsBadSkill(t *testing.T) {
 	if out, err := run(repo, "git", "commit", "-q", "-m", "feat: demo"); err != nil {
 		t.Fatalf("valid skill rejected: %v\n%s", err, out)
 	}
+}
+
+// repo apply on an older harness moves the version only when it can
+// regenerate the files; --dry-run says "would".
+func TestRepoApplyOlderHarness(t *testing.T) {
+	w, repo := harnessRepo(t)
+	lookLefthook = func(string) (string, error) { return "", exec.ErrNotFound }
+	t.Cleanup(func() { lookLefthook = exec.LookPath })
+	writeFile(t, filepath.Join(repo, "skenv.toml"), "[repo]\nharness = \"0.3.0\"\nvisibility = \"private\"\n")
+	writeFile(t, filepath.Join(repo, "ruff.toml"), "# hand-written\n")
+	_, errOut := w.mustRun(2, "repo", "apply", "--dir", repo)
+	if !strings.Contains(errOut, "not managed by skenv") || !strings.Contains(readFile(t, filepath.Join(repo, "skenv.toml")), `"0.3.0"`) {
+		t.Fatalf("refused apply moved the version or did not refuse: %s", errOut)
+	}
+	out, _ := w.mustRun(0, "repo", "apply", "--dir", repo, "--force", "--dry-run")
+	if !strings.Contains(out, "would move harness 0.3.0 → "+harness.Latest) || !strings.Contains(readFile(t, filepath.Join(repo, "skenv.toml")), `"0.3.0"`) {
+		t.Fatalf("dry-run: %s", out)
+	}
+	w.mustRun(0, "repo", "apply", "--dir", repo, "--force")
+	w.mustRun(0, "repo", "check", "--dir", repo)
 }

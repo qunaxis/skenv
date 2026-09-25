@@ -127,3 +127,15 @@ func TestParseNeedsEnvironment(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// A vendor table header may carry a comment and spaces.
+func TestVendorHeaderWithComment(t *testing.T) {
+	text := "[environment.layout]\nstore = \"~/s\"\n\n[[ environment . vendor ]]  # pinned\nname = \"b\"\nrepo = \"x/b\"\nrev  = \"" + sha + "\"\n"
+	out, err := RemoveVendor([]byte(text), ".toml", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), `name = "b"`) {
+		t.Errorf("not removed:\n%s", out)
+	}
+}

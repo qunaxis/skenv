@@ -120,7 +120,10 @@ the file. To move a repository by hand:
    | `[[vendor]]`       | `[[environment.vendor]]`       |
    | `[host."<name>"]`  | `[environment.host."<name>"]`  |
 
-   Comments and key order are kept as they are.
+   Comments and key order are kept as they are. Keys that `env.toml` had
+   before its first table (for example `layout.store = "…"`) must go under
+   `[environment]` too: put them before `[repo]` as `environment.layout.store`,
+   or into the renamed table.
 3. Delete `env.toml` and commit.
 4. Run `skenv repo apply` to move the harness to 0.4.0, and check the
    result with `skenv repo check` and `skenv doctor`.

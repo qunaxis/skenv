@@ -37,7 +37,7 @@ func splitLines(data []byte) []string {
 // vendorBlock finds the [[environment.vendor]] table whose name is name.
 func vendorBlock(lines []string, name string) (block, error) {
 	for i := 0; i < len(lines); i++ {
-		if !vendorRe.MatchString(lines[i]) {
+		if !vendorRe.MatchString(strings.TrimRight(lines[i], "\r\n")) {
 			continue
 		}
 		end := i + 1

@@ -139,9 +139,11 @@ skenv autostart enable          # sync at login and hourly
 cloned, point `--path` at it: `skenv init <owner>/<skills-repo> --path ~/src/my-skills`.
 
 > [!WARNING]
-> **Upgrading from v0.3.0 or earlier:** skenv no longer has a built-in
-> default manifest location. If you never ran `skenv init` and relied on
-> that default, commands now stop with an error. Record your existing
+> **Upgrading from v0.3.0 or earlier:** `env.toml` and the old
+> `skenv.toml` are no longer read. First move them into one `skenv.toml`
+> with `[repo]` and `[environment]` sections, as described in
+> [moving from `env.toml`](docs/skenv-file.md#moving-from-envtoml-and-the-old-skenvtoml).
+> skenv also has no built-in default manifest location: record your
 > checkout once with `skenv init <owner>/<skills-repo> --path <checkout>`;
 > an existing clone is not touched, only its skenv file is recorded.
 
