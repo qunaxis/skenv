@@ -21,9 +21,9 @@ it would stop Claude Code from loading this file.
   bumps `harness.Latest` to the release that ships it; `skenv repo check`
   then reports older repositories and `skenv repo apply` moves them.
 - The harness version doubles as the skenv release that generated CI
-  installs (`SKENV_VERSION` in `check.yml`): release it before any
-  repository runs `repo apply`; lint changes reach CI only through a new
-  harness version.
+  installs (`SKENV_VERSION` in `check.yml` and `gitlab-ci.yml`): release
+  it before any repository runs `repo apply`; lint changes reach CI only
+  through a new harness version.
 - No backward-compatibility guarantee before 1.0: breaking CLI, config and
   file-format changes are allowed and marked `!` (see
   `docs/adr/0001-cli-and-config-framework.md`).

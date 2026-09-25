@@ -275,7 +275,7 @@ func dryRunFlag(fs *pflag.FlagSet, p *bool) {
 
 func initCmd(a *app) *cobra.Command {
 	var o engine.Options
-	var dir, here, format string
+	var dir, here, format, remote string
 	var imp bool
 	c := &cobra.Command{
 		Use:   "init [<repo>]",
@@ -295,7 +295,11 @@ commented skeleton, or skenv.toml is created with one (skenv.yaml or
 skenv.json with --format); the repository itself becomes its first own
 repository: owner/repo for an origin on github.com, gitlab:... on
 gitlab.com, codeberg:... on codeberg.org, the URL (without credentials) on
-any other host; a local origin is left out. The file is recorded
+any other host; a local origin is left out. A repository without an origin
+yet names its future remote with --remote (owner/repo, gitlab:group/repo,
+codeberg:owner/repo or a full URL), written the same way; with an origin,
+--remote is an error. It does not set up [repo]: "skenv repo init" does, and
+picks the CI system from the host of origin. The file is recorded
 as "manifest" in the config file (a new one in the same format), and nothing
 is synced. It refuses when the file has [environment] already or its [repo]
 is public.
@@ -311,7 +315,9 @@ skenv init example-org/skills
 # Start a manifest in the git repository of the current directory
 skenv init
 # Start one with the skills already installed here, and take them over
-skenv init --import`,
+skenv init --import
+# Start one in a repository without an origin yet, to be pushed to gitlab.com
+skenv init --remote gitlab:example-group/my-skills`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return usageError{fmt.Sprintf("init: expected at most 1 argument, got %d (see `%s --help`)", len(args), cmd.CommandPath())}
@@ -327,9 +333,12 @@ skenv init --import`,
 					return engine.ExitFatal, usageError{"init: --path and --adopt need <repo>; without it, --dir names the repository"}
 				}
 				if imp {
-					return engine.InitImport(ctx, env, here, format, o.DryRun)
+					return engine.InitImport(ctx, env, here, format, remote, o.DryRun)
 				}
-				return engine.NewManifest(ctx, env, here, format, o.DryRun)
+				return engine.NewManifest(ctx, env, here, format, remote, o.DryRun)
+			}
+			if remote != "" {
+				return engine.ExitFatal, usageError{"init: --remote is for starting a manifest without <repo>; <repo> is the remote"}
 			}
 			if imp {
 				return engine.ExitFatal, usageError{"init: --import starts a new manifest, without <owner/repo>; after cloning one, run `skenv import`"}
@@ -342,6 +351,7 @@ skenv init --import`,
 	}
 	c.Flags().StringVar(&dir, "path", "", "where to clone the repository (default ./<repo>)")
 	c.Flags().StringVar(&here, "dir", "", "without <repo>: the repository to start the manifest in (default: the current one)")
+	c.Flags().StringVar(&remote, "remote", "", "without <repo>, for a repository without origin: its future remote, recorded as its own entry (owner/repo, gitlab:group/repo, codeberg:owner/repo or a URL)")
 	formatFlag(c, &format, "format of a new file: toml, yaml or json (default toml; an existing file keeps its format)")
 	dryRunFlag(c.Flags(), &o.DryRun)
 	c.Flags().BoolVar(&o.Adopt, "adopt", false, "back up and replace unmanaged paths that conflict with the manifest")

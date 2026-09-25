@@ -1,7 +1,7 @@
 exit 0
 create skenv.toml
 create lefthook.yml
-create .github/workflows/check.yml
+create .gitlab-ci.yml
 create ruff.toml
 create pyrightconfig.json
 create .editorconfig
@@ -9,6 +9,5 @@ create .markdownlint.yaml
 create AGENTS.md
 create .gitignore
 create .claude/settings.json
-ci github: the default, the repository has no origin; --ci overrides it
-harness 0.5.0 (public, ci github) set up in ~/src/public-skills
+harness 0.5.0 (private, ci gitlab) set up in ~/src/team-skills
 lefthook install: hooks active

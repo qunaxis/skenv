@@ -229,3 +229,51 @@ func TestMarkerIdentity(t *testing.T) {
 		t.Errorf("marker:\n%s", mk)
 	}
 }
+
+// `skenv init --remote` names the future remote of a repository without an
+// origin: written like an origin would be. With an origin, with <repo>, or
+// for a local path it is an error.
+func TestInitRemote(t *testing.T) {
+	for remote, want := range map[string]string{
+		"example-org/skills":                                  `repo = "example-org/skills"`,
+		"gitlab:example-group/sub/skills":                     `repo = "gitlab:example-group/sub/skills"`,
+		"https://gitlab.com/example-group/skills.git":         `repo = "gitlab:example-group/skills"`,
+		"codeberg:example-org/skills":                         `repo = "codeberg:example-org/skills"`,
+		"https://user:secret@git.example.com/team/skills.git": `repo = "https://git.example.com/team/skills.git"`,
+	} {
+		t.Run(remote, func(t *testing.T) {
+			w := newWorld(t)
+			repo := w.path("src/skills")
+			mustMkdir(t, repo)
+			w.git(repo, "init", "--quiet")
+			out, _ := w.mustRun(0, "init", "--dir", repo, "--remote", remote)
+			text := readFile(t, filepath.Join(repo, "skenv.toml"))
+			if !strings.Contains(text, want+"\npath = \"~/src/skills\"\n") || strings.Contains(text+out, "secret") {
+				t.Errorf("skenv.toml:\n%s\n%s", text, out)
+			}
+		})
+	}
+	w := newWorld(t)
+	repo := w.path("src/skills")
+	mustMkdir(t, repo)
+	w.git(repo, "init", "--quiet")
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--remote", "./elsewhere"}, "not a local path"},
+		{[]string{"--remote", "work:team/skills"}, `unknown host prefix "work:"`},
+		{[]string{"example-org/skills", "--remote", "example-org/skills"}, "--remote is for starting a manifest without <repo>"},
+	} {
+		if _, errOut := w.mustRun(2, append([]string{"init", "--dir", repo}, c.args...)...); !strings.Contains(errOut, c.want) {
+			t.Errorf("%v: %s", c.args, errOut)
+		}
+	}
+	w.git(repo, "remote", "add", "origin", "https://github.com/example-org/skills.git")
+	if _, errOut := w.mustRun(2, "init", "--dir", repo, "--remote", "gitlab:example-group/skills"); !strings.Contains(errOut, "--remote is for a repository without an origin remote") {
+		t.Errorf("with an origin: %s", errOut)
+	}
+	if fileExists(filepath.Join(repo, "skenv.toml")) {
+		t.Error("a refused init wrote skenv.toml")
+	}
+}

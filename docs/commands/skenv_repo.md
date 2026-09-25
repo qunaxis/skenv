@@ -12,6 +12,7 @@ skenv repo [flags]
 
 ```console
 $ skenv repo init --visibility private
+$ skenv repo init --visibility public --ci gitlab
 $ skenv repo check
 $ skenv repo apply
 ```

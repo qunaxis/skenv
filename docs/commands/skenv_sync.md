@@ -41,7 +41,7 @@ Pull, vendor and link:
 
 ```console
 $ skenv sync
-pull ~/src/skills (b9b3603 → 50d0cbb)
+pull ~/src/skills (b1e543d → c36c5ec)
 vendor diagrams from example-vendor/tools@ebb66f94cb1c (tools/diagrams)
 link ~/.agents/skills/write-tests → ~/src/skills/skills/write-tests
 link ~/.claude/skills/write-tests → ../../.agents/skills/write-tests
@@ -53,7 +53,7 @@ In a project: copy its pinned skills and update the mirrors:
 
 ```console
 $ skenv sync --project
-copy .agents/skills/code-review from example-org/skills@b9b36033a60d (skills/code-review)
+copy .agents/skills/code-review from example-org/skills@b1e543d9c9ba (skills/code-review)
 copy .agents/skills/diagrams from example-vendor/tools@27f221f8f2a4 (tools/diagrams)
 link .claude/skills/code-review → ../../.agents/skills/code-review
 link .claude/skills/deploy → ../../.agents/skills/deploy

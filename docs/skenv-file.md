@@ -20,7 +20,7 @@ ignores), and unknown keys inside a section are errors.
 
 | Section         | What it is                                                                                            | Who writes it                              | Reference                     |
 | --------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------ | ----------------------------- |
-| `[repo]`        | The harness of a skills repository: `harness`, `visibility`, `runner`.                                | [`skenv repo init`](harness.md#skenv-repo-init), [`skenv repo apply`](harness.md#skenv-repo-apply) | [harness](harness.md)         |
+| `[repo]`        | The harness of a skills repository: `harness`, `visibility`, `ci`, `runner`.                          | [`skenv repo init`](harness.md#skenv-repo-init), [`skenv repo apply`](harness.md#skenv-repo-apply) | [harness](harness.md)         |
 | `[environment]` | The manifest of your machines: `layout`, `hosts`, `own`, `vendor`, `host`.                            | you, [`skenv init`](#creating-the-file) (starts it), [`skenv vendor add`](commands.md#skenv-vendor-add), [`update`](commands.md#skenv-vendor-update), [`remove`](commands.md#skenv-vendor-remove) | [manifest](manifest.md)       |
 | `[project]`     | The skills a project repository carries: `dir`, `mirrors`, `mirrors_mode`, `hosts`, `vendor`, `from`.| you, [`skenv vendor add`, `update`, `remove`](project-skills.md#commands) with `--project` | [project skills](project-skills.md) |
 
@@ -42,8 +42,9 @@ A private skills repository that also holds the manifest:
 
 ```toml
 [repo]
-harness    = "0.4.0"
+harness    = "0.5.0"
 visibility = "private"
+ci         = "github"
 runner     = ["ubuntu-latest"]
 
 [environment.layout]
@@ -67,8 +68,9 @@ The same in YAML (`skenv.yaml`):
 
 ```yaml
 repo:
-  harness: 0.4.0
+  harness: 0.5.0
   visibility: private
+  ci: github
   runner: [ubuntu-latest]
 environment:
   layout:
@@ -106,7 +108,7 @@ same name, `skenv.yml` stays `skenv.yml`, and so on.
 Each edit changes only what it has to, in every format: comments, blank
 lines, key order and the formatting of everything else stay. New entries
 come in the order the docs use (`name`, `repo`, `path`, `rev` for a vendor;
-`harness`, `visibility`, `runner` for `[repo]`). In YAML, `[repo]` goes to
+`harness`, `visibility`, `ci`, `runner` for `[repo]`). In YAML, `[repo]` goes to
 the top of the file and a vendor entry follows the existing ones. JSON is
 written with two-space indentation, keeps its key order and `"$schema"`,
 and leaves `<`, `>` and `&` as they are.
@@ -200,7 +202,7 @@ the file. To move a repository by hand:
    `[environment]` too: put them before `[repo]` as `environment.layout.store`,
    or into the renamed table.
 3. Delete `env.toml` and commit.
-4. Run `skenv repo apply` to move the harness to 0.4.0, and check the
+4. Run `skenv repo apply` to move the harness to the templates of the installed skenv, and check the
    result with `skenv repo check` and `skenv doctor`.
 5. If `~/.config/skenv/config.toml` records `manifest = ".../env.toml"`,
    point it at the new file or its directory, or rerun

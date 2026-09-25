@@ -260,6 +260,9 @@ func (g *gen) skenv() *Schema {
 	h.Examples = []any{harness.Latest}
 	repo.Properties.get("visibility").Enum = []string{"private", "public"}
 	repo.Properties.get("runner").Default = harness.DefaultRunner
+	ci := repo.Properties.get("ci")
+	ci.Enum = harness.CIs
+	ci.Default = harness.CIGitHub
 
 	return &Schema{
 		Title: "skenv file",

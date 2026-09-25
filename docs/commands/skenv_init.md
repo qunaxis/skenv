@@ -21,7 +21,11 @@ commented skeleton, or `skenv.toml` is created with one (`skenv.yaml` or
 `skenv.json` with `--format`); the repository itself becomes its first own
 repository: owner/repo for an origin on `github.com`, gitlab:... on
 `gitlab.com`, codeberg:... on `codeberg.org`, the URL (without credentials) on
-any other host; a local origin is left out. The file is recorded
+any other host; a local origin is left out. A repository without an origin
+yet names its future remote with `--remote` (owner/repo, gitlab:group/repo,
+codeberg:owner/repo or a full URL), written the same way; with an origin,
+`--remote` is an error. It does not set up `[repo]`: `skenv repo init` does, and
+picks the CI system from the host of origin. The file is recorded
 as `manifest` in the config file (a new one in the same format), and nothing
 is synced. It refuses when the file has `[environment]` already or its `[repo]`
 is public.
@@ -127,6 +131,18 @@ link ~/.pi/agent/skills/release-notes → ../../../.agents/skills/release-notes
 sync: 8 changes, 1 warnings, 0 errors
 ```
 
+Start one in a repository without an origin yet, to be pushed to `gitlab.com`:
+
+```console
+$ skenv init --remote gitlab:example-group/my-skills
+create ~/src/my-skills/skenv.toml with [environment], gitlab:example-group/my-skills as its first own repository
+manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
+next steps:
+  - skenv vendor add <repo> --path <dir>         pin a third-party skill
+  - skenv sync                                  link the skills of the manifest
+  - commit skenv.toml; on another machine: skenv init gitlab:example-group/my-skills
+```
+
 ### Options
 
 ```
@@ -137,6 +153,7 @@ sync: 8 changes, 1 warnings, 0 errors
   -h, --help            help for init
       --import          without <owner/repo>: import the installed skills into the new manifest and run sync --adopt
       --path string     where to clone the repository (default ./<repo>)
+      --remote string   without <repo>, for a repository without origin: its future remote, recorded as its own entry (owner/repo, gitlab:group/repo, codeberg:owner/repo or a URL)
 ```
 
 ### SEE ALSO

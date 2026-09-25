@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -21,15 +22,16 @@ import (
 // (`skenv init` without a repository): it adds an [environment] section to
 // the skenv file of the repository, or creates skenv.<format> with one,
 // and records the file as "manifest" in the tool config. The repository
-// itself becomes the first [[environment.own]] entry when its origin is on
-// GitHub. An empty manifest is not synced.
+// itself becomes the first [[environment.own]] entry: from its origin, or
+// from remote (`--remote`) when it has no origin yet. An empty manifest is
+// not synced.
 //
 // It refuses, before writing anything, when the file has [environment]
 // already, when its [repo] is public (the manifest is personal), and when
 // format disagrees with the existing file. A new tool config takes the
 // format of the skenv file; an existing one keeps its own.
-func NewManifest(ctx context.Context, env Env, dir, format string, dryRun bool) (int, error) {
-	p, err := planManifest(ctx, env, dir, format)
+func NewManifest(ctx context.Context, env Env, dir, format, remote string, dryRun bool) (int, error) {
+	p, err := planManifest(ctx, env, dir, format, remote)
 	if err != nil {
 		return ExitFatal, err
 	}
@@ -65,7 +67,7 @@ type manifestPlan struct {
 	file     string // the skenv file to write
 	existing bool   // the file exists (without [environment])
 	data     []byte // its content, empty for a new file
-	// own is the repository itself when its origin is on GitHub.
+	// own is the repository itself: from origin, or from --remote.
 	own       *manifest.Own
 	cfgFormat string // format of a new tool config, "" to keep the existing one
 	cfgPath   string
@@ -74,8 +76,8 @@ type manifestPlan struct {
 }
 
 // planManifest checks everything NewManifest needs before writing: the git
-// repository of dir, its skenv file and the tool config.
-func planManifest(ctx context.Context, env Env, dir, format string) (*manifestPlan, error) {
+// repository of dir, its skenv file, remote and the tool config.
+func planManifest(ctx context.Context, env Env, dir, format, remote string) (*manifestPlan, error) {
 	if err := gitx.Available(); err != nil {
 		return nil, err
 	}
@@ -118,10 +120,21 @@ func planManifest(ctx context.Context, env Env, dir, format string) (*manifestPl
 		}
 	}
 
-	// The repository itself is the first own entry when its origin is on a
-	// network host.
-	if remote, err := env.Git.Run(ctx, root, "config", "--get", "remote.origin.url"); err == nil {
-		if repo, ok := ownRepo(remote); ok {
+	// The repository itself is the first own entry when its origin, or
+	// --remote for a repository without one, is on a network host.
+	origin, err := env.Git.Run(ctx, root, "config", "--get", "remote.origin.url")
+	hasOrigin := err == nil && strings.TrimSpace(origin) != ""
+	switch {
+	case remote != "" && hasOrigin:
+		return nil, errors.New("--remote is for a repository without an origin remote; this one has one, and its own entry comes from it")
+	case remote != "":
+		repo, err := remoteRepo(remote)
+		if err != nil {
+			return nil, err
+		}
+		p.own = &manifest.Own{Repo: repo, Path: show(root)}
+	case hasOrigin:
+		if repo, ok := ownRepo(origin); ok {
 			p.own = &manifest.Own{Repo: repo, Path: show(root)}
 		}
 	}
@@ -220,6 +233,22 @@ func (p *manifestPlan) write(env Env, out []byte, own *manifest.Own) error {
 	}
 	fmt.Fprintf(env.Stdout, "manifest %s recorded in %s\n", p.show(p.file), p.show(cfgFile))
 	return nil
+}
+
+// remoteRepo is the repo value for --remote: a repository on a network
+// host in any form a manifest accepts except a declared alias (the new
+// manifest declares no hosts yet). Like an origin, it is written in the
+// short form on a built-in host and without credentials otherwise.
+func remoteRepo(value string) (string, error) {
+	r, err := manifest.Hosts(nil).Resolve(value)
+	if err != nil {
+		return "", fmt.Errorf("--remote: %w", err)
+	}
+	repo, ok := ownRepo(r.URL)
+	if !ok {
+		return "", errors.New("--remote must name a repository on a network host, not a local path")
+	}
+	return repo, nil
 }
 
 // ownRepo is the repo value for the origin remote of a new manifest: the
