@@ -1,10 +1,17 @@
-# Harness of a skills repository
+# Repository checks and CI
 
-`skenv repo` generates and verifies the tooling around a repository of
-skills: git hooks, the CI pipeline (GitHub Actions or GitLab CI), linter
-configs and the rules for coding agents. It works in any git repository
-with skills under `skills/<name>/`.
+`skenv repo` sets up and verifies optional tooling around a repository of
+skills, called the harness: git hooks, the CI pipeline (GitHub Actions or
+GitLab CI), linter configs and the rules for coding agents. It works in any
+git repository with skills under `skills/<name>/`.
 
+You do not need it to install, sync or create skills: `skenv new`,
+`skenv lint` and everything in the manifest work without it. Set it up when
+a repository has several skills or several authors, or before it goes
+public.
+
+- [Before you start](#before-you-start)
+- [Set it up](#set-it-up)
 - [`[repo]` in `skenv.toml`](#repo-in-skenvtoml)
 - [Commands](#commands)
 - [Managed files](#managed-files)
@@ -13,6 +20,65 @@ with skills under `skills/<name>/`.
 - [Troubleshooting](#troubleshooting)
 - [Skill tests](#skill-tests)
 - [Harness versions](#harness-versions)
+
+## Before you start
+
+The generated hooks and pipeline need, on each machine that commits to the
+repository:
+
+| Tool | Used by |
+| ---- | ------- |
+| [lefthook](https://github.com/evilmartians/lefthook) | installs and runs the git hooks (`lefthook install`) |
+| skenv | the pre-commit hook runs `skenv lint --staged`; the Claude Code hook runs `skenv lint --hook` |
+| [uv](https://docs.astral.sh/uv/) | the pre-commit hook runs ruff and shellcheck through `uvx` |
+| [gitleaks](https://github.com/gitleaks/gitleaks) | the pre-commit hook scans staged changes for secrets; `skenv lint --publish` scans the history |
+
+A **public** repository also needs a stop-list
+(`~/.config/skenv/denylist.txt` or `$SKENV_DENYLIST`): its pre-push hook
+runs the publication check (see [Validation and publication](lint.md)).
+`skenv repo init` lists which of lefthook, uv and gitleaks it found on
+`PATH` and warns about the missing ones; without them, commits in the
+repository fail.
+
+Decide where the CI jobs of a **private** repository run: by default on a
+self-hosted runner with the labels (GitHub) or tags (GitLab) `self-hosted`,
+`linux`, `docker`. Without such a runner the jobs wait in the queue. On
+GitHub, `--runner ubuntu-latest` uses the GitHub-hosted runners instead;
+see [Runners](#runners). Public repositories always run on the hosted
+runners: GitHub-hosted `ubuntu-latest` on GitHub, the shared runners on
+GitLab.
+
+## Set it up
+
+```sh
+cd ~/src/<skills-repo>
+skenv repo init --visibility private --runner ubuntu-latest --dry-run
+skenv repo init --visibility private --runner ubuntu-latest
+skenv repo check        # exit 0: the managed files match the templates
+git add -A && git commit -m "chore: set up the skenv harness" && git push
+```
+
+`ubuntu-latest` is a GitHub runner. For a repository on GitLab, pass the
+tags of your runners instead (`saas-linux-small-amd64` for the GitLab.com
+instance runners), or leave `--runner` out for the self-hosted default.
+
+`repo init` lists the files it creates, the CI system it picked, where the
+private CI jobs run and how to change that, the hook tools it found and
+missed, then runs `lefthook install`:
+
+```text
+create skenv.toml
+create lefthook.yml
+create .github/workflows/check.yml
+...
+harness 0.5.0 (private, ci github) set up in ~/src/<skills-repo>
+CI jobs run on runners ubuntu-latest (repo.runner); to change them, edit repo.runner and run `skenv repo apply`
+git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
+lefthook install: hooks active
+```
+
+The rest of this page describes the settings, the managed files and the
+pipelines.
 
 ## `[repo]` in `skenv.toml`
 
@@ -54,8 +120,9 @@ names, which skills you use).
 ### `skenv repo init`
 
 ```sh
-skenv repo init --visibility private               # CI detected from origin
-skenv repo init --visibility public --ci gitlab    # or: --ci github
+skenv repo init --visibility private                          # CI detected from origin
+skenv repo init --visibility private --runner ubuntu-latest   # GitHub-hosted runners
+skenv repo init --visibility public --ci gitlab               # or: --ci github
 ```
 
 Adds `[repo]` and the schema directive (creating `skenv.toml` if there is
@@ -65,7 +132,10 @@ exists. An existing skenv file gets `[repo]` in its own format; `--format`
 that disagrees with it is an error (see
 [Creating the file](skenv-file.md#creating-the-file)). `--ci` picks the CI
 system; without it, the host of `origin` decides, and the output says what
-was detected. Reference: [skenv repo init](commands/skenv_repo_init.md).
+was detected. `--runner` (comma-separated or repeated) sets `runner` of a
+private repository and is an error for a public one; the output names the
+runners and lists the hook tools found and missing on `PATH`. Reference:
+[skenv repo init](commands/skenv_repo_init.md).
 
 ### `skenv repo apply`
 
@@ -641,4 +711,4 @@ installed skenv. The CI pipeline installs the skenv release named by
 `harness`.
 
 The publication check and the lint rules are described in
-[commands](commands.md#skenv-lint-path---staged---publish).
+[Validation and publication](lint.md).

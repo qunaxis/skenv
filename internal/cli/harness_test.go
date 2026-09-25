@@ -306,3 +306,52 @@ func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
 }
+
+// --runner sets the runners of a private repository's CI jobs; init names
+// them and the tools the generated hooks need that are missing.
+func TestRepoInitRunner(t *testing.T) {
+	w, repo := harnessRepo(t)
+	lookLefthook = func(string) (string, error) { return "", exec.ErrNotFound }
+	lookTool = func(name string) (string, error) {
+		if name == "gitleaks" {
+			return "", exec.ErrNotFound
+		}
+		return "/bin/" + name, nil
+	}
+	t.Cleanup(func() { lookLefthook, lookTool = exec.LookPath, exec.LookPath })
+
+	_, errOut := w.mustRun(2, "repo", "init", "--visibility", "public", "--runner", "ubuntu-latest", "--dir", repo)
+	if !strings.Contains(errOut, "--runner is for private repositories: the CI jobs of a public one run on the GitHub-hosted ubuntu-latest runners") {
+		t.Errorf("public --runner: %s", errOut)
+	}
+	_, errOut = w.mustRun(2, "repo", "init", "--visibility", "public", "--ci", "gitlab", "--runner", "docker", "--dir", repo)
+	if !strings.Contains(errOut, "run on the GitLab shared runners") {
+		t.Errorf("public --runner on GitLab: %s", errOut)
+	}
+	for _, bad := range []string{"--runner=a,,b", "--runner=x]", "--runner="} {
+		if _, errOut := w.mustRun(2, "repo", "init", "--visibility", "private", bad, "--dir", repo); !strings.Contains(errOut, "runner") {
+			t.Errorf("%s: %s", bad, errOut)
+		}
+	}
+	if out, _ := w.mustRun(0, "repo", "init", "--visibility", "private", "--runner", "ubuntu-latest", "--dir", repo, "--dry-run"); !strings.Contains(out, "would be set up in") ||
+		!strings.Contains(out, "CI jobs would run on runners ubuntu-latest") {
+		t.Errorf("init --dry-run:\n%s", out)
+	}
+	out, errOut := w.mustRun(0, "repo", "init", "--visibility", "private", "--runner", "ubuntu-latest", "--dir", repo)
+	if !strings.Contains(out, "CI jobs run on runners ubuntu-latest (repo.runner)") {
+		t.Errorf("init output:\n%s", out)
+	}
+	if !strings.Contains(out, "git hooks need lefthook, uv and gitleaks: found uv; missing lefthook, gitleaks\n") {
+		t.Errorf("found tools:\n%s", out)
+	}
+	if !strings.Contains(errOut, "the git hooks need lefthook, gitleaks, not found on PATH") {
+		t.Errorf("missing tools:\n%s", errOut)
+	}
+	if got := readFile(t, filepath.Join(repo, "skenv.toml")); !strings.Contains(got, `runner     = ["ubuntu-latest"]`) {
+		t.Errorf("skenv.toml:\n%s", got)
+	}
+	if got := readFile(t, filepath.Join(repo, ".github/workflows/check.yml")); !strings.Contains(got, "runs-on: [ubuntu-latest]") {
+		t.Errorf("check.yml does not run on ubuntu-latest")
+	}
+	w.mustRun(0, "repo", "check", "--dir", repo)
+}

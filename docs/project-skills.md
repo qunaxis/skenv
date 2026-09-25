@@ -57,7 +57,7 @@ git commit -m "chore(skills): add project skills"
 A project with skills from `npx skills add` (a `skills-lock.json` in its
 root) starts with `skenv import --project` instead, which writes the
 section and the entries for you; see
-[Adopting an existing setup](adopting.md#project-skills-import---project).
+[Adopt existing skills](adopting.md#project-skills-import---project).
 
 After a clone nothing needs to run: the skills are in the repository.
 `skenv sync` in the project is only needed after you edit `[project]` by
@@ -485,7 +485,7 @@ commit: `skenv import --project` pins each entry of its `skills-lock.json`
 to the commit it was installed from, adds `[project]` when the skenv file
 has none, reports project-own skills that differ between agent
 directories, and removes the imported entries from the lock; see
-[Adopting an existing setup](adopting.md#project-skills-import---project):
+[Adopt existing skills](adopting.md#project-skills-import---project):
 
 ```sh
 skenv import --project --dry-run

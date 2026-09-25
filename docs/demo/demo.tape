@@ -61,11 +61,11 @@ Sleep 300ms
 Enter
 Wait /\$$/
 Sleep 4500ms
-Type "readlink ~/.claude/skills/pdf-tools"
+Type "skenv list"
 Sleep 300ms
 Enter
 Wait /\$$/
-Sleep 2s
+Sleep 4500ms
 Type "skenv doctor"
 Sleep 300ms
 Enter

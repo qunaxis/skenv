@@ -748,3 +748,25 @@ func TestOldManifestIsRejected(t *testing.T) {
 		t.Errorf("doctor: %s", errOut)
 	}
 }
+
+// The commit hint after vendor add stages a skenv file git does not track
+// yet: `git commit -- <file>` alone fails on it.
+func TestCommitHintUntrackedManifest(t *testing.T) {
+	w := newWorld(t)
+	w.push("ext/tools", map[string]string{"tools/archify/SKILL.md": skillMD("archify", "")}, "feat: archify")
+	repo := w.path("src/fresh")
+	mustMkdir(t, repo)
+	w.git(repo, "init", "--quiet", "-b", "main")
+	t.Chdir(repo)
+	w.mustRun(0, "init")
+	out, _ := w.mustRun(0, "vendor", "add", "ext/tools", "--path", "tools/archify")
+	if !strings.Contains(out, "to commit:\n  git -C ~/src/fresh add -- skenv.toml\n  git -C ~/src/fresh commit -m") {
+		t.Errorf("commit hint for an untracked skenv file:\n%s", out)
+	}
+	w.git(repo, "add", "skenv.toml")
+	w.git(repo, "commit", "-q", "-m", "chore: manifest")
+	out, _ = w.mustRun(0, "vendor", "remove", "archify")
+	if strings.Contains(out, " add -- ") {
+		t.Errorf("commit hint for a tracked skenv file stages it:\n%s", out)
+	}
+}

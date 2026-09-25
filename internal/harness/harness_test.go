@@ -38,7 +38,7 @@ func TestInitCheckApply(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, "AGENTS.md"), "# Local\n\nKeep this text.\n")
 	write(t, filepath.Join(root, ".gitignore"), "/local-only\n")
-	if _, _, err := Init(root, "private", "", "", false, false); err != nil {
+	if _, _, err := Init(root, "private", "", "", nil, false, false); err != nil {
 		t.Fatal(err)
 	}
 	if d, err := Check(root); err != nil || len(d) != 0 {
@@ -89,7 +89,7 @@ func TestInitCheckApply(t *testing.T) {
 	if changes, _ := Apply(root, mustConfig(t, root), false, false); len(changes) != 0 {
 		t.Errorf("second apply changed %v", changes)
 	}
-	if _, _, err := Init(root, "private", "", "", false, false); err == nil || !strings.Contains(err.Error(), "already has [repo]") {
+	if _, _, err := Init(root, "private", "", "", nil, false, false); err == nil || !strings.Contains(err.Error(), "already has [repo]") {
 		t.Errorf("second init: %v", err)
 	}
 }
@@ -105,7 +105,7 @@ func mustConfig(t *testing.T, root string) *Config {
 
 func TestCheckReportsClaudeMD(t *testing.T) {
 	root := t.TempDir()
-	if _, _, err := Init(root, "public", "", "", false, false); err != nil {
+	if _, _, err := Init(root, "public", "", "", nil, false, false); err != nil {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(root, ".claude", "CLAUDE.md"), "x")
@@ -118,7 +118,7 @@ func TestCheckReportsClaudeMD(t *testing.T) {
 
 func TestMissingAndBrokenBlocks(t *testing.T) {
 	root := t.TempDir()
-	if _, _, err := Init(root, "public", "", "", false, false); err != nil {
+	if _, _, err := Init(root, "public", "", "", nil, false, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(filepath.Join(root, "ruff.toml")); err != nil {
@@ -230,10 +230,10 @@ func TestInitNextToEnvironment(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			root := t.TempDir()
 			write(t, filepath.Join(root, c.name), c.content)
-			if _, _, err := Init(root, "public", "", "", false, false); err == nil || !strings.Contains(err.Error(), "must not carry [environment]") {
+			if _, _, err := Init(root, "public", "", "", nil, false, false); err == nil || !strings.Contains(err.Error(), "must not carry [environment]") {
 				t.Fatalf("public init with [environment]: %v", err)
 			}
-			if _, _, err := Init(root, "private", "", "", false, false); err != nil {
+			if _, _, err := Init(root, "private", "", "", nil, false, false); err != nil {
 				t.Fatal(err)
 			}
 			got := read(t, filepath.Join(root, c.name))
@@ -246,7 +246,7 @@ func TestInitNextToEnvironment(t *testing.T) {
 			if d, err := Check(root); err != nil || len(d) != 0 {
 				t.Errorf("check: %v %v\n%s", d, err, got)
 			}
-			if _, _, err := Init(root, "private", "", "", false, false); err == nil || !strings.Contains(err.Error(), "already has [repo]") {
+			if _, _, err := Init(root, "private", "", "", nil, false, false); err == nil || !strings.Contains(err.Error(), "already has [repo]") {
 				t.Errorf("second init: %v", err)
 			}
 			// Turning it public is reported by check.
@@ -269,7 +269,7 @@ func TestInitNextToEnvironment(t *testing.T) {
 // Latest by Update (what `repo apply` does).
 func TestOlderHarness(t *testing.T) {
 	root := t.TempDir()
-	if _, _, err := Init(root, "private", "", "", false, false); err != nil {
+	if _, _, err := Init(root, "private", "", "", nil, false, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Update(root, "0.3.0", false); err != nil {
@@ -302,7 +302,7 @@ func TestCompare(t *testing.T) {
 func TestApplyKeepsCRLFOutsideBlock(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ".gitignore"), "a\r\nb\r\n")
-	if _, _, err := Init(root, "public", "", "", false, false); err != nil {
+	if _, _, err := Init(root, "public", "", "", nil, false, false); err != nil {
 		t.Fatal(err)
 	}
 	if got := read(t, filepath.Join(root, ".gitignore")); !strings.HasPrefix(got, "a\r\nb\r\n\n# skenv:begin") {
@@ -384,13 +384,13 @@ func TestTemplates(t *testing.T) {
 func TestForeignFilesNeedForce(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ".github/workflows/check.yml"), "name: hand-written\n")
-	if _, _, err := Init(root, "private", "", "", false, false); err == nil || !strings.Contains(err.Error(), ".github/workflows/check.yml exist and are not managed") {
+	if _, _, err := Init(root, "private", "", "", nil, false, false); err == nil || !strings.Contains(err.Error(), ".github/workflows/check.yml exist and are not managed") {
 		t.Fatalf("init over a hand-written workflow: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, ConfigFile)); err == nil {
 		t.Fatal("refused init must not leave skenv.toml behind")
 	}
-	if _, _, err := Init(root, "private", "", "", false, true); err != nil {
+	if _, _, err := Init(root, "private", "", "", nil, false, true); err != nil {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(root, ".claude/settings.json"), `{"permissions": {"allow": ["Bash(ls)"]}}`)
@@ -438,7 +438,7 @@ func TestInitAndUpdateKeepYAMLAndJSON(t *testing.T) {
 			root := t.TempDir()
 			file := filepath.Join(root, c.name)
 			write(t, file, c.in)
-			if _, _, err := Init(root, "private", "", "", false, false); err != nil {
+			if _, _, err := Init(root, "private", "", "", nil, false, false); err != nil {
 				t.Fatal(err)
 			}
 			if got := read(t, file); got != c.init {
@@ -470,7 +470,7 @@ func TestInitFormat(t *testing.T) {
 	} {
 		t.Run("format="+format, func(t *testing.T) {
 			root := t.TempDir()
-			c, _, err := Init(root, "public", "", format, false, false)
+			c, _, err := Init(root, "public", "", format, nil, false, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -491,14 +491,14 @@ func TestInitFormat(t *testing.T) {
 	}
 	root := t.TempDir()
 	write(t, filepath.Join(root, "skenv.yml"), "environment: {}\n")
-	if _, _, err := Init(root, "private", "", "json", false, false); err == nil || !strings.Contains(err.Error(), "skenv.yml exists and is YAML; --format json does not convert it") {
+	if _, _, err := Init(root, "private", "", "json", nil, false, false); err == nil || !strings.Contains(err.Error(), "skenv.yml exists and is YAML; --format json does not convert it") {
 		t.Fatalf("mismatch: %v", err)
 	}
 	if entries, _ := os.ReadDir(root); len(entries) != 1 || read(t, filepath.Join(root, "skenv.yml")) != "environment: {}\n" {
 		t.Errorf("a refused init wrote files: %v", entries)
 	}
 	// yml is read, and kept, but --format yaml matches it.
-	if c, _, err := Init(root, "private", "", "yaml", false, false); err != nil || filepath.Base(c.File) != "skenv.yml" {
+	if c, _, err := Init(root, "private", "", "yaml", nil, false, false); err != nil || filepath.Base(c.File) != "skenv.yml" {
 		t.Fatalf("yml: %+v %v", c, err)
 	}
 }
@@ -693,7 +693,7 @@ func TestGitLabChangedSkills(t *testing.T) {
 // other CI that skenv does not manage stays.
 func TestSwitchCI(t *testing.T) {
 	root := t.TempDir()
-	if _, _, err := Init(root, "private", CIGitHub, "", false, false); err != nil {
+	if _, _, err := Init(root, "private", CIGitHub, "", nil, false, false); err != nil {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(root, ".github/dependabot.yml"), "version: 2\n")

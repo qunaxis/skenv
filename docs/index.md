@@ -13,14 +13,14 @@ hero:
       text: Getting started
       link: /getting-started
     - theme: alt
-      text: Commands
+      text: Commands by task
       link: /commands
     - theme: alt
       text: GitHub
       link: https://github.com/qunaxis/skenv
 ---
 
-![Terminal demo: skenv clone and skenv sync clone a skills repository and link the same skills into Claude Code, pi and the Codex store; skenv doctor reports a deleted link, skenv sync restores it, and skenv vendor add pins a third-party skill to a commit](./demo/demo.gif)
+![Terminal demo: skenv clone and skenv sync clone a skills repository and link the same skills into Claude Code, pi and the Codex store; skenv list shows them installed, skenv doctor reports a deleted link, skenv sync restores it, and skenv vendor add pins a third-party skill to a commit](./demo/demo.gif)
 
 ## Introduction
 

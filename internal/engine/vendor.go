@@ -258,8 +258,14 @@ func (e *Engine) commitHint(msg string) {
 		return
 	}
 	dir := filepath.Dir(e.manifestPath)
-	e.infof("manifest changed but not committed; to commit:\n  git -C %s commit -m %q -- %s",
-		e.show(dir), "chore(manifest): "+msg, filepath.Base(e.manifestPath))
+	name := filepath.Base(e.manifestPath)
+	// `git commit -- <file>` fails on a file git does not track yet.
+	add := ""
+	if !e.env.Git.OK(e.ctx, dir, "ls-files", "--error-unmatch", "--", name) {
+		add = fmt.Sprintf("  git -C %s add -- %s\n", e.show(dir), name)
+	}
+	e.infof("manifest changed but not committed; to commit:\n%s  git -C %s commit -m %q -- %s",
+		add, e.show(dir), "chore(manifest): "+msg, name)
 }
 
 // resolveRev returns the full SHA for rev, or the HEAD of the remote's

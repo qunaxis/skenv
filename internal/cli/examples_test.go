@@ -226,6 +226,12 @@ type = "gitlab"
 		f.git(repo, "init", "--quiet", "-b", "main")
 		f.t.Chdir(repo)
 	},
+	"skenv repo init/3": func(f *exampleWorld) {
+		repo := f.path("src/my-skills")
+		mustMkdir(f.t, repo)
+		f.git(repo, "init", "--quiet", "-b", "main")
+		f.t.Chdir(repo)
+	},
 	"skenv repo apply/1": func(f *exampleWorld) {
 		repo := f.publicRepo()
 		f.editLefthook(repo)
@@ -340,6 +346,9 @@ func newExampleWorld(t *testing.T) *exampleWorld {
 	old := lookLefthook
 	lookLefthook = func(string) (string, error) { return lefthook, nil }
 	t.Cleanup(func() { lookLefthook = old })
+	oldTool := lookTool
+	lookTool = func(name string) (string, error) { return filepath.Join(f.root, "bin", name), nil }
+	t.Cleanup(func() { lookTool = oldTool })
 	return f
 }
 

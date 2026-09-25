@@ -41,6 +41,10 @@ const Latest = "0.5.0"
 // Docker runner): the runs-on labels on GitHub, the tags on GitLab.
 var DefaultRunner = []string{"self-hosted", "linux", "docker"}
 
+// runnerRe is a runner label or tag that the CI templates can write
+// unquoted into a YAML flow list.
+var runnerRe = regexp.MustCompile(`^[A-Za-z0-9._:/-]+$`)
+
 // CI systems, the values of repo.ci.
 const (
 	CIGitHub = "github"
@@ -194,6 +198,11 @@ func (c *Config) validate() error {
 	case "private":
 		if len(c.Runner) == 0 {
 			c.Runner = DefaultRunner
+		}
+		for _, r := range c.Runner {
+			if !runnerRe.MatchString(r) {
+				return fmt.Errorf("%s: repo.runner %q is not a runner label: use letters, digits and . _ : / -", name, r)
+			}
 		}
 	case "public":
 	default:
@@ -600,8 +609,8 @@ func mergeBlock(it item, data, want string, exists bool) (string, error) {
 // it creates skenv.<format> (format "" is TOML); an existing one (a
 // manifest repository) gets the section added in its own format, and a
 // format that disagrees with it is an error. It refuses when [repo] exists
-// already.
-func Init(root, visibility, ci, format string, dryRun, force bool) (*Config, []Change, error) {
+// already. runner, when set, is repo.runner of a private repository.
+func Init(root, visibility, ci, format string, runner []string, dryRun, force bool) (*Config, []Change, error) {
 	file, err := skenvfile.Find(root)
 	if err != nil {
 		return nil, nil, err
@@ -610,7 +619,14 @@ func Init(root, visibility, ci, format string, dryRun, force bool) (*Config, []C
 	if err != nil {
 		return nil, nil, err
 	}
-	c := &Config{Harness: Latest, Visibility: visibility, CI: ci, File: file}
+	if len(runner) > 0 && visibility != "private" {
+		hosted := "the GitHub-hosted ubuntu-latest runners"
+		if ci == CIGitLab {
+			hosted = "the GitLab shared runners"
+		}
+		return nil, nil, fmt.Errorf("--runner is for private repositories: the CI jobs of a public one run on %s", hosted)
+	}
+	c := &Config{Harness: Latest, Visibility: visibility, CI: ci, Runner: runner, File: file}
 	var data []byte
 	if file != "" {
 		doc, err := skenvfile.Read(file)
