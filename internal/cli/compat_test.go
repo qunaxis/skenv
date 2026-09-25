@@ -242,3 +242,38 @@ func TestCompatUsageErrors(t *testing.T) {
 		})
 	}
 }
+
+// Shell completion comes from the command tree: subcommands, flags and
+// the fixed values of --visibility.
+func TestCompletion(t *testing.T) {
+	complete := func(args ...string) string {
+		var out, errOut bytes.Buffer
+		if code := Main(context.Background(), append([]string{"__complete"}, args...), &out, &errOut); code != 0 {
+			t.Fatalf("__complete %q: exit %d\n%s", args, code, errOut.String())
+		}
+		return out.String()
+	}
+	for args, want := range map[string][]string{
+		"":                        {"sync", "vendor", "repo", "lint", "completion"},
+		"vendor ":                 {"add", "bump", "remove"},
+		"sync --":                 {"--quiet", "--dry-run", "--adopt", "--manifest"},
+		"repo init --visibility ": {"private", "public"},
+	} {
+		fields := strings.Fields(args)
+		if strings.HasSuffix(args, " ") || args == "" {
+			fields = append(fields, "")
+		}
+		got := complete(fields...)
+		for _, w := range want {
+			if !strings.Contains(got, w) {
+				t.Errorf("completion of %q lacks %s:\n%s", args, w, got)
+			}
+		}
+	}
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		var out bytes.Buffer
+		if code := Main(context.Background(), []string{"completion", shell}, &out, &out); code != 0 || !strings.Contains(out.String(), "skenv") {
+			t.Errorf("completion %s: exit %d\n%.200s", shell, code, out.String())
+		}
+	}
+}

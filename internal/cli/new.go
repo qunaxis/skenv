@@ -37,6 +37,7 @@ private), or in the git repository at --dir.`,
 	})
 	manifestFlag(c.Flags(), &o)
 	c.Flags().StringVar(&repo, "repo", "private", "visibility of the target repository: private or public")
+	_ = c.RegisterFlagCompletionFunc("repo", cobra.FixedCompletions([]string{"private", "public"}, cobra.ShellCompDirectiveNoFileComp))
 	c.Flags().StringVar(&dir, "dir", "", "target repository instead of the manifest's own repositories")
 	return c
 }

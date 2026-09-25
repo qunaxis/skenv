@@ -197,6 +197,7 @@ func repoCmd(a *app) *cobra.Command {
 	initC := sub("init", "init --visibility private|public", "Set up the harness of a skills repository",
 		"Set up the harness of a skills repository: skenv.toml, lefthook.yml, CI\nworkflow, linter configs and the managed blocks of AGENTS.md and .gitignore;\nthen `lefthook install`. Refuses if skenv.toml exists.")
 	initC.Flags().StringVar(&visibility, "visibility", "", "private or public (required)")
+	_ = initC.RegisterFlagCompletionFunc("visibility", cobra.FixedCompletions([]string{"private", "public"}, cobra.ShellCompDirectiveNoFileComp))
 	apply := sub("apply", "apply", "Regenerate the managed files of the harness",
 		"Regenerate the managed files and blocks for the harness version in skenv.toml\n(--upgrade moves it to "+harness.Latest+" first); then `lefthook install`.")
 	apply.Flags().BoolVar(&upgrade, "upgrade", false, "move harness to "+harness.Latest+" (the templates of this skenv)")
