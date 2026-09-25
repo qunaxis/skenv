@@ -72,6 +72,32 @@ var exampleScenarios = map[string]func(f *exampleWorld){
 	},
 	"skenv import/1": func(f *exampleWorld) { f.initialized(); f.npxInstalled() },
 	"skenv import/2": func(f *exampleWorld) { f.initialized(); f.npxInstalled() },
+	"skenv import/3": func(f *exampleWorld) {
+		// A project with a skill of `npx skills add` and one of its own.
+		f.pushRemotes()
+		dir := f.path("src/web-app")
+		mustMkdir(f.t, dir)
+		f.git(dir, "init", "--quiet", "-b", "main")
+		tools := filepath.Join(f.work, "example-vendor__tools")
+		writeFile(f.t, filepath.Join(dir, ".agents/skills/release-notes/SKILL.md"), readFile(f.t, filepath.Join(tools, "tools/release-notes/SKILL.md")))
+		f.symlink("../../.agents/skills/release-notes", "src/web-app/.claude/skills/release-notes")
+		// computeSkillFolderHash of skills 1.7.0 over tools/release-notes.
+		writeFile(f.t, filepath.Join(dir, "skills-lock.json"), `{
+  "version": 1,
+  "skills": {
+    "release-notes": {
+      "source": "example-vendor/tools",
+      "sourceType": "github",
+      "skillPath": "tools/release-notes/SKILL.md",
+      "computedHash": "652cdbb69a71f15b5ccbe20399899c611b35330bd2f7fc1dc6ff6ab9d9d55343"
+    }
+  }
+}
+`)
+		writeFile(f.t, filepath.Join(dir, ".agents/skills/deploy/SKILL.md"),
+			exampleSkill("deploy", "Deploy the web app to staging, then production.", "Run the smoke tests between the two."))
+		f.t.Chdir(dir)
+	},
 	"skenv sync/1": func(f *exampleWorld) {
 		// Committed, not pushed yet: a new skill and a second vendor skill.
 		f.initialized()

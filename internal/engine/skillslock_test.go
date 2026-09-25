@@ -77,7 +77,7 @@ func TestLockWithout(t *testing.T) {
 	if err := os.WriteFile(p, []byte(in), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	l, err := readSkillsLock(p)
+	l, err := readSkillsLock(p, skillsLockVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestLockWithout(t *testing.T) {
 	if err := os.WriteFile(p, []byte(`{"version": 2, "skills": {}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readSkillsLock(p); err == nil || !strings.Contains(err.Error(), "version 2 is not supported") {
+	if _, err := readSkillsLock(p, skillsLockVersion); err == nil || !strings.Contains(err.Error(), "version 2 is not supported") {
 		t.Errorf("version 2: %v", err)
 	}
 }

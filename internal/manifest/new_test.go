@@ -78,3 +78,37 @@ func TestAddEnvironmentCRLF(t *testing.T) {
 		}
 	}
 }
+
+func TestAddProject(t *testing.T) {
+	for _, c := range []struct {
+		name, ext, in string
+		mirrors       []string
+		want          string
+	}{
+		{name: "new toml", ext: ".toml", mirrors: []string{".claude/skills"},
+			want: projectLead + "[project]\nmirrors = [\".claude/skills\"]\n"},
+		{name: "toml with [environment]", ext: ".toml", in: "# mine\n[environment]\n",
+			want: "# mine\n[environment]\n\n" + projectLead + "[project]\n"},
+		{name: "yaml with repo", ext: ".yaml", in: "# keep me\nrepo:\n  visibility: public\n", mirrors: []string{".claude/skills"},
+			want: "# keep me\nrepo:\n  visibility: public\n" + projectLead + "project:\n  mirrors: [.claude/skills]\n"},
+		{name: "json", ext: ".json", in: `{"repo": {"visibility": "public"}}`,
+			want: "{\n  \"repo\": {\n    \"visibility\": \"public\"\n  },\n  \"project\": {}\n}\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			out, err := AddProject([]byte(c.in), c.ext, c.mirrors)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(out) != c.want {
+				t.Errorf("got:\n%s\nwant:\n%s", out, c.want)
+			}
+			p, err := ParseProject(out, c.ext)
+			if err != nil || p.Dir != DefaultProjectDir || len(p.Mirrors) != len(c.mirrors) {
+				t.Errorf("project = %+v, %v", p, err)
+			}
+			if _, err := AddProject(out, c.ext, nil); err == nil || !strings.Contains(err.Error(), "has [project] already") {
+				t.Errorf("second add: %v", err)
+			}
+		})
+	}
+}

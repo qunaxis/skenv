@@ -168,8 +168,7 @@ type ownGroup struct {
 // import adds its working copy already.
 func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest.Own) (*imported, error) {
 	r := &imported{before: before, out: start}
-	e.fetched = map[string]string{}
-	lock, err := readSkillsLock(e.skillsLockPath())
+	lock, err := readSkillsLock(e.skillsLockPath(), skillsLockVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +247,7 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 			continue
 		}
 		if le, ok := lock.entries[f.name]; ok {
-			if _, err := lockRepo(le); err != nil {
+			if _, err := lockRepo(le, e.hosts); err != nil {
 				unmanaged(f.path, fmt.Sprintf("in %s, but %v", e.show(lock.path), err))
 				continue
 			}
@@ -434,8 +433,9 @@ func (e *Engine) ownOf(f found) (g *ownGroup, why string) {
 }
 
 // lockVendor turns a lock entry into a vendor entry, reporting how its rev
-// was found; ok is false when it cannot be imported.
-func (e *Engine) lockVendor(name string, le lockEntry, dir string) (manifest.Vendor, bool) {
+// was found; ok is false when it cannot be imported. dir is the installed
+// copy, "" when there is none.
+func (e *base) lockVendor(name string, le lockEntry, dir string) (manifest.Vendor, bool) {
 	fail := func(format string, args ...any) (manifest.Vendor, bool) {
 		e.errorf("cannot import %s: %s", name, fmt.Sprintf(format, args...))
 		return manifest.Vendor{}, false
@@ -443,11 +443,14 @@ func (e *Engine) lockVendor(name string, le lockEntry, dir string) (manifest.Ven
 	if err := manifest.ValidName(name); err != nil {
 		return fail("%v", err)
 	}
-	repo, err := lockRepo(le)
+	repo, err := lockRepo(le, e.hosts)
 	if err != nil {
 		return fail("%v", err)
 	}
 	// One fetch per repository, however many of its skills are installed.
+	if e.fetched == nil {
+		e.fetched = map[string]string{}
+	}
 	cache, ok := e.fetched[repo]
 	if !ok {
 		var err error
@@ -470,18 +473,26 @@ func (e *Engine) lockVendor(name string, le lockEntry, dir string) (manifest.Ven
 		return fail("no %s in %s at %.12s", file, repo, rev)
 	}
 	e.changef("import vendor %s from %s (%s) at %.12s", name, repo, v.Path, rev)
-	switch how {
-	case revByHash:
-		e.infof("  its skillFolderHash %.12s is the tree of %s at that commit", le.SkillFolderHash, v.Path)
-	case revByCopy:
-		why := fmt.Sprintf("skillFolderHash %.12s is not in the history of %s", le.SkillFolderHash, tip)
-		if le.SourceType != "github" {
-			why = fmt.Sprintf("the skills CLI records no git tree for %s sources", le.SourceType)
+	hash, field := le.hash()
+	if how == revByHash {
+		what := "the tree"
+		if folderHashRe.MatchString(hash) {
+			what = "the sha256 of the files"
 		}
+		e.infof("  its %s %.12s is %s of %s at that commit", field, hash, what, v.Path)
+		return v, true
+	}
+	why := fmt.Sprintf("%s %.12s is not in the history of %s", field, hash, tip)
+	if hash == "" {
+		why = "the lock records no hash"
+	}
+	switch {
+	case how == revByCopy:
 		e.warnf("vendor %s: %s; pinned %.12s, whose files match the installed copy", name, why, rev)
-	case revByHead:
-		e.warnf("vendor %s: neither skillFolderHash %.12s nor the installed copy matches a commit of %s; pinned its HEAD %.12s, "+
-			"check the skill before syncing", name, le.SkillFolderHash, tip, rev)
+	case dir == "":
+		e.warnf("vendor %s: %s, and there is no installed copy to compare; pinned HEAD %.12s of %s, check the skill before syncing", name, why, rev, tip)
+	default:
+		e.warnf("vendor %s: %s, and no commit has the files of the installed copy; pinned HEAD %.12s of %s, check the skill before syncing", name, why, rev, tip)
 	}
 	return v, true
 }
@@ -490,7 +501,7 @@ func (e *Engine) lockVendor(name string, le lockEntry, dir string) (manifest.Ven
 // returns the exit code. sync says `skenv sync --adopt` follows.
 func (e *Engine) finishImport(r *imported, sync bool) (int, error) {
 	if len(r.unlock) > 0 {
-		if err := e.cleanLock(r); err != nil {
+		if err := e.cleanLock(r.lock, r.unlock, e.show); err != nil {
 			return ExitFatal, err
 		}
 	}
@@ -529,27 +540,27 @@ func (e *Engine) finishImport(r *imported, sync bool) (int, error) {
 	return ExitOK, nil
 }
 
-// cleanLock removes the imported entries from the lock of the `skills`
-// CLI, so `npx skills update` does not fight skenv over them, after a copy
-// to the backup directory.
-func (e *Engine) cleanLock(r *imported) error {
-	backup := e.backupPath(r.lock.path)
-	e.changef("remove %s from %s (a copy goes to %s)", strings.Join(r.unlock, ", "), e.show(r.lock.path), e.show(backup))
+// cleanLock removes the imported entries names from a lock of the
+// `skills` CLI, so `npx skills update` does not fight skenv over them,
+// after a copy to the backup directory. show shows the lock path.
+func (e *base) cleanLock(lock *skillsLock, names []string, show func(string) string) error {
+	backup := e.backupPath(lock.path)
+	e.changef("remove %s from %s (a copy goes to %s)", strings.Join(names, ", "), show(lock.path), e.show(backup))
 	if e.opts.DryRun {
 		return nil
 	}
-	data, err := os.ReadFile(r.lock.path)
+	data, err := os.ReadFile(lock.path)
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(backup), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(backup, data, r.lock.mode); err != nil {
-		return fmt.Errorf("back up %s: %w", e.show(r.lock.path), err)
+	if err := os.WriteFile(backup, data, lock.mode); err != nil {
+		return fmt.Errorf("back up %s: %w", show(lock.path), err)
 	}
-	if err := r.lock.without(r.unlock); err != nil {
-		return fmt.Errorf("write %s: %w", e.show(r.lock.path), err)
+	if err := lock.without(names); err != nil {
+		return fmt.Errorf("write %s: %w", show(lock.path), err)
 	}
 	return nil
 }

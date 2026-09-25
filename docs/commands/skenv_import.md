@@ -2,7 +2,7 @@
 
 ## skenv import
 
-Add the skills already installed on this machine to the manifest
+Add the skills already installed on this machine, or in a project, to the skenv file
 
 ### Synopsis
 
@@ -14,7 +14,8 @@ vercel skills CLI, `~/.agents/.skill-lock.json` (or
 
 - A skill of the lock becomes `[[environment.vendor]]`: repo from source,
   path from skillPath. Its rev is the commit whose tree of that path is the
-  skillFolderHash of the lock (a git tree id for GitHub installs), searched
+  skillFolderHash of the lock (a git tree id for GitHub installs, a sha256
+  of its files otherwise), searched
   on the ref of the lock (or the default branch) from updatedAt back. When no commit matches: the commit
   whose files match the installed copy, else HEAD; both are warnings.
 - A link into a git working copy becomes `[[environment.own]]` (repo from
@@ -32,6 +33,20 @@ imports nothing.
 
 The installed copies stay until `skenv sync --adopt` (or `--sync`) backs them up
 and replaces them. The manifest change is not committed.
+
+With `--project`: the same for the git repository of the current directory
+and the `skills-lock.json` of the skills CLI in its root. Each skill of the
+lock becomes `[[project.vendor]]` of the repository's skenv file (a
+skenv file without `[project]` gets one, a repository without a skenv file a
+`skenv.toml`). Its rev is the newest commit whose skill folder has the
+computedHash of the lock (a sha256 of the folder's files, recomputed per
+commit); when none does, the commit whose files match the installed copy,
+else HEAD, both warnings. Project-own skills in dir, the mirrors,
+.agents/skills and .claude/skills are reported, and one that is in several
+of them with different files is a warning: pick the version to keep before
+sync mirrors dir; import never removes one. The imported entries leave
+`skills-lock.json` (the file goes when none are left), after a copy to the
+backup directory.
 
 ```
 skenv import [flags]
@@ -84,12 +99,42 @@ manifest changed but not committed; to commit:
   git -C ~/src/skills commit -m "chore(manifest): import installed skills" -- skenv.toml
 ```
 
+In a project: pin the skills of its `skills-lock.json` in `[project]`:
+
+```console
+$ skenv import --project
+import vendor release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
+  its computedHash 652cdbb69a71 is the sha256 of the files of tools/release-notes at that commit
+project-own skill .agents/skills/deploy: kept as it is; sync mirrors it
+--- ~/src/web-app/skenv.toml
++++ ~/src/web-app/skenv.toml
++#:schema https://qunaxis.github.io/skenv/schemas/skenv.schema.json
++# The skills this project carries, committed with it: `skenv sync` copies the
++# pinned ones into dir and mirrors dir. Reference: https://qunaxis.github.io/skenv/project-skills
++[project]
++mirrors = [".claude/skills"]
++
++[[project.vendor]]
++name = "release-notes"
++repo = "example-vendor/tools"
++path = "tools/release-notes"
++rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
+add [project] to ~/src/web-app/skenv.toml
+remove release-notes from skills-lock.json (a copy goes to ~/.local/state/skenv/backup/<timestamp>/src/web-app/skills-lock.json)
+import: 1 [project] entry, 1 removed from skills-lock.json, 1 project-own skills, 0 differing duplicates, 0 warnings, 0 errors
+next: `skenv sync --adopt` replaces the installed copies with the pinned ones (the old ones go to ~/.local/state/skenv/backup)
+the project skills changed; to commit them:
+  git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills skills-lock.json
+  git -C ~/src/web-app commit -m "chore(skills): import project skills"
+```
+
 ### Options
 
 ```
       --dry-run           print the plan, change nothing
   -h, --help              help for import
       --manifest string   skenv file with the [environment] section, or its directory
+      --project           import the skills-lock.json of the current repository into its [project] section
       --sync              run skenv sync --adopt after the import
 ```
 

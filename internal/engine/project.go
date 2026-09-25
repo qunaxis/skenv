@@ -29,6 +29,8 @@ type ProjectEngine struct {
 	// removed are the copies sync removes (or would, under --dry-run), so
 	// that mirrors follow the plan.
 	removed map[string]bool
+	// hintPaths are more paths for the commit hint.
+	hintPaths []string
 }
 
 // FindProject returns the skenv file at the root of the git repository
@@ -516,12 +518,13 @@ func (e *ProjectEngine) warnLinks(dst string) {
 }
 
 // commitHint tells how to commit what changed: the copies and mirrors are
-// part of the project.
+// part of the project, and so is the lock of the skills CLI after an
+// import.
 func (e *ProjectEngine) commitHint(msg string) {
 	if e.opts.DryRun || e.changes == 0 {
 		return
 	}
-	paths := append([]string{filepath.Base(e.file), e.p.Dir}, e.p.Mirrors...)
+	paths := append(append([]string{filepath.Base(e.file), e.p.Dir}, e.p.Mirrors...), e.hintPaths...)
 	if msg == "" {
 		msg = "sync project skills"
 	}

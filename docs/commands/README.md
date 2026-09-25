@@ -14,7 +14,7 @@ Generated from `skenv --help`. Start with [skenv](skenv.md).
 - [skenv completion fish](skenv_completion_fish.md): Generate the autocompletion script for fish
 - [skenv completion zsh](skenv_completion_zsh.md): Generate the autocompletion script for zsh
 - [skenv doctor](skenv_doctor.md): Compare the machine with the manifest, or a project with its `[project]`
-- [skenv import](skenv_import.md): Add the skills already installed on this machine to the manifest
+- [skenv import](skenv_import.md): Add the skills already installed on this machine, or in a project, to the skenv file
 - [skenv init](skenv_init.md): Clone the manifest repository and sync, or start a manifest
 - [skenv link](skenv_link.md): Create store and agent links without pulling
 - [skenv lint](skenv_lint.md): Check skills (L1-L6, P1)

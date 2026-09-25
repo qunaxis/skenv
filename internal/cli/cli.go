@@ -361,10 +361,10 @@ skenv init --remote gitlab:example-group/my-skills`,
 
 func importCmd(a *app) *cobra.Command {
 	var o engine.Options
-	var sync bool
+	var sync, project bool
 	c := &cobra.Command{
 		Use:   "import",
-		Short: "Add the skills already installed on this machine to the manifest",
+		Short: "Add the skills already installed on this machine, or in a project, to the skenv file",
 		Long: `Add the skills installed on this machine that the manifest does not have
 yet, so adopting skenv on a machine with skills is one command. It reads the
 store (~/.agents/skills), the agent directories and the global lock of the
@@ -373,7 +373,8 @@ vercel skills CLI, ~/.agents/.skill-lock.json (or
 
 - A skill of the lock becomes ` + "`[[environment.vendor]]`" + `: repo from source,
   path from skillPath. Its rev is the commit whose tree of that path is the
-  skillFolderHash of the lock (a git tree id for GitHub installs), searched
+  skillFolderHash of the lock (a git tree id for GitHub installs, a sha256
+  of its files otherwise), searched
   on the ref of the lock (or the default branch) from updatedAt back. When no commit matches: the commit
   whose files match the installed copy, else HEAD; both are warnings.
 - A link into a git working copy becomes ` + "`[[environment.own]]`" + ` (repo from
@@ -390,18 +391,45 @@ a copy of the lock goes to ~/.local/state/skenv/backup/<ts>/. A second run
 imports nothing.
 
 The installed copies stay until ` + "`skenv sync --adopt`" + ` (or --sync) backs them up
-and replaces them. The manifest change is not committed.`,
+and replaces them. The manifest change is not committed.
+
+With --project: the same for the git repository of the current directory
+and the skills-lock.json of the skills CLI in its root. Each skill of the
+lock becomes ` + "`[[project.vendor]]`" + ` of the repository's skenv file (a
+skenv file without [project] gets one, a repository without a skenv file a
+skenv.toml). Its rev is the newest commit whose skill folder has the
+computedHash of the lock (a sha256 of the folder's files, recomputed per
+commit); when none does, the commit whose files match the installed copy,
+else HEAD, both warnings. Project-own skills in dir, the mirrors,
+.agents/skills and .claude/skills are reported, and one that is in several
+of them with different files is a warning: pick the version to keep before
+sync mirrors dir; import never removes one. The imported entries leave
+skills-lock.json (the file goes when none are left), after a copy to the
+backup directory.`,
 		Example: `# Show the manifest diff and the lock changes, write nothing
 skenv import --dry-run
 # Write the manifest and clean the lock of the skills CLI
-skenv import`,
+skenv import
+# In a project: pin the skills of its skills-lock.json in [project]
+skenv import --project`,
 		Args: nArgs(0),
 		RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
+			if project {
+				if o.Manifest != "" {
+					return engine.ExitFatal, usageError{"import: --project and --manifest exclude each other"}
+				}
+				cwd, err := os.Getwd()
+				if err != nil {
+					return engine.ExitFatal, err
+				}
+				return engine.ImportProject(ctx, env, cwd, o.DryRun, sync)
+			}
 			return engine.Import(ctx, env, o, sync)
 		}),
 	}
 	manifestFlag(c.Flags(), &o)
 	dryRunFlag(c.Flags(), &o.DryRun)
+	projectFlag(c.Flags(), &project, "import the skills-lock.json of the current repository into its [project] section")
 	c.Flags().BoolVar(&sync, "sync", false, "run skenv sync --adopt after the import")
 	return c
 }
