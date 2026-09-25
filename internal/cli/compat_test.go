@@ -139,7 +139,7 @@ func TestCompatInvocations(t *testing.T) {
 	}
 }
 
-var shippedRe = regexp.MustCompile(`\bskenv ((?:lint|repo|sync|link|doctor|vendor|init|new|autostart|version)(?: (?:--?[a-z][a-z-]*|[a-z.][a-z0-9./-]*))*)`)
+var shippedRe = regexp.MustCompile(`(?:\bskenv|/skenv") ((?:lint|repo|sync|link|doctor|vendor|init|new|autostart|version)(?: (?:--?[a-z][a-z-]*|[a-z.][a-z0-9./-]*))*)`)
 
 // shippedInvocations collects the skenv command lines of the embedded
 // harness templates and of the autostart units.
@@ -195,7 +195,8 @@ func shippedInvocations(t *testing.T) map[string]string {
 // compatCases, so it is covered from then on.
 func TestCompatCoversShipped(t *testing.T) {
 	// lint --help: TestCompatLintHelpMentionsHook.
-	known := map[string]bool{"lint --help": true}
+	// version: TestCompatUsageErrors.
+	known := map[string]bool{"lint --help": true, "version": true}
 	for _, c := range compatCases {
 		known[c.args] = true
 	}
@@ -274,6 +275,81 @@ func TestCompletion(t *testing.T) {
 		var out bytes.Buffer
 		if code := Main(context.Background(), []string{"completion", shell}, &out, &out); code != 0 || !strings.Contains(out.String(), "skenv") {
 			t.Errorf("completion %s: exit %d\n%.200s", shell, code, out.String())
+		}
+	}
+}
+
+// docPlaceholders turn the synopses of the docs into runnable samples.
+var docPlaceholders = strings.NewReplacer(
+	"<owner>/<skills-repo>", "me/skills", "<owner/repo>", "me/skills",
+	"<name>", "demo", "private|public", "private", "[path...]", "skills/demo",
+)
+
+var (
+	codeRe     = regexp.MustCompile("(?s)```[a-z]*\n(.*?)```|`([^`\n]+)`")
+	optionalRe = regexp.MustCompile(`\[(--[a-z-]+)(?: ([A-Za-z]+))?\]`)
+	// sampleValues fill the value placeholders of optional flags.
+	sampleValues = map[string]string{"P": "tools/demo", "N": "demo", "SHA": "0123abc", "FILE": "/tmp/env.toml", "D": "."}
+	docLineRe    = regexp.MustCompile(`(?m)\bskenv ((?:init|sync|link|doctor|vendor|autostart|lint|new|repo|version)\b[^\n#|;&)` + "`" + `]*)`)
+)
+
+// docInvocations collects the skenv command lines in the code of the
+// README and docs/*.md (not the generated reference): optional flags of
+// a synopsis are included, placeholders get sample values.
+func docInvocations(t *testing.T) map[string]string {
+	t.Helper()
+	files, _ := filepath.Glob(filepath.Join("..", "..", "docs", "*.md"))
+	files = append(files, filepath.Join("..", "..", "README.md"))
+	found := map[string]string{}
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, code := range codeRe.FindAllStringSubmatch(string(data), -1) {
+			text := docPlaceholders.Replace(code[1] + code[2])
+			for _, m := range docLineRe.FindAllStringSubmatch(text, -1) {
+				inv := optionalRe.ReplaceAllStringFunc(m[1], func(opt string) string {
+					sub := optionalRe.FindStringSubmatch(opt)
+					if v, ok := sampleValues[sub[2]]; ok {
+						return sub[1] + " " + v
+					}
+					return strings.TrimSpace(sub[1] + " " + sub[2])
+				})
+				inv = strings.Join(strings.Fields(strings.TrimRight(inv, "\\ \":,")), " ")
+				// Alternatives and prose are not invocations.
+				if strings.ContainsAny(inv, "|[]<>:…") || strings.Contains(inv, "...") {
+					continue
+				}
+				found[inv] = f
+			}
+		}
+	}
+	return found
+}
+
+// Every skenv command line shown in the README and docs parses: the
+// command exists and takes those flags and arguments.
+func TestCompatDocsParse(t *testing.T) {
+	found := docInvocations(t)
+	if len(found) < 5 {
+		t.Fatalf("found only %d invocations in the docs; the extractor is broken", len(found))
+	}
+	for inv, where := range found {
+		args := strings.Fields(inv)
+		if slices.Contains(args, "--help") {
+			continue
+		}
+		code, cmd, _, errOut := probe(t, args)
+		// A bare command name in prose (`skenv repo`, `skenv init`) is a
+		// mention, not an invocation.
+		if strings.Contains(errOut, "missing subcommand") || strings.Contains(errOut, "got 0") || args[0] == "version" {
+			continue
+		}
+		if code != 0 || cmd == nil {
+			t.Errorf("%s shows `skenv %s`, which does not parse: exit %d\n%s", where, inv, code, errOut)
+		} else {
+			t.Logf("%s: skenv %s → %s", where, inv, cmd.CommandPath())
 		}
 	}
 }
