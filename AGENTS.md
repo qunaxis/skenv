@@ -9,7 +9,18 @@ it would stop Claude Code from loading this file.
   (sync, link, doctor, vendor, init), `internal/manifest` (env.toml parsing
   and in-place editing), `internal/agents`, `internal/state`,
   `internal/autostart`, `internal/gitx`, `internal/buildinfo`,
+  `internal/lint` (L1-L6), `internal/harness` (skenv.toml, `repo
+  init|apply|check`, templates in `internal/harness/templates/<harness>/`),
   `internal/release` (tests for `cliff.toml` and the commit check).
+- Templates are versioned: never change a released template set in place.
+  A template change goes into a new `templates/<version>/` directory and
+  `harness.Latest` moves to it, so repositories upgrade explicitly with
+  `skenv repo apply --upgrade`.
+- The harness version doubles as the skenv release that generated CI
+  installs (`SKENV_VERSION` in `check.yml`). Name a new template directory
+  after the release that ships it, and release it before any repository
+  runs `repo apply --upgrade`; lint changes reach CI only through a new
+  harness version.
 - Safety rules: never delete or replace a path that is not recorded in
   `state.json` unless the user passed `--adopt`; never touch
   `~/.claude/skills/synced`; mask credentials in any URL that reaches output.
