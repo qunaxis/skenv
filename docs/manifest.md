@@ -7,6 +7,7 @@ skills repository, next to your own skills, so every machine that runs
 - [Where the manifest is found](#where-the-manifest-is-found)
 - [Format](#format)
 - [Rules](#rules)
+- [Selecting skills of an own repository](#selecting-skills-of-an-own-repository)
 - [Layout on disk](#layout-on-disk)
 - [Mapping to `skills-lock.json`](#mapping-to-skills-lockjson)
 
@@ -37,6 +38,12 @@ ignore  = ["peon-ping-*"]                            # optional, entries owned b
 repo = "<owner>/<skills-repo>" # any name
 path = "~/src/my-skills"       # any location
 skills_dir = "skills"          # optional, default "skills"
+
+[[environment.own]]            # a shared repository: only some of its skills
+repo = "<team>/<shared-skills>"
+path = "~/src/shared-skills"
+skills  = ["alpha", "beta"]    # optional allowlist; default: every skill
+exclude = ["experimental-*"]   # optional globs, applied after skills
 
 [[environment.vendor]]         # someone else's skill, pinned to a commit
 name = "archify"
@@ -83,6 +90,54 @@ skip = ["bpmn-process-modeler"]
 - A vendored skill is copied as is, symlinks included; vendor only
   repositories you trust.
 
+## Selecting skills of an own repository
+
+By default every skill of an own repository is installed: every directory
+under `<path>/<skills_dir>/` that holds a `SKILL.md`, including ones added
+later. Two optional keys of `[[environment.own]]` narrow that down on every
+machine:
+
+- `skills` lists the skills to install. A skill added to the repository
+  later is not installed until you list it. A name that is not a skill of
+  the repository is an error in `sync` and `doctor` that names the entry,
+  so a typo never goes unnoticed. `skills = []` is an error too: to
+  install nothing, remove the entry or comment it out.
+- `exclude` lists glob patterns over skill names, applied after `skills`.
+  A pattern that matches nothing is fine.
+
+`[environment.host."<name>"] skip` applies after both, per machine. So a
+skill is installed on a host when it is in `skills` (or `skills` is not
+set), matches no `exclude` pattern, and is not in that host's `skip`.
+
+```toml
+[[environment.own]]
+repo    = "<team>/<shared-skills>"
+path    = "~/src/shared-skills"
+skills  = ["alpha", "beta", "gamma"]
+exclude = ["*-draft"]
+
+[environment.host."my-laptop"]
+skip = ["gamma"]
+```
+
+- **Leaving the selection.** A skill that you remove from `skills` or match
+  with `exclude` is unlinked by the next `sync`, like any skill that left
+  the manifest: skenv removes only the store and agent links it created.
+  The skill stays in the repository, and paths skenv did not create are
+  never touched. `skenv sync --dry-run` shows the removals first, and
+  `skenv doctor` reports the leftover links as `extra-managed` with the
+  detail "not selected by own `<repo>`".
+- **Name clashes.** Skill names must be unique among the skills the
+  manifest selects: two own repositories may each hold a skill with the
+  same name as long as only one of them selects it. The check does not
+  depend on the host, so `host.<name>.skip` cannot resolve a clash and a
+  manifest is valid or not on every machine alike.
+- **`skenv new`** in a repository that selects its skills warns that the
+  new skill is not installed until you add it to `skills`.
+- **Per-agent selection** (a skill only for Claude Code, say) is not
+  supported: every selected skill is linked into every agent directory.
+  `layout.targets` chooses the agents for all skills at once.
+
 ## Layout on disk
 
 - **Store** `~/.agents/skills`: own skills are symlinks to
@@ -118,4 +173,7 @@ so a manifest can be translated if skenv is ever replaced by it:
 | `rev`                    | `ref`                                | skenv requires a full SHA; `ref` also accepts branches and tags               |
 | —                        | `computedHash`                       | not recorded by skenv; the SHA pins the content                               |
 
-`[[environment.own]]` has no equivalent: the `skills` CLI does not manage working copies.
+`[[environment.own]]` has no equivalent: the `skills` CLI does not manage
+working copies. A translation would list each skill an own entry selects
+(after `skills` and `exclude`) as an entry of its own, pinned to the commit
+of the working copy.
