@@ -40,10 +40,20 @@ rev  = "<full 40-character commit SHA>"
 skip = ["bpmn-process-modeler"]
 ```
 
+> [!IMPORTANT]
+> `own.path` must be where the repository is actually cloned (for example
+> where `skenv init` put it). Otherwise `sync` clones a second working
+> copy at `path` and links the skills from that copy.
+
 ## Rules
 
+> [!IMPORTANT]
+> `rev` must be a full 40-character commit SHA; branches, tags and short
+> SHAs are rejected. A vendored skill never follows a branch: it changes
+> only when you run `skenv vendor bump` (or edit `rev`) and commit the
+> manifest.
+
 - Skill names are unique across own and vendor skills; a clash is an error.
-- `rev` must be a full 40-character SHA.
 - `owner/repo` is cloned from `https://github.com/owner/repo.git`. To use ssh,
   map it in git: `git config --global url."git@github.com:".insteadOf https://github.com/`.
 - Skills listed in `host.<name>.skip` are neither stored nor linked on that host.
@@ -68,6 +78,12 @@ skip = ["bpmn-process-modeler"]
   `~/.claude/skills`) and pi (`~/.pi/agent/skills`), each only if its base
   directory (`~/.claude`, `~/.pi/agent`) exists. `layout.targets` replaces
   this table. `~/.claude/skills/synced` is never touched.
+> [!NOTE]
+> Codex has no target of its own: it reads the store `~/.agents/skills`
+> directly. Claude Code and pi are linked only when their base directory
+> exists, so install the agent (or create the directory) before `sync`.
+> `layout.targets` replaces the built-in table entirely.
+
 - **State** `~/.local/state/skenv/state.json` lists the paths skenv created.
   Vendor clones are cached in `~/.cache/skenv/repos/<owner>__<repo>`.
 - **Backups** made by `--adopt` go to `~/.local/state/skenv/backup/<timestamp>/`.

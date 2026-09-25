@@ -11,6 +11,12 @@ edited file and, when there are problems, prints them to stderr with exit
 code 2, which Claude Code hands to the agent; edits outside skills, and
 machines without skenv, are ignored.
 
+> [!NOTE]
+> The hook runs `skenv` from the `PATH` Claude Code sees. When skenv is
+> missing there, or too old to know `--hook`, the hook exits 0 silently:
+> edits go through unchecked, and the problems surface only in pre-commit
+> and CI. Keep skenv on that `PATH` to get feedback while the agent edits.
+
 JSON has no comments, so the "managed by skenv" header is the `$comment`
 key; personal settings belong in `.claude/settings.local.json`.
 

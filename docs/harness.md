@@ -20,6 +20,14 @@ visibility = "private"                             # private | public
 runner     = ["self-hosted", "linux", "docker"]    # runs-on, private only
 ```
 
+> [!WARNING]
+> In a private repository the CI jobs run on `runner`, which defaults to a
+> self-hosted runner (`["self-hosted", "linux", "docker"]`). Without such a
+> runner the jobs stay queued and never run; set `runner = ["ubuntu-latest"]`
+> to use GitHub-hosted runners instead. Public repositories always run on
+> `ubuntu-latest` and ignore `runner`, so pull requests from forks never
+> execute on your own machines.
+
 ## Commands
 
 | Command                                        | What it does                                                                                                                                                         |
@@ -32,6 +40,11 @@ All commands take `--dir` (default: the current repository); `init` and
 `apply` take `--dry-run`, and `--force` to replace existing files that skenv
 does not manage yet (without it they refuse and list them, so a
 hand-written workflow or `.claude/settings.json` is never lost silently).
+
+> [!NOTE]
+> `skenv repo check` fails on a `CLAUDE.md` or `.claude/CLAUDE.md` in the
+> repository, because it disables `AGENTS.md` in Claude Code. Keep
+> repository rules in `AGENTS.md`.
 When `lefthook` is not installed, `init` and `apply` still write the files
 and print a warning.
 

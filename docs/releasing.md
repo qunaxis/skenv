@@ -60,6 +60,12 @@ workflow) or locally:
 GITHUB_TOKEN="$(gh auth token)" make release
 ```
 
+> [!TIP]
+> Running `make release` locally is the fallback when the `release`
+> workflow cannot run (for example GitHub-hosted runners are unavailable).
+> Pass the token only through the environment as above; never write it to
+> a file in the repository or paste it into a command that is logged.
+
 goreleaser builds darwin/linux × amd64/arm64 binaries into archives named
 `skenv_<version>_<os>_<arch>.tar.gz` (the README install command depends on
 that name) plus `checksums.txt`.

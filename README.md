@@ -137,6 +137,13 @@ skenv autostart enable          # sync at login and hourly
 `~/.config/skenv/config.toml` and runs `sync`. If the repository is already
 cloned, point `--path` at it: `skenv init <owner>/<skills-repo> --path ~/src/my-skills`.
 
+> [!WARNING]
+> **Upgrading from v0.3.0 or earlier:** skenv no longer has a built-in
+> default manifest location. If you never ran `skenv init` and relied on
+> that default, commands now stop with an error. Record your existing
+> checkout once with `skenv init <owner>/<skills-repo> --path <checkout>`;
+> an existing clone is not touched, only its `env.toml` is recorded.
+
 ## Getting started
 
 A skills repository needs an `env.toml` at its root. A minimal one lists
@@ -148,10 +155,13 @@ repo = "<owner>/<skills-repo>"
 path = "~/src/<skills-repo>"
 ```
 
-Set `path` to where the repository is cloned (`skenv init` from `~/src`
-puts it in `~/src/<skills-repo>`); otherwise `sync` keeps a second working
-copy at `path`. The full format is in [docs/manifest.md](docs/manifest.md).
-A typical first session on a machine:
+> [!IMPORTANT]
+> Set `path` to where the repository is cloned (`skenv init` from `~/src`
+> puts it in `~/src/<skills-repo>`). Otherwise `sync` clones a second
+> working copy at `path` and links the skills from there.
+
+The full format is in [docs/manifest.md](docs/manifest.md). A typical first
+session on a machine:
 
 ```sh
 # 1. Point skenv at the manifest, clone the repository, sync.

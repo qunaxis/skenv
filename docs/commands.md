@@ -38,7 +38,14 @@ commit).
 `--adopt` moves a conflicting unmanaged path to
 `~/.local/state/skenv/backup/<timestamp>/` and replaces it. The first run on
 a machine that already has skills installed is usually `skenv sync --adopt`.
-Without `--adopt` skenv never deletes or replaces a path it did not create.
+
+> [!CAUTION]
+> `--adopt` takes over every conflicting path the manifest needs, including
+> skills you installed by hand. They are moved, not deleted, to
+> `~/.local/state/skenv/backup/<timestamp>/`; restore from there if needed.
+> Run the same command with `--dry-run` first to see what it would replace.
+> Without `--adopt` skenv never deletes or replaces a path it did not
+> create, and entries matching `layout.ignore` are left alone even with it.
 
 ## `doctor` classes
 
@@ -96,6 +103,12 @@ repositories:
 - [gitleaks](https://github.com/gitleaks/gitleaks) finds no secret in the
   whole git history (redacted report with file, commit and rule). gitleaks
   must be installed for `--publish`.
+
+> [!CAUTION]
+> `--publish` fails closed: without a stop-list, with an empty one, or
+> without gitleaks it exits 2 instead of passing. Run it before the first
+> push to a public repository, not after: once pushed, content stays in
+> the git history, forks and clones even if you delete it later.
 
 `skenv lint --hook` is the Claude Code PostToolUse mode: it reads the hook
 event on stdin and lints the skill of the edited file. See
