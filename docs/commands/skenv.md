@@ -34,7 +34,7 @@ skenv [flags]
 ### SEE ALSO
 
 * [skenv autostart](skenv_autostart.md)	 - Run `skenv sync --quiet` at login and every hour
-* [skenv completion](skenv_completion.md)	 - Generate the autocompletion script for the specified shell
+* [skenv completion](skenv_completion.md)	 - Generate the autocompletion script for bash, zsh or fish
 * [skenv doctor](skenv_doctor.md)	 - Compare the machine with the manifest
 * [skenv init](skenv_init.md)	 - Clone the manifest repository and sync
 * [skenv link](skenv_link.md)	 - Create store and agent links without pulling

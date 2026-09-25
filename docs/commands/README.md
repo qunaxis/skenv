@@ -9,10 +9,9 @@ Generated from `skenv --help`. Start with [skenv](skenv.md).
 - [skenv autostart disable](skenv_autostart_disable.md): Unload and remove the autostart job
 - [skenv autostart enable](skenv_autostart_enable.md): Install and load the autostart job
 - [skenv autostart status](skenv_autostart_status.md): Show whether the autostart job is installed and loaded (exit 1 if not)
-- [skenv completion](skenv_completion.md): Generate the autocompletion script for the specified shell
+- [skenv completion](skenv_completion.md): Generate the autocompletion script for bash, zsh or fish
 - [skenv completion bash](skenv_completion_bash.md): Generate the autocompletion script for bash
 - [skenv completion fish](skenv_completion_fish.md): Generate the autocompletion script for fish
-- [skenv completion powershell](skenv_completion_powershell.md): Generate the autocompletion script for powershell
 - [skenv completion zsh](skenv_completion_zsh.md): Generate the autocompletion script for zsh
 - [skenv doctor](skenv_doctor.md): Compare the machine with the manifest
 - [skenv init](skenv_init.md): Clone the manifest repository and sync

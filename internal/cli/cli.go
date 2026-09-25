@@ -62,9 +62,7 @@ func (a *app) action(fn func(ctx context.Context, env engine.Env, args []string)
 
 // Command returns the skenv command tree for the reference generator.
 func Command() *cobra.Command {
-	root := newRoot(&app{stdout: io.Discard, stderr: io.Discard})
-	root.InitDefaultCompletionCmd()
-	return root
+	return newRoot(&app{stdout: io.Discard, stderr: io.Discard})
 }
 
 func newRoot(a *app) *cobra.Command {
@@ -118,7 +116,30 @@ Exit codes: 0 success, 1 problems found, 2 error.`,
 			},
 		},
 	)
+	addCompletion(root)
 	return root
+}
+
+// addCompletion adds cobra's `completion` command for the shells skenv
+// supports. skenv runs on darwin and linux only, so the PowerShell
+// script cobra also generates is dropped rather than offered and left
+// untested.
+func addCompletion(root *cobra.Command) {
+	root.InitDefaultCompletionCmd()
+	for _, c := range root.Commands() {
+		if c.Name() != "completion" {
+			continue
+		}
+		c.Short = "Generate the autocompletion script for bash, zsh or fish"
+		c.Long = `Generate the autocompletion script for skenv for bash, zsh or fish.
+See each sub-command's help for details on how to use the generated script.`
+		c.Args, c.RunE = nil, groupRun
+		for _, s := range c.Commands() {
+			if s.Name() == "powershell" {
+				c.RemoveCommand(s)
+			}
+		}
+	}
 }
 
 func newEnv(stdout, stderr io.Writer) (engine.Env, error) {
@@ -151,22 +172,21 @@ func nArgs(n int) cobra.PositionalArgs {
 
 // group is a command that only holds subcommands.
 func group(use, short string, subs ...*cobra.Command) *cobra.Command {
-	c := &cobra.Command{
-		Use:   use,
-		Short: short,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 0 {
-				var names []string
-				for _, s := range cmd.Commands() {
-					names = append(names, s.Name())
-				}
-				return usageError{fmt.Sprintf("%s: unknown subcommand %q (%s)", cmdName(cmd), args[0], strings.Join(names, ", "))}
-			}
-			return usageError{fmt.Sprintf("%s: missing subcommand (see `%s --help`)", cmdName(cmd), cmd.CommandPath())}
-		},
-	}
+	c := &cobra.Command{Use: use, Short: short, RunE: groupRun}
 	c.AddCommand(subs...)
 	return c
+}
+
+// groupRun rejects a group command run without a known subcommand.
+func groupRun(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		var names []string
+		for _, s := range cmd.Commands() {
+			names = append(names, s.Name())
+		}
+		return usageError{fmt.Sprintf("%s: unknown subcommand %q (%s)", cmdName(cmd), args[0], strings.Join(names, ", "))}
+	}
+	return usageError{fmt.Sprintf("%s: missing subcommand (see `%s --help`)", cmdName(cmd), cmd.CommandPath())}
 }
 
 func manifestFlag(fs *pflag.FlagSet, o *engine.Options) {
