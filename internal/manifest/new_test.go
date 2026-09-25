@@ -84,3 +84,19 @@ func TestGitHubRepo(t *testing.T) {
 		}
 	}
 }
+
+// Added lines take the line endings of the file.
+func TestAddEnvironmentCRLF(t *testing.T) {
+	for ext, in := range map[string]string{
+		".toml": "# mine\r\n[repo]\r\nharness = \"0.4.0\"\r\nvisibility = \"private\"\r\n",
+		".yaml": "# mine\r\nrepo:\r\n  harness: 0.4.0\r\n  visibility: private\r\n",
+	} {
+		out, err := AddEnvironment([]byte(in), ext, &Own{Repo: "me/skills", Path: "~/src/skills"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := strings.Count(string(out), "\n"); n != strings.Count(string(out), "\r\n") {
+			t.Errorf("%s: mixed line endings:\n%q", ext, out)
+		}
+	}
+}

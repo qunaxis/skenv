@@ -34,11 +34,25 @@ func NewManifest(ctx context.Context, env Env, dir, format string, dryRun bool) 
 		dir = "."
 	}
 	dir = paths.Expand(env.Home, dir)
+	if _, err := os.Stat(dir); err != nil {
+		return ExitFatal, err
+	}
 	root, err := env.Git.Run(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return ExitFatal, fmt.Errorf("%s is not inside a git repository; run `git init` first or pass --dir", dir)
 	}
-	show := func(p string) string { return paths.Collapse(env.Home, p) }
+	// git prints the resolved path: collapse it against the resolved home
+	// too, so a symlinked home still gives "~/..." in the manifest.
+	realHome, err := filepath.EvalSymlinks(env.Home)
+	if err != nil {
+		realHome = env.Home
+	}
+	show := func(p string) string {
+		if c := paths.Collapse(env.Home, p); c != p {
+			return c
+		}
+		return paths.Collapse(realHome, p)
+	}
 
 	existing, err := skenvfile.Find(root)
 	if err != nil {
@@ -106,20 +120,25 @@ func NewManifest(ctx context.Context, env Env, dir, format string, dryRun bool) 
 	if own != nil {
 		msg += ", " + own.Repo + " as its first own repository"
 	}
+	// The config may name another manifest, which the new one replaces.
+	replaced := ""
+	if prev, ok, _ := cfg.String("manifest"); ok && paths.Expand(env.Home, prev) != file && paths.Expand(env.Home, prev) != root {
+		replaced = prev
+	}
 	if dryRun {
 		fmt.Fprintf(env.Stdout, "would %s\n", msg)
-	} else {
-		if err := manifest.WriteFile(file, out); err != nil {
-			return ExitFatal, err
-		}
-		fmt.Fprintln(env.Stdout, msg)
-	}
-	if dryRun {
 		fmt.Fprintf(env.Stdout, "would record %s in %s\n", show(file), show(cfgPath))
+		if replaced != "" {
+			fmt.Fprintf(env.Stdout, "would replace manifest %s there\n", replaced)
+		}
 		return ExitOK, nil
 	}
-	if prev, ok, _ := cfg.String("manifest"); ok && paths.Expand(env.Home, prev) != file && paths.Expand(env.Home, prev) != root {
-		fmt.Fprintf(env.Stderr, "note: the config pointed at %s; it now names the new manifest\n", prev)
+	if err := manifest.WriteFile(file, out); err != nil {
+		return ExitFatal, err
+	}
+	fmt.Fprintln(env.Stdout, msg)
+	if replaced != "" {
+		fmt.Fprintf(env.Stderr, "note: the config pointed at %s; it now names the new manifest\n", replaced)
 	}
 	cfgFile, err := config.SetFormat(env.Home, cfgFormat, "manifest", show(file))
 	if err != nil {

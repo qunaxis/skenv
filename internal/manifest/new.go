@@ -49,25 +49,32 @@ func AddEnvironment(data []byte, ext string, own *Own) ([]byte, error) {
 	if doc.Has(skenvfile.Environment) {
 		return nil, errors.New("the skenv file has [environment] already")
 	}
+	// Added lines take the line endings of the file.
+	nl := func(s string) string {
+		if bytes.Contains(data, []byte("\r\n")) {
+			return strings.ReplaceAll(s, "\n", "\r\n")
+		}
+		return s
+	}
 	var out []byte
 	switch ext {
 	case ".toml":
-		var b bytes.Buffer
+		var b strings.Builder
 		b.Write(data)
 		if len(bytes.TrimSpace(data)) > 0 {
 			if !bytes.HasSuffix(data, []byte("\n")) {
-				b.WriteByte('\n')
+				b.WriteString(nl("\n"))
 			}
-			b.WriteByte('\n')
+			b.WriteString(nl("\n"))
 		}
-		b.WriteString(envLead + "[environment]\n\n" + ownComment)
+		section := envLead + "[environment]\n\n" + ownComment
 		if own != nil {
-			fmt.Fprintf(&b, "[[environment.own]]\nrepo = %s\npath = %s\n", quote(own.Repo), quote(own.Path))
+			section += fmt.Sprintf("[[environment.own]]\nrepo = %s\npath = %s\n", quote(own.Repo), quote(own.Path))
 		} else {
-			b.WriteString(ownExample)
+			section += ownExample
 		}
-		b.WriteString("\n" + vendorExample)
-		out = b.Bytes()
+		b.WriteString(nl(section + "\n" + vendorExample))
+		out = []byte(b.String())
 	case ".yaml", ".yml", ".json":
 		d, err := docedit.Open(data, ext)
 		if err != nil {
@@ -82,7 +89,7 @@ func AddEnvironment(data []byte, ext string, own *Own) ([]byte, error) {
 		}
 		out = d.Bytes()
 		if ext != ".json" {
-			if out, err = commentYAMLKey(out, skenvfile.Environment, envLead+envYAMLHint); err != nil {
+			if out, err = commentYAMLKey(out, skenvfile.Environment, nl(envLead+envYAMLHint)); err != nil {
 				return nil, err
 			}
 		}

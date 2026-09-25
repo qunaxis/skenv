@@ -10,6 +10,7 @@ import (
 
 	"github.com/qunaxis/skenv/internal/config"
 	"github.com/qunaxis/skenv/internal/docedit"
+	"github.com/qunaxis/skenv/internal/fileformat"
 	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/manifest"
 	"github.com/qunaxis/skenv/internal/skenvfile"
@@ -26,7 +27,7 @@ func noLefthook(t *testing.T) {
 
 // directive is the schema directive line or key of a file in format.
 func directive(format, url string) string {
-	switch format {
+	switch fileformat.Of("x." + format) {
 	case "toml":
 		return "#:schema " + url + "\n"
 	case "yaml":
@@ -39,7 +40,7 @@ func directive(format, url string) string {
 // format has them and a schema directive.
 func manifestIn(format, rev string) string {
 	url := schemas.URL(schemas.Skenv, "")
-	switch format {
+	switch fileformat.Of("x." + format) {
 	case "yaml":
 		return directive(format, url) + "# test manifest\nenvironment:\n  own:\n    - repo: me/skills\n      path: ~/" + ownPath + "\n" +
 			"  # pinned third-party skill\n  vendor:\n    - name: archify\n      repo: ext/tools\n      path: tools/archify\n      rev: \"" + rev + "\" # keep this comment\n"
@@ -120,11 +121,12 @@ func (m *mismatch) Error() string { return m.what + " = " + m.got + ", want " + 
 // Invariant (#20): no write changes the format of a file. Every write path
 // (init recording the manifest in the tool config, init starting a
 // manifest, repo init adding [repo], repo apply, vendor add|bump|remove)
-// runs on a file in each format; the file keeps its name and extension,
+// runs on a file in each format (and skenv.yml, config.yml, which are
+// read but never created); the file keeps its name and extension,
 // reads back to the expected data, and keeps its comments and its schema
 // directive.
 func TestWritesKeepFormat(t *testing.T) {
-	for _, format := range formats {
+	for _, format := range append(formats, "yml") {
 		t.Run(format, func(t *testing.T) {
 			noLefthook(t)
 			w := newWorld(t)
@@ -136,7 +138,7 @@ func TestWritesKeepFormat(t *testing.T) {
 
 			cfgKeep := []string{"# my config"}
 			cfgText := directive(format, schemas.URL(schemas.Config, "")) + "# my config\nmanifest = \"/elsewhere\"\n"
-			switch format {
+			switch fileformat.Of("x." + format) {
 			case "yaml":
 				cfgText = directive(format, schemas.URL(schemas.Config, "")) + "# my config\nmanifest: /elsewhere\n"
 			case "json":
@@ -172,7 +174,7 @@ func TestWritesKeepFormat(t *testing.T) {
 					w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
 				}, cfgDir, "config", cfgKeep, manifestIs(manifestFile)},
 				{"init --format of the existing config", func() {
-					w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath, "--format", format)
+					w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath, "--format", fileformat.Of("x."+format))
 				}, cfgDir, "config", cfgKeep, manifestIs(manifestFile)},
 				{"vendor add", func() {
 					w.mustRun(0, "vendor", "add", "ext/tools", "--path", "tools/other")
@@ -235,6 +237,7 @@ func TestWritesKeepFormat(t *testing.T) {
 			repoText := map[string]string{
 				"toml": "# my repo\n[repo]\nharness    = \"" + harness.Latest + "\"\nvisibility = \"private\"\n",
 				"yaml": "# my repo\nrepo:\n  harness: " + harness.Latest + "\n  visibility: private\n",
+				"yml":  "# my repo\nrepo:\n  harness: " + harness.Latest + "\n  visibility: private\n",
 				"json": `{"repo": {"harness": "` + harness.Latest + `", "visibility": "private"}}`,
 			}[format]
 			writeFile(t, filepath.Join(fresh, "skenv."+format), repoText)
@@ -480,4 +483,36 @@ func TestInitStartsManifestInExistingFile(t *testing.T) {
 		}
 	}
 	assertUnchanged(t, before, w.home)
+}
+
+// init without a repository runs in the repository of the current
+// directory; a config that cannot be updated stops it before the skenv
+// file is written.
+func TestInitStartsManifestInCurrentDirectory(t *testing.T) {
+	w, repo := harnessRepo(t)
+	sub := filepath.Join(repo, "sub")
+	mustMkdir(t, sub)
+	t.Chdir(sub)
+
+	writeFile(t, filepath.Join(config.Dir(w.home), "config.toml"), "manifest = \n")
+	before := snapshot(t, w.home)
+	if _, errOut := w.mustRun(2, "init"); !strings.Contains(errOut, "config.toml") {
+		t.Errorf("broken config: %s", errOut)
+	}
+	assertUnchanged(t, before, w.home)
+
+	writeFile(t, filepath.Join(config.Dir(w.home), "config.toml"), "manifest = \"~/old/skenv.toml\"\n")
+	out, _ := w.mustRun(0, "init", "--dry-run")
+	if !strings.Contains(out, "would replace manifest ~/old/skenv.toml") {
+		t.Errorf("dry run does not show the replaced manifest:\n%s", out)
+	}
+	_, errOut := w.mustRun(0, "init")
+	if !strings.Contains(errOut, "the config pointed at ~/old/skenv.toml") {
+		t.Errorf("init: %s", errOut)
+	}
+	assertKept(t, repo, "skenv", "toml", nil, vendorsAre())
+	// A new config would be TOML; the existing TOML config is kept.
+	if got := readFile(t, filepath.Join(config.Dir(w.home), "config.toml")); !strings.Contains(got, `manifest = "~/skills-repo/skenv.toml"`) {
+		t.Errorf("config.toml:\n%s", got)
+	}
 }
