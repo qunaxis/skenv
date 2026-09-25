@@ -2,7 +2,7 @@
 
 ## skenv lint
 
-Check skills (L1-L6, P1)
+Check skills for format, links, size and secrets
 
 ### Synopsis
 
@@ -59,5 +59,5 @@ lint: 1 skills, 0 problems
 
 ### SEE ALSO
 
-* [skenv](skenv.md)	 - Keep agent skills (Claude Code, Codex, pi) in sync with a manifest
+* [skenv](skenv.md)	 - Install agent skills (Claude Code, Codex, pi) from a manifest in git
 

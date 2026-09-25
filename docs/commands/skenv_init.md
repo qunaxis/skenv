@@ -37,6 +37,21 @@ already installed on this machine into it (see `skenv import`) and run
 An existing file keeps its format: `--format` that disagrees with it is an
 error (exit code 2), and nothing is written.
 
+- Reads: with `<repo>`, the repository; without, the git repository of the
+  current directory (or `--dir`), its origin and skenv file; with `--import`,
+  the installed skills and the lock of the skills CLI.
+- Changes: the skenv file and `manifest` in the config file; with `<repo>`,
+  the new working copy and what sync changes; with `--import`, the lock of the
+  skills CLI and what `skenv sync --adopt` changes.
+- Network: with `<repo>`, git clone and the fetches of sync; without, none;
+  `--import` fetches the repositories of the installed skills.
+- Conflicts: sync reports an unmanaged path in the way as an error; `--adopt`
+  and `--import` move it to `~/.local/state/skenv/backup/<ts>/` and replace it.
+- Preview: `--dry-run` clones nothing, so with `<repo>` it cannot show what sync
+  would change.
+- Next: `skenv doctor`; commit and push the skenv file so that your other
+  machines get it.
+
 ```
 skenv init [<repo>] [flags]
 ```
@@ -158,5 +173,5 @@ next steps:
 
 ### SEE ALSO
 
-* [skenv](skenv.md)	 - Keep agent skills (Claude Code, Codex, pi) in sync with a manifest
+* [skenv](skenv.md)	 - Install agent skills (Claude Code, Codex, pi) from a manifest in git
 

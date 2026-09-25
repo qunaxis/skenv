@@ -48,6 +48,18 @@ sync mirrors dir; import never removes one. The imported entries leave
 `skills-lock.json` (the file goes when none are left), after a copy to the
 backup directory.
 
+- Reads: the manifest (or `[project]`), the store and agent directories, the
+  lock of the skills CLI.
+- Changes: the manifest (or `[project]`) and the lock, after a backup; with
+  `--sync`, what `skenv sync --adopt` changes.
+- Network: fetches the repository of each skill of the lock into the clone
+  cache `~/.cache/skenv/repos` to find its commit.
+- Conflicts: none without `--sync`; with it, installed copies are backed up to
+  `~/.local/state/skenv/backup/<ts>/` and replaced.
+- Preview: `--dry-run` writes nothing except the clone cache.
+- Next: `skenv sync --adopt` to take the installed copies over, then commit
+  the skenv file.
+
 ```
 skenv import [flags]
 ```
@@ -140,5 +152,5 @@ the project skills changed; to commit them:
 
 ### SEE ALSO
 
-* [skenv](skenv.md)	 - Keep agent skills (Claude Code, Codex, pi) in sync with a manifest
+* [skenv](skenv.md)	 - Install agent skills (Claude Code, Codex, pi) from a manifest in git
 

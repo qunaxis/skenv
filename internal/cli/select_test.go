@@ -206,17 +206,17 @@ func TestNewSkillNotSelected(t *testing.T) {
 		"skills/alpha/SKILL.md": skillMD("alpha", ""),
 	}, "feat: allowlist")
 	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
-	_, errOut := w.mustRun(0, "new", "fresh")
-	if !strings.Contains(errOut, "lists its skills in skills, without fresh; add it there") {
-		t.Errorf("new without the hint:\n%s", errOut)
+	out, _ := w.mustRun(0, "new", "fresh")
+	if !strings.Contains(out, "lists its skills in skills, without fresh; add it there") || strings.Contains(out, "skenv link") {
+		t.Errorf("new without the hint:\n%s", out)
 	}
 	// Excluded by a pattern: adding it to skills would not help.
 	writeFile(t, w.path(ownPath+"/skenv.toml"), selectManifest(rev, "exclude = [\"exp-*\"]\n", "\n[repo]\nharness = \""+harness.Latest+"\"\nvisibility = \"private\"\n"))
-	_, errOut = w.mustRun(0, "new", "exp-one")
-	if !strings.Contains(errOut, "exp-one matches exclude") || strings.Contains(errOut, "add it there") {
-		t.Errorf("new of an excluded name:\n%s", errOut)
+	out, _ = w.mustRun(0, "new", "exp-one")
+	if !strings.Contains(out, "exp-one matches exclude") || strings.Contains(out, "add it there") {
+		t.Errorf("new of an excluded name:\n%s", out)
 	}
-	if _, errOut = w.mustRun(0, "new", "plain"); strings.Contains(errOut, "note:") {
-		t.Errorf("new of a selected name:\n%s", errOut)
+	if out, _ = w.mustRun(0, "new", "plain"); !strings.Contains(out, "skenv link") {
+		t.Errorf("new of a selected name:\n%s", out)
 	}
 }

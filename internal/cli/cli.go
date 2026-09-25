@@ -23,6 +23,10 @@ import (
 	"github.com/qunaxis/skenv/schemas"
 )
 
+// The help lists commands in the order they are added, by task, not
+// alphabetically.
+func init() { cobra.EnableCommandSorting = false }
+
 // Main runs skenv with args (without the program name) and returns the
 // exit code.
 func Main(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -70,21 +74,27 @@ func Command() *cobra.Command {
 func newRoot(a *app) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "skenv",
-		Short: "Keep agent skills (Claude Code, Codex, pi) in sync with a manifest",
-		Long: `skenv keeps agent skills (Claude Code, Codex, pi) in sync with a manifest.
+		Short: "Install agent skills (Claude Code, Codex, pi) from a manifest in git",
+		Long: `skenv installs agent skills (Claude Code, Codex, pi) from a manifest you
+keep in git, and keeps every machine in line with it. The manifest is the
+[environment] section of skenv.toml in a git repository: your own skills
+come from editable git working copies ("own" repositories), third-party
+skills are copies pinned to a commit ("vendor" entries).
 
-Configuration: a setting comes from, highest first, its flag, the SKENV_<KEY>
-environment variable, the config file, the default. The config file is
-~/.config/skenv/config.toml, config.yaml, config.yml or config.json (only
-one of them); its one key today is "manifest", which --manifest and
-$SKENV_MANIFEST override. "skenv init" records it.
+First steps, by situation:
+- No manifest yet: ` + "`skenv init`" + ` in a git repository starts one.
+- Skills already installed (npx skills, copies): ` + "`skenv init --import`" + `
+  starts one and takes them over.
+- Another machine: ` + "`skenv init <repo>`" + ` clones your manifest repository
+  and syncs it.
 
-The manifest is the [environment] section of a skenv file: skenv.toml (or
-skenv.yaml, skenv.yml, skenv.json) in the root of a repository. The same
-file holds the harness of a skills repository in its [repo] section, and
-the skills a project repository carries in its [project] section.
-"manifest" names that file or the directory that holds it. Inside a
-project, sync and doctor work on its [project] section.
+Then ` + "`skenv vendor add <repo>`" + ` installs a third-party skill, ` + "`skenv sync`" + `
+applies the manifest and ` + "`skenv doctor`" + ` checks the machine.
+
+In a project repository whose skenv file has a [project] section, sync and
+doctor work on the skills of the project instead. The manifest location and
+the config file: https://qunaxis.github.io/skenv/configuration and
+"skenv schema config".
 
 Exit codes: 0 success, 1 problems found, 2 error. Warnings do not change
 the exit code; "skenv doctor" exits 0 only when the machine matches.`,
@@ -98,13 +108,7 @@ skenv sync`,
 		SilenceUsage:      true,
 		DisableAutoGenTag: true,
 		Args:              cobra.NoArgs,
-		// Without a command: usage on stderr and exit 2.
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			a.ran = true
-			a.code = engine.ExitFatal
-			cmd.SetOut(a.stderr)
-			return cmd.Help()
-		},
+		RunE:              groupRun,
 	}
 	root.SetOut(a.stdout)
 	root.SetErr(a.stderr)
@@ -112,24 +116,47 @@ skenv sync`,
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return usageError{fmt.Sprintf("%s (see `%s --help`)", err, cmd.CommandPath())}
 	})
-	root.AddCommand(
-		initCmd(a), syncCmd(a, "sync"), syncCmd(a, "link"), doctorCmd(a),
-		vendorCmd(a), importCmd(a), autostartCmd(a), lintCmd(a), newCmd(a), repoCmd(a), schemaCmd(a),
-		&cobra.Command{
-			Use:     "version",
-			Short:   "Print the skenv version",
-			Example: "skenv version",
-			Args:    cobra.NoArgs,
-			RunE: func(cmd *cobra.Command, _ []string) error {
-				a.ran = true
-				fmt.Fprintln(cmd.OutOrStdout(), buildinfo.Get())
-				return nil
-			},
-		},
+	root.AddGroup(
+		&cobra.Group{ID: groupStart, Title: "Get started:"},
+		&cobra.Group{ID: groupEveryday, Title: "Everyday:"},
+		&cobra.Group{ID: groupAuthor, Title: "Write skills:"},
+		&cobra.Group{ID: groupMachine, Title: "Machine:"},
 	)
+	addTo(root, groupStart, initCmd(a), importCmd(a))
+	addTo(root, groupEveryday, syncCmd(a, "sync"), doctorCmd(a), vendorCmd(a), syncCmd(a, "link"))
+	addTo(root, groupAuthor, newCmd(a), lintCmd(a), repoCmd(a))
+	addTo(root, groupMachine, autostartCmd(a), schemaCmd(a), &cobra.Command{
+		Use:     "version",
+		Short:   "Print the skenv version",
+		Example: "skenv version",
+		Args:    nArgs(0),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			a.ran = true
+			fmt.Fprintln(cmd.OutOrStdout(), buildinfo.Get())
+			return nil
+		},
+	})
+	root.SetHelpCommandGroupID(groupMachine)
+	root.SetCompletionCommandGroupID(groupMachine)
 	addCompletion(root)
 	indentExamples(root)
 	return root
+}
+
+// The command groups of the root help, by task.
+const (
+	groupStart    = "start"
+	groupEveryday = "everyday"
+	groupAuthor   = "author"
+	groupMachine  = "machine"
+)
+
+// addTo adds cmds to root in the help group id.
+func addTo(root *cobra.Command, id string, cmds ...*cobra.Command) {
+	for _, c := range cmds {
+		c.GroupID = id
+		root.AddCommand(c)
+	}
 }
 
 // indentExamples indents every Example by two spaces, like the Usage
@@ -195,13 +222,33 @@ func cmdName(cmd *cobra.Command) string {
 }
 
 // nArgs requires exactly n positional arguments.
-func nArgs(n int) cobra.PositionalArgs {
+func nArgs(n int) cobra.PositionalArgs { return rangeArgs(n, n) }
+
+// rangeArgs requires min to max positional arguments. The error names the
+// missing or the unexpected argument, with the usage line and an example:
+// a count alone does not say what to type.
+func rangeArgs(minimum, maximum int) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
-		if len(args) != n {
-			return usageError{fmt.Sprintf("%s: expected %d argument(s), got %d (see `%s --help`)", cmdName(cmd), n, len(args), cmd.CommandPath())}
+		switch {
+		case len(args) < minimum:
+			// The Use line names the arguments in order: "add <repo>".
+			return argError(cmd, "missing "+strings.Fields(cmd.Use)[1+len(args)])
+		case len(args) > maximum:
+			return argError(cmd, fmt.Sprintf("unexpected argument %q", args[maximum]))
 		}
 		return nil
 	}
+}
+
+func argError(cmd *cobra.Command, problem string) error {
+	msg := fmt.Sprintf("%s: %s\nUsage: %s", cmdName(cmd), problem, cmd.UseLine())
+	for _, line := range strings.Split(cmd.Example, "\n") {
+		if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+			msg += "\nExample: " + line
+			break
+		}
+	}
+	return usageError{msg}
 }
 
 // group is a command that only holds subcommands.
@@ -211,16 +258,17 @@ func group(use, short string, subs ...*cobra.Command) *cobra.Command {
 	return c
 }
 
-// groupRun rejects a group command run without a known subcommand.
+// groupRun prints the help of a group run without a subcommand, which
+// lists its subcommands, and rejects an unknown one.
 func groupRun(cmd *cobra.Command, args []string) error {
-	if len(args) > 0 {
-		var names []string
-		for _, s := range cmd.Commands() {
-			names = append(names, s.Name())
-		}
-		return usageError{fmt.Sprintf("%s: unknown subcommand %q (%s)", cmdName(cmd), args[0], strings.Join(names, ", "))}
+	if len(args) == 0 {
+		return cmd.Help()
 	}
-	return usageError{fmt.Sprintf("%s: missing subcommand (see `%s --help`)", cmdName(cmd), cmd.CommandPath())}
+	var names []string
+	for _, s := range cmd.Commands() {
+		names = append(names, s.Name())
+	}
+	return usageError{fmt.Sprintf("%s: unknown subcommand %q (%s)", cmdName(cmd), args[0], strings.Join(names, ", "))}
 }
 
 // formatFlag adds --format with the completion of its values.
@@ -318,7 +366,22 @@ already installed on this machine into it (see "skenv import") and run
 "skenv sync --adopt": one command to adopt an existing setup.
 
 An existing file keeps its format: --format that disagrees with it is an
-error (exit code 2), and nothing is written.`,
+error (exit code 2), and nothing is written.
+
+- Reads: with <repo>, the repository; without, the git repository of the
+  current directory (or --dir), its origin and skenv file; with --import,
+  the installed skills and the lock of the skills CLI.
+- Changes: the skenv file and "manifest" in the config file; with <repo>,
+  the new working copy and what sync changes; with --import, the lock of the
+  skills CLI and what ` + "`skenv sync --adopt`" + ` changes.
+- Network: with <repo>, git clone and the fetches of sync; without, none;
+  --import fetches the repositories of the installed skills.
+- Conflicts: sync reports an unmanaged path in the way as an error; --adopt
+  and --import move it to ~/.local/state/skenv/backup/<ts>/ and replace it.
+- Preview: --dry-run clones nothing, so with <repo> it cannot show what sync
+  would change.
+- Next: "skenv doctor"; commit and push the skenv file so that your other
+  machines get it.`,
 		Example: `# Clone the manifest repository into ./skills, record it and sync
 skenv init example-org/skills
 # Start a manifest in the git repository of the current directory
@@ -327,12 +390,7 @@ skenv init
 skenv init --import
 # Start one in a repository without an origin yet, to be pushed to gitlab.com
 skenv init --remote gitlab:example-group/my-skills`,
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 1 {
-				return usageError{fmt.Sprintf("init: expected at most 1 argument, got %d (see `%s --help`)", len(args), cmd.CommandPath())}
-			}
-			return nil
-		},
+		Args: rangeArgs(0, 1),
 		RunE: a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
 			if err := fileformat.Valid(format); err != nil {
 				return engine.ExitFatal, usageError{"init: " + err.Error()}
@@ -414,7 +472,19 @@ else HEAD, both warnings. Project-own skills in dir, the mirrors,
 of them with different files is a warning: pick the version to keep before
 sync mirrors dir; import never removes one. The imported entries leave
 skills-lock.json (the file goes when none are left), after a copy to the
-backup directory.`,
+backup directory.
+
+- Reads: the manifest (or [project]), the store and agent directories, the
+  lock of the skills CLI.
+- Changes: the manifest (or [project]) and the lock, after a backup; with
+  --sync, what ` + "`skenv sync --adopt`" + ` changes.
+- Network: fetches the repository of each skill of the lock into the clone
+  cache ~/.cache/skenv/repos to find its commit.
+- Conflicts: none without --sync; with it, installed copies are backed up to
+  ~/.local/state/skenv/backup/<ts>/ and replaced.
+- Preview: --dry-run writes nothing except the clone cache.
+- Next: ` + "`skenv sync --adopt`" + ` to take the installed copies over, then commit
+  the skenv file.`,
 		Example: `# Show the manifest diff and the lock changes, write nothing
 skenv import --dry-run
 # Write the manifest and clean the lock of the skills CLI
@@ -448,9 +518,11 @@ func syncCmd(a *app, name string) *cobra.Command {
 	var project bool
 	c := &cobra.Command{
 		Use:   name,
-		Short: "Pull, vendor and link every skill of the manifest, or sync a project",
-		Long: `Pull own repositories, vendor pinned skills, link everything into the store
-and agent directories, and remove managed paths that left the manifest.
+		Short: "Apply the manifest to this machine, or sync a project",
+		Long: `Apply the manifest: pull the own repositories (editable git working copies
+of your skills), copy each pinned third-party skill at its commit, link
+everything into the store and the agent directories, and remove managed
+paths that left the manifest.
 
 In a project, a git repository whose skenv file has a [project] section
 (checked at the root of the repository of the current directory), sync
@@ -464,7 +536,19 @@ Exit code 0 even with warnings: an own repository with uncommitted changes
 or a diverged branch is left as it is, with a warning, and the rest is
 synced. ` + "`skenv doctor`" + ` exits 0 only when the machine matches the manifest.
 With --dry-run nothing is pulled, so the plan uses the own repositories (and
-a manifest inside one) as they are now.`,
+a manifest inside one) as they are now.
+
+- Reads: the manifest, the own working copies, the store (~/.agents/skills),
+  the agent directories and the state file ~/.local/state/skenv/state.json.
+- Changes: the own working copies (clone, pull --ff-only), the store, the
+  agent links and the state file; in a project, its dir and mirrors.
+- Network: git clone and pull of own repositories, fetches of pinned skills
+  into the clone cache ~/.cache/skenv/repos.
+- Conflicts: an unmanaged path in the way is an error and stays; --adopt
+  moves it to ~/.local/state/skenv/backup/<ts>/ and replaces it.
+- Preview: --dry-run writes and pulls nothing, so upstream changes are not
+  in the plan.
+- Next: "skenv doctor".`,
 		Example: `# Show what a sync would change
 skenv sync --dry-run
 # Pull, vendor and link
@@ -500,8 +584,18 @@ skenv sync --project`,
 	}
 	if name == "link" {
 		c.Short = "Create store and agent links without pulling"
-		c.Long = "Create store links for own skills and agent links for every skill of the manifest.\n" +
-			"Projects have no links to create: `skenv sync` updates their mirrors."
+		c.Long = `Create store links for own skills and agent links for every skill of the
+manifest. Projects have no links to create: ` + "`skenv sync`" + ` updates their mirrors.
+
+- Reads: the manifest, the own working copies, the store, the agent
+  directories and the state file.
+- Changes: the store links of own skills, the agent links and the state
+  file; it pulls, vendors and removes nothing.
+- Network: none.
+- Conflicts: an unmanaged path in the way is an error and stays; --adopt
+  moves it to ~/.local/state/skenv/backup/<ts>/ and replaces it.
+- Preview: --dry-run writes nothing.
+- Next: "skenv doctor".`
 		c.Example = "# Recreate a link removed by hand, without pulling\nskenv link"
 	}
 	manifestFlag(c.Flags(), &o)
@@ -617,9 +711,14 @@ func vendorCmd(a *app) *cobra.Command {
 	var va engine.VendorAddOptions
 	add := &cobra.Command{
 		Use:   "add <repo>",
-		Short: "Pin a third-party skill in the manifest or a project and sync it",
+		Short: "Install a third-party skill, pinned to a commit",
 		Long: `Pin a third-party skill in the manifest (HEAD of the default branch unless
 --rev) and sync it. The manifest change is not committed.
+
+--path is the directory of the skill inside the repository; it can be left
+out when the repository has exactly one SKILL.md. The skill is installed
+under --name, by default the last element of that directory (the
+repository name when the skill is at its root), lowercased.
 
 <repo> is written to the manifest as given: owner/repo on github.com,
 gitlab:group/sub/repo, codeberg:owner/repo, <alias>:path of a host declared
@@ -629,7 +728,16 @@ an error. See https://qunaxis.github.io/skenv/git-hosts
 With --project: add a [[project.vendor]] entry to the skenv file of the
 current repository and sync the project, which copies the skill into its
 dir and mirrors. Its hosts are the ones declared under
-[project.hosts.<alias>]. Commit the file and the copies with the project.`,
+[project.hosts.<alias>]. Commit the file and the copies with the project.
+
+- Reads: the manifest (or [project]) and the repository of the skill.
+- Changes: the manifest (or [project]), the copy of the skill in the store
+  (or the project), its agent links (or mirrors) and the state file.
+- Network: fetches the repository into the clone cache ~/.cache/skenv/repos.
+- Conflicts: an unmanaged path with the skill's name is an error and stays;
+  --adopt moves it to ~/.local/state/skenv/backup/<ts>/ and replaces it.
+- Preview: --dry-run writes nothing except the clone cache.
+- Next: commit the skenv file; "skenv doctor".`,
 		Example: `# Pin the skill in tools/release-notes/ at HEAD of the default branch
 skenv vendor add example-vendor/tools --path tools/release-notes
 # A skill from a GitLab subgroup
@@ -645,8 +753,8 @@ skenv vendor add example-vendor/tools --path tools/release-notes --project`,
 		}),
 	}
 	shared(add, &addF, dryRunFetch)
-	add.Flags().StringVar(&va.Path, "path", "", `directory with SKILL.md inside the repository ("." for the root)`)
-	add.Flags().StringVar(&va.Name, "name", "", "skill name (default: last element of --path)")
+	add.Flags().StringVar(&va.Path, "path", "", `directory with SKILL.md inside the repository ("." for the root; default: the only one)`)
+	add.Flags().StringVar(&va.Name, "name", "", "skill name (default: last element of --path, lowercased)")
 	add.Flags().StringVar(&va.Rev, "rev", "", revUsage)
 
 	var updateF flags
@@ -654,13 +762,22 @@ skenv vendor add example-vendor/tools --path tools/release-notes --project`,
 	update := &cobra.Command{
 		Use:     "update [name...]",
 		Aliases: []string{"upgrade"},
-		Short:   "Move vendored skills to a new commit",
+		Short:   "Move third-party skills to a new commit",
 		Long: `Move vendored skills to a new commit and sync them: the named ones, or every
 vendored skill without names. Each goes to HEAD of its default branch;
 --rev pins a single named skill. Shows the log of the skill's path.
 
 With --project: move entries of [project] and sync the project. A skill of
-a [[project.from]] entry moves the whole entry, whose skills share one rev.`,
+a [[project.from]] entry moves the whole entry, whose skills share one rev.
+
+- Reads: the manifest (or [project]) and the repositories of the skills.
+- Changes: the rev of each moved skill in the manifest (or [project]), its
+  copy, its links (or mirrors) and the state file.
+- Network: fetches each repository into the clone cache ~/.cache/skenv/repos.
+- Conflicts: as vendor add: --adopt replaces an unmanaged path, after a
+  backup.
+- Preview: --dry-run writes nothing except the clone cache.
+- Next: commit the skenv file; "skenv doctor".`,
 		Example: `# Move diagrams to HEAD of the default branch of its repository
 skenv vendor update diagrams
 # Update every vendored skill
@@ -683,12 +800,20 @@ skenv vendor update --project`,
 	var rmF flags
 	remove := &cobra.Command{
 		Use:   "remove <name>",
-		Short: "Remove a vendored skill and its managed paths",
+		Short: "Remove a third-party skill and its installed copy",
 		Long: `Remove a vendored skill from the manifest and its managed paths.
 
 With --project: remove its [[project.vendor]] entry and sync the project,
 which removes the copy and its mirrors. A skill of a [[project.from]] entry
-is removed by editing the skills of that entry.`,
+is removed by editing the skills of that entry.
+
+- Reads: the manifest (or [project]) and the state file.
+- Changes: the manifest (or [project]), and removes the paths the state file
+  records for the skill: its copy and links (or mirrors).
+- Network: none.
+- Conflicts: paths skenv does not manage are left alone.
+- Preview: --dry-run writes and removes nothing.
+- Next: commit the skenv file.`,
 		Example: "skenv vendor remove diagrams\n" +
 			"# Remove a skill pinned in the current project\n" +
 			"skenv vendor remove diagrams --project",
@@ -699,7 +824,14 @@ is removed by editing the skills of that entry.`,
 	}
 	shared(remove, &rmF, dryRunPlain)
 
-	c := group("vendor", "Pin, update and remove third-party skills", add, update, remove)
+	c := group("vendor", "Install, update and remove third-party skills, pinned to a commit", add, update, remove)
+	c.Long = `Install, update and remove third-party skills. Each is pinned: the manifest
+records the repository, the directory of the skill and the commit
+([[environment.vendor]]), and skenv installs a copy of the skill at that
+commit. The copy changes only when "skenv vendor update" moves the pin, not
+when the repository moves on. Your own skills are different: they are
+linked from editable git working copies ([[environment.own]]), which sync
+pulls.`
 	c.Example = "skenv vendor add example-vendor/tools --path tools/release-notes\n" +
 		"skenv vendor update\n" +
 		"skenv vendor remove diagrams"
@@ -720,7 +852,7 @@ need no setup. Use this for offline work or a custom mapping, for example a
 JSON Schema mapping in JetBrains IDEs or a rule in .taplo.toml. The same
 schemas are published at ` + schemas.Base + `.`,
 		Example:   "skenv schema > skenv.schema.json\nskenv schema config",
-		Args:      cobra.MaximumNArgs(1),
+		Args:      rangeArgs(0, 1),
 		ValidArgs: []string{"skenv", "config"},
 		RunE: a.action(func(_ context.Context, env engine.Env, args []string) (int, error) {
 			kind := "skenv"
@@ -739,10 +871,11 @@ schemas are published at ` + schemas.Base + `.`,
 }
 
 func autostartCmd(a *app) *cobra.Command {
-	sub := func(action, short string) *cobra.Command {
+	sub := func(action, short, long string) *cobra.Command {
 		return &cobra.Command{
 			Use:     action,
 			Short:   short,
+			Long:    long,
 			Example: "skenv autostart " + action,
 			Args:    nArgs(0),
 			RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
@@ -751,9 +884,18 @@ func autostartCmd(a *app) *cobra.Command {
 		}
 	}
 	c := group("autostart", "Run `skenv sync --quiet` at login and every hour",
-		sub("enable", "Install and load the autostart job"),
-		sub("disable", "Unload and remove the autostart job"),
-		sub("status", "Show whether the autostart job is installed and loaded (exit 1 if not)"),
+		sub("enable", "Install and load the autostart job", `Install and load the autostart job, which runs `+"`skenv sync --quiet`"+` at
+login and every hour.
+
+- Reads: the path of this skenv binary and of git.
+- Changes: ~/Library/LaunchAgents/`+autostart.Label+`.plist (macOS) or
+  skenv.service and skenv.timer in ~/.config/systemd/user (Linux), loaded
+  with launchctl or systemctl --user; an existing job is replaced.
+- Network: none itself; each hourly sync pulls and fetches.
+- Preview: none; `+"`skenv sync --dry-run`"+` shows what the job would change.
+- Next: "skenv autostart status"; the log is ~/.local/state/skenv/autostart.log.`),
+		sub("disable", "Unload and remove the autostart job", ""),
+		sub("status", "Show whether the autostart job is installed and loaded (exit 1 if not)", ""),
 	)
 	c.Long = "Run `skenv sync --quiet` at login and every hour (macOS LaunchAgent\n" +
 		autostart.Label + ", Linux systemd user timer). Log: ~/.local/state/skenv/autostart.log."

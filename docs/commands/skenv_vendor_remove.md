@@ -2,7 +2,7 @@
 
 ## skenv vendor remove
 
-Remove a vendored skill and its managed paths
+Remove a third-party skill and its installed copy
 
 ### Synopsis
 
@@ -11,6 +11,14 @@ Remove a vendored skill from the manifest and its managed paths.
 With `--project`: remove its [[project.vendor]] entry and sync the project,
 which removes the copy and its mirrors. A skill of a [[project.from]] entry
 is removed by editing the skills of that entry.
+
+- Reads: the manifest (or `[project]`) and the state file.
+- Changes: the manifest (or `[project]`), and removes the paths the state file
+  records for the skill: its copy and links (or mirrors).
+- Network: none.
+- Conflicts: paths skenv does not manage are left alone.
+- Preview: `--dry-run` writes and removes nothing.
+- Next: commit the skenv file.
 
 ```
 skenv vendor remove <name> [flags]
@@ -54,5 +62,5 @@ vendor: 3 changes, 0 warnings, 0 errors
 
 ### SEE ALSO
 
-* [skenv vendor](skenv_vendor.md)	 - Pin, update and remove third-party skills
+* [skenv vendor](skenv_vendor.md)	 - Install, update and remove third-party skills, pinned to a commit
 

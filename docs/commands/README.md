@@ -4,7 +4,7 @@
 
 Generated from `skenv --help`. Start with [skenv](skenv.md).
 
-- [skenv](skenv.md): Keep agent skills (Claude Code, Codex, pi) in sync with a manifest
+- [skenv](skenv.md): Install agent skills (Claude Code, Codex, pi) from a manifest in git
 - [skenv autostart](skenv_autostart.md): Run `skenv sync --quiet` at login and every hour
 - [skenv autostart disable](skenv_autostart_disable.md): Unload and remove the autostart job
 - [skenv autostart enable](skenv_autostart_enable.md): Install and load the autostart job
@@ -17,16 +17,16 @@ Generated from `skenv --help`. Start with [skenv](skenv.md).
 - [skenv import](skenv_import.md): Add the skills already installed on this machine, or in a project, to the skenv file
 - [skenv init](skenv_init.md): Clone the manifest repository and sync, or start a manifest
 - [skenv link](skenv_link.md): Create store and agent links without pulling
-- [skenv lint](skenv_lint.md): Check skills (L1-L6, P1)
+- [skenv lint](skenv_lint.md): Check skills for format, links, size and secrets
 - [skenv new](skenv_new.md): Scaffold a skill
 - [skenv repo](skenv_repo.md): Set up and check the harness of a skills repository
 - [skenv repo apply](skenv_repo_apply.md): Regenerate the managed files of the harness
 - [skenv repo check](skenv_repo_check.md): Compare the managed files with the harness templates
 - [skenv repo init](skenv_repo_init.md): Set up the harness of a skills repository
 - [skenv schema](skenv_schema.md): Print the JSON Schema of the skenv file or the tool config
-- [skenv sync](skenv_sync.md): Pull, vendor and link every skill of the manifest, or sync a project
-- [skenv vendor](skenv_vendor.md): Pin, update and remove third-party skills
-- [skenv vendor add](skenv_vendor_add.md): Pin a third-party skill in the manifest or a project and sync it
-- [skenv vendor remove](skenv_vendor_remove.md): Remove a vendored skill and its managed paths
-- [skenv vendor update](skenv_vendor_update.md): Move vendored skills to a new commit
+- [skenv sync](skenv_sync.md): Apply the manifest to this machine, or sync a project
+- [skenv vendor](skenv_vendor.md): Install, update and remove third-party skills, pinned to a commit
+- [skenv vendor add](skenv_vendor_add.md): Install a third-party skill, pinned to a commit
+- [skenv vendor remove](skenv_vendor_remove.md): Remove a third-party skill and its installed copy
+- [skenv vendor update](skenv_vendor_update.md): Move third-party skills to a new commit
 - [skenv version](skenv_version.md): Print the skenv version

@@ -140,18 +140,23 @@ func TestNewSkill(t *testing.T) {
 	if !strings.Contains(errOut, "already exists") {
 		t.Errorf("duplicate: %s", errOut)
 	}
-	_, errOut = w.mustRun(2, "new", "x", "--repo", "public")
-	if !strings.Contains(errOut, `visibility "public"`) {
+	// The only own repository is the target, unless it contradicts
+	// --visibility.
+	_, errOut = w.mustRun(2, "new", "x", "--visibility", "public")
+	if !strings.Contains(errOut, "--visibility public, but ~/"+ownPath+" is private") {
 		t.Errorf("no public repo: %s", errOut)
+	}
+	if !strings.Contains(out, "run `skenv link` to make it available to your agents") {
+		t.Errorf("new without the link step:\n%s", out)
 	}
 	w.mustRun(2, "new", "Bad_Name")
 
 	pub := filepath.Join(w.home, "pub")
 	mustMkdir(t, pub)
 	w.git(pub, "init", "-q")
-	out, _ = w.mustRun(0, "new", "shared", "--repo", "public", "--dir", pub)
-	if !strings.Contains(out, "skenv lint --publish") {
-		t.Errorf("public hint missing:\n%s", out)
+	out, _ = w.mustRun(0, "new", "shared", "--visibility", "public", "--dir", pub)
+	if !strings.Contains(out, "skenv lint --publish") || !strings.Contains(out, "~/pub is not an own repository of the manifest") {
+		t.Errorf("public hint or install step missing:\n%s", out)
 	}
 	// --dir takes the visibility from the repository's skenv.toml.
 	writeFile(t, filepath.Join(pub, "skenv.toml"), "[repo]\nharness = \"0.3.0\"\nvisibility = \"public\"\n")
@@ -159,8 +164,37 @@ func TestNewSkill(t *testing.T) {
 	if !strings.Contains(out, "skenv lint --publish") {
 		t.Errorf("visibility from skenv.toml ignored:\n%s", out)
 	}
-	w.mustRun(2, "new", "third", "--dir", pub, "--repo", "private")
+	w.mustRun(2, "new", "third", "--dir", pub, "--visibility", "private")
 	if _, err := os.Stat(filepath.Join(pub, "skills/shared/SKILL.md")); err != nil {
 		t.Error("--dir ignored")
+	}
+}
+
+// Without --dir, new writes to the only own repository of the manifest,
+// harness or not; among several, to the one whose [repo] has the
+// visibility.
+func TestNewSkillTarget(t *testing.T) {
+	w := newWorld(t)
+	w.initStandard("")
+	out, _ := w.mustRun(0, "new", "first")
+	if !strings.Contains(out, "created ~/"+ownPath+"/skills/first") || !strings.Contains(out, "skenv link") {
+		t.Fatalf("new in the only own repository:\n%s", out)
+	}
+	w.mustRun(0, "link")
+	if !w.exists(".claude/skills/first") {
+		t.Error("skenv link did not make the new skill available")
+	}
+
+	w.push("me/team", map[string]string{"skills/shared/SKILL.md": skillMD("shared", "")}, "feat: shared")
+	manifest := w.path(ownPath + "/skenv.toml")
+	writeFile(t, manifest, readFile(t, manifest)+"\n[[environment.own]]\nrepo = \"me/team\"\npath = \"~/src/team\"\n")
+	w.mustRun(0, "sync")
+	_, errOut := w.mustRun(2, "new", "second")
+	if !strings.Contains(errOut, "no own repository of the manifest (me/skills, me/team) has visibility \"private\"") || !strings.Contains(errOut, "--dir") {
+		t.Errorf("new with two own repositories:\n%s", errOut)
+	}
+	writeFile(t, w.path("src/team/skenv.toml"), "[repo]\nharness = \""+harness.Latest+"\"\nvisibility = \"private\"\n")
+	if out, _ = w.mustRun(0, "new", "second"); !strings.Contains(out, "created ~/src/team/skills/second") {
+		t.Errorf("new by visibility:\n%s", out)
 	}
 }

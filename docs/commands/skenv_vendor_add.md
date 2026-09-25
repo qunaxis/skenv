@@ -2,12 +2,17 @@
 
 ## skenv vendor add
 
-Pin a third-party skill in the manifest or a project and sync it
+Install a third-party skill, pinned to a commit
 
 ### Synopsis
 
 Pin a third-party skill in the manifest (HEAD of the default branch unless
 `--rev`) and sync it. The manifest change is not committed.
+
+`--path` is the directory of the skill inside the repository; it can be left
+out when the repository has exactly one `SKILL.md`. The skill is installed
+under `--name`, by default the last element of that directory (the
+repository name when the skill is at its root), lowercased.
 
 `<repo>` is written to the manifest as given: owner/repo on `github.com`,
 gitlab:group/sub/repo, codeberg:owner/repo, `<alias>:path` of a host declared
@@ -18,6 +23,15 @@ With `--project`: add a [[project.vendor]] entry to the skenv file of the
 current repository and sync the project, which copies the skill into its
 dir and mirrors. Its hosts are the ones declared under
 `[project.hosts.<alias>]`. Commit the file and the copies with the project.
+
+- Reads: the manifest (or `[project]`) and the repository of the skill.
+- Changes: the manifest (or `[project]`), the copy of the skill in the store
+  (or the project), its agent links (or mirrors) and the state file.
+- Network: fetches the repository into the clone cache `~/.cache/skenv/repos`.
+- Conflicts: an unmanaged path with the skill's name is an error and stays;
+  `--adopt` moves it to `~/.local/state/skenv/backup/<ts>/` and replaces it.
+- Preview: `--dry-run` writes nothing except the clone cache.
+- Next: commit the skenv file; `skenv doctor`.
 
 ```
 skenv vendor add <repo> [flags]
@@ -84,13 +98,13 @@ vendor: 3 changes, 0 warnings, 0 errors
       --dry-run           print the plan; write nothing except the clone cache ~/.cache/skenv/repos, fetched to resolve commits
   -h, --help              help for add
       --manifest string   skenv file with the [environment] section, or its directory
-      --name string       skill name (default: last element of --path)
-      --path string       directory with SKILL.md inside the repository ("." for the root)
+      --name string       skill name (default: last element of --path, lowercased)
+      --path string       directory with SKILL.md inside the repository ("." for the root; default: the only one)
       --project           edit [project] of the current repository instead of the manifest, and sync the project
       --rev string        commit to pin (default: HEAD of the default branch)
 ```
 
 ### SEE ALSO
 
-* [skenv vendor](skenv_vendor.md)	 - Pin, update and remove third-party skills
+* [skenv vendor](skenv_vendor.md)	 - Install, update and remove third-party skills, pinned to a commit
 

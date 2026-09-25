@@ -301,13 +301,17 @@ repositories:
 event on stdin and lints the skill of the edited file. See
 [Claude Code hook](claude-code-hook.md).
 
-### `skenv new <name> [--repo private|public] [--dir D]`
+### `skenv new <name> [--dir D] [--visibility private|public]`
 
 Creates `skills/<name>/` with `SKILL.md` (frontmatter with `name`, a TODO
 `description`, `metadata.source: original`) and `references/notes.md`, then
-lints it. The target is the own repository of the manifest whose
-`skenv.toml` has the requested visibility (default `private`), or the git
-repository at `--dir` (its `skenv.toml` decides the visibility there).
+lints it. The target is the git repository at `--dir`, or else the only own
+repository of the manifest; with several, the one whose `[repo]` has
+`--visibility` (default `private`). No harness is needed. The `[repo]` of
+the target decides its visibility, which only adds the publication step for
+a public repository. It then prints the step that makes the skill available:
+`skenv link` for a selected skill of an own repository, otherwise what keeps
+it out of the manifest.
 
 ### `skenv repo init|apply|check`
 

@@ -27,7 +27,7 @@ func lintCmd(a *app) *cobra.Command {
 	var staged, publish, hook bool
 	c := &cobra.Command{
 		Use:   "lint [path...]",
-		Short: "Check skills (L1-L6, P1)",
+		Short: "Check skills for format, links, size and secrets",
 		Long: `Check skills (directories with SKILL.md) under each path (default "."):
 L1 frontmatter, L2 name, L3 Agent Skills limits, L4 relative links,
 L5 file size and secret-like files, L6 shebangs. --publish adds P1: a license,
@@ -213,7 +213,13 @@ func repoCmd(a *app) *cobra.Command {
 	initC := sub("init", "init --visibility private|public [--ci github|gitlab]", "Set up the harness of a skills repository",
 		"Set up the harness of a skills repository: the [repo] section and the schema\ndirective of the skenv file, lefthook.yml, the CI pipeline, linter configs and\nthe managed blocks of AGENTS.md and .gitignore; then `lefthook install`.\nRefuses if [repo] exists.\n\n"+
 			"--ci picks the CI system: github (.github/workflows/check.yml) or gitlab\n(.gitlab-ci.yml). Without it, the host of origin decides: gitlab when origin\nis on gitlab.com or on a host declared with type \"gitlab\" in the manifest\n(this repository's own [environment], else the manifest in the config file),\ngithub otherwise, also when there is no origin.\n\n"+
-			"Without a skenv file it creates skenv.toml, or skenv.yaml or skenv.json with\n--format. An existing skenv file gets [repo] added in its own format;\n--format that disagrees with it is an error, and nothing is written.",
+			"Without a skenv file it creates skenv.toml, or skenv.yaml or skenv.json with\n--format. An existing skenv file gets [repo] added in its own format;\n--format that disagrees with it is an error, and nothing is written.\n\n"+
+			"- Reads: the repository, its origin and skenv file, and the hosts declared\n  in the manifest (to detect the CI system).\n"+
+			"- Changes: the skenv file ([repo], created if absent), the managed files\n  and blocks, and the git hooks (lefthook install).\n"+
+			"- Network: none.\n"+
+			"- Conflicts: a file that exists and that skenv does not manage yet is an\n  error; --force replaces it.\n"+
+			"- Preview: --dry-run writes nothing and does not run lefthook install.\n"+
+			"- Next: commit the generated files; \"skenv repo check\" compares them\n  with the templates later.",
 		"# Set up the harness of a public skills repository in the current directory\n"+
 			"skenv repo init --visibility public\n"+
 			"# A private repository on GitLab, with jobs on runners tagged self-hosted, linux, docker\n"+
@@ -224,7 +230,13 @@ func repoCmd(a *app) *cobra.Command {
 	_ = initC.RegisterFlagCompletionFunc("ci", cobra.FixedCompletions(harness.CIs, cobra.ShellCompDirectiveNoFileComp))
 	formatFlag(initC, &format, "format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)")
 	apply := sub("apply", "apply", "Regenerate the managed files of the harness",
-		"Regenerate the managed files and blocks from the templates of this skenv\n(harness "+harness.Latest+"; an older repo.harness is moved to it) and point\nthe schema directive of the skenv file at that version; then\n`lefthook install`.\n\nThe CI pipeline follows repo.ci of the skenv file. To switch CI systems, edit\nrepo.ci and run apply: it writes the pipeline of the new one and removes the\nmanaged file of the other (.github/workflows/check.yml or .gitlab-ci.yml).",
+		"Regenerate the managed files and blocks from the templates of this skenv\n(harness "+harness.Latest+"; an older repo.harness is moved to it) and point\nthe schema directive of the skenv file at that version; then\n`lefthook install`.\n\nThe CI pipeline follows repo.ci of the skenv file. To switch CI systems, edit\nrepo.ci and run apply: it writes the pipeline of the new one and removes the\nmanaged file of the other (.github/workflows/check.yml or .gitlab-ci.yml).\n\n"+
+			"- Reads: the skenv file ([repo]) and the managed files.\n"+
+			"- Changes: the managed files and blocks, repo.harness and the schema\n  directive of the skenv file, and the git hooks (lefthook install).\n"+
+			"- Network: none.\n"+
+			"- Conflicts: a file that exists and that skenv does not manage yet is an\n  error; --force replaces it.\n"+
+			"- Preview: --dry-run writes nothing and does not run lefthook install.\n"+
+			"- Next: commit the changed files.",
 		"# Restore a managed file edited by hand\nskenv repo apply")
 	check := sub("check", "check", "Compare the managed files with the harness templates",
 		"Compare the managed files and blocks with the templates of this skenv\n(harness "+harness.Latest+"). Exit code 0: in sync, 1: drift (files listed), 2: error.\nA missing or outdated schema directive in the skenv file is a warning that\ndoes not change the exit code.",

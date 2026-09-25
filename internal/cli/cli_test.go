@@ -14,11 +14,11 @@ func runMain(args ...string) (int, string, string) {
 	return code, out.String(), errOut.String()
 }
 
-// Usage errors exit 2 with one short message on stderr; help, version
-// and completion exit 0.
+// Usage errors exit 2 with a message on stderr; help, version and
+// completion exit 0.
 func TestExitCodes(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	for _, args := range []string{"", "bogus", "sync --bogus", "sync -quiet", "sync extra", "vendor", "vendor frob", "vendor add", "vendor update a b --rev x", "autostart", "autostart frob", "repo", "repo frob", "init a/b c/d", "init --format yml", "completion", "completion powershell", "schema bogus", "schema skenv config"} {
+	for _, args := range []string{"bogus", "sync --bogus", "sync -quiet", "sync extra", "vendor frob", "vendor add", "vendor update a b --rev x", "autostart frob", "repo frob", "init a/b c/d", "init --format yml", "completion powershell", "schema bogus", "schema skenv config"} {
 		code, _, errOut := runMain(strings.Fields(args)...)
 		if code != 2 || errOut == "" {
 			t.Errorf("skenv %s: exit %d, stderr %q; want exit 2 with a message", args, code, errOut)
@@ -29,8 +29,69 @@ func TestExitCodes(t *testing.T) {
 			t.Errorf("skenv %s: exit %d\n%s", args, code, errOut)
 		}
 	}
-	if _, _, errOut := runMain("vendor", "add"); !strings.Contains(errOut, "vendor add: expected 1 argument(s), got 0") {
-		t.Errorf("vendor add without arguments: %q", errOut)
+}
+
+// An argument error names the argument and shows the usage line and an
+// example.
+func TestArgumentErrors(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	for args, want := range map[string]string{
+		"vendor add": "skenv: vendor add: missing <repo>\n" +
+			"Usage: skenv vendor add <repo> [flags]\n" +
+			"Example: skenv vendor add example-vendor/tools --path tools/release-notes\n",
+		"sync extra":          "skenv: sync: unexpected argument \"extra\"\nUsage: skenv sync [flags]\nExample: skenv sync --dry-run\n",
+		"new":                 "skenv: new: missing <name>\n",
+		"init a/b c/d":        "skenv: init: unexpected argument \"c/d\"\n",
+		"schema skenv config": "skenv: schema: unexpected argument \"config\"\n",
+		"vendor frob":         "skenv: vendor: unknown subcommand \"frob\" (add, update, remove)\n",
+	} {
+		code, _, errOut := runMain(strings.Fields(args)...)
+		if code != 2 || !strings.HasPrefix(errOut, want) {
+			t.Errorf("skenv %s: exit %d, stderr:\n%s\nwant it to start with:\n%s", args, code, errOut, want)
+		}
+	}
+}
+
+// The root and a group without a subcommand print their help, which lists
+// the (sub)commands, and exit 0.
+func TestGroupsPrintHelp(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	for args, want := range map[string][]string{
+		"":           {"First steps", "Get started:", "Everyday:", "Write skills:", "Machine:"},
+		"vendor":     {"pinned", "add ", "update ", "remove "},
+		"repo":       {"init ", "apply ", "check "},
+		"autostart":  {"enable ", "disable ", "status "},
+		"completion": {"bash ", "zsh ", "fish "},
+	} {
+		code, out, errOut := runMain(strings.Fields(args)...)
+		if code != 0 || errOut != "" {
+			t.Errorf("skenv %s: exit %d, stderr %q", args, code, errOut)
+		}
+		for _, w := range want {
+			if !strings.Contains(out, w) {
+				t.Errorf("skenv %s: help lacks %q:\n%s", args, w, out)
+			}
+		}
+	}
+	// Configuration details live in the documentation, not the root help.
+	if _, out, _ := runMain(); strings.Contains(out, "config.yml") {
+		t.Errorf("root help explains the config file:\n%s", out)
+	}
+}
+
+// Every command that changes something ends its help with the same
+// contract.
+func TestMutatingCommandsHaveAContract(t *testing.T) {
+	for _, path := range []string{"init", "import", "sync", "link", "vendor add", "vendor update", "vendor remove", "new", "repo init", "repo apply", "autostart enable"} {
+		_, out, _ := runMain(append(strings.Fields(path), "--help")...)
+		last := ""
+		for _, field := range []string{"- Reads: ", "- Changes: ", "- Network: ", "- Next: "} {
+			i := strings.Index(out, "\n"+field)
+			if i < 0 || i < strings.Index(out, last) {
+				t.Errorf("skenv %s --help: %q missing or out of order:\n%s", path, field, out)
+			}
+			last = "\n" + field
+		}
 	}
 }
 

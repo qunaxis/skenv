@@ -17,8 +17,8 @@ skenv completion [flags]
 
 ```console
 $ source <(skenv completion bash)
-$ skenv completion fish > ~/.config/fish/completions/skenv.fish
 $ skenv completion zsh > "${fpath[1]}/_skenv"
+$ skenv completion fish > ~/.config/fish/completions/skenv.fish
 ```
 
 ### Options
@@ -29,7 +29,7 @@ $ skenv completion zsh > "${fpath[1]}/_skenv"
 
 ### SEE ALSO
 
-* [skenv](skenv.md)	 - Keep agent skills (Claude Code, Codex, pi) in sync with a manifest
+* [skenv](skenv.md)	 - Install agent skills (Claude Code, Codex, pi) from a manifest in git
 * [skenv completion bash](skenv_completion_bash.md)	 - Generate the autocompletion script for bash
 * [skenv completion fish](skenv_completion_fish.md)	 - Generate the autocompletion script for fish
 * [skenv completion zsh](skenv_completion_zsh.md)	 - Generate the autocompletion script for zsh

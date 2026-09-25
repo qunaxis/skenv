@@ -187,7 +187,11 @@ type = "gitlab"
 		writeFile(f.t, f.path(".config/skenv/denylist.txt"), "internal-codename\n")
 		f.t.Chdir(repo)
 	},
-	"skenv new/1": func(f *exampleWorld) { f.initialized() },
+	"skenv new/1": func(f *exampleWorld) {
+		f.initialized()
+		f.t.Chdir(f.path("src/skills"))
+	},
+	"skenv new/2": func(f *exampleWorld) { f.initialized() },
 	"skenv repo init/1": func(f *exampleWorld) {
 		repo := f.path("src/public-skills")
 		mustMkdir(f.t, repo)

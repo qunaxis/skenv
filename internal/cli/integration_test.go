@@ -495,7 +495,7 @@ rev  = "` + rev + `"
 
 func TestUsageErrors(t *testing.T) {
 	w := newWorld(t)
-	w.mustRun(2)
+	w.mustRun(0)
 	w.mustRun(2, "bogus")
 	w.mustRun(2, "vendor", "frobnicate")
 	w.mustRun(0, "sync", "--help")

@@ -233,9 +233,9 @@ skenv doctor
 # 4. Pin a third-party skill; skenv edits skenv.toml and prints the commit command.
 skenv vendor add <owner>/<repo> --path <skill-dir>
 
-# 5. Scaffold your own skill in the private skills repository and lint it
-#    (the repository needs a harness, see below).
+# 5. Scaffold your own skill in the skills repository, then link it for your agents.
 skenv new my-skill
+skenv link
 ```
 
 Commit the changes to `skenv.toml` and your new skill and push them: skenv
@@ -244,10 +244,11 @@ next `skenv sync` (or within the hour, with
 autostart). Later, `skenv vendor update` moves your vendored skills to new
 commits and shows what changed.
 
-`skenv new` looks for the own repository whose `[repo]` has the
-requested visibility; set it up once with
-`skenv repo init --visibility private` (see [docs/harness.md](docs/harness.md)),
-or pass `--dir` to target any git repository.
+`skenv new` needs no harness. `skenv new my-skill --dir .` creates the
+skill in the git repository of the current directory; without `--dir` it
+goes to the only own repository of the manifest, or, with several, to the
+one whose `[repo]` has `--visibility` (default `private`, set up with
+`skenv repo init`, see [docs/harness.md](docs/harness.md)).
 <!-- #endregion getting-started -->
 
 ## Documentation

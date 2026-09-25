@@ -2,7 +2,17 @@
 
 ## skenv vendor
 
-Pin, update and remove third-party skills
+Install, update and remove third-party skills, pinned to a commit
+
+### Synopsis
+
+Install, update and remove third-party skills. Each is pinned: the manifest
+records the repository, the directory of the skill and the commit
+([[environment.vendor]]), and skenv installs a copy of the skill at that
+commit. The copy changes only when `skenv vendor update` moves the pin, not
+when the repository moves on. Your own skills are different: they are
+linked from editable git working copies ([[environment.own]]), which sync
+pulls.
 
 ```
 skenv vendor [flags]
@@ -24,8 +34,8 @@ $ skenv vendor remove diagrams
 
 ### SEE ALSO
 
-* [skenv](skenv.md)	 - Keep agent skills (Claude Code, Codex, pi) in sync with a manifest
-* [skenv vendor add](skenv_vendor_add.md)	 - Pin a third-party skill in the manifest or a project and sync it
-* [skenv vendor remove](skenv_vendor_remove.md)	 - Remove a vendored skill and its managed paths
-* [skenv vendor update](skenv_vendor_update.md)	 - Move vendored skills to a new commit
+* [skenv](skenv.md)	 - Install agent skills (Claude Code, Codex, pi) from a manifest in git
+* [skenv vendor add](skenv_vendor_add.md)	 - Install a third-party skill, pinned to a commit
+* [skenv vendor remove](skenv_vendor_remove.md)	 - Remove a third-party skill and its installed copy
+* [skenv vendor update](skenv_vendor_update.md)	 - Move third-party skills to a new commit
 
