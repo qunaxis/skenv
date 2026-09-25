@@ -133,7 +133,7 @@ func TestSet(t *testing.T) {
 			t.Fatalf("file = %s", file)
 		}
 		got, _ := os.ReadFile(file)
-		if string(got) != Header+"manifest = '~/kit/env.toml'\n" {
+		if string(got) != Header+"manifest = \"~/kit/env.toml\"\n" {
 			t.Fatalf("config.toml:\n%s", got)
 		}
 	})

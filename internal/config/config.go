@@ -8,6 +8,8 @@
 package config
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -15,13 +17,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/knadh/koanf/parsers/json"
-	"github.com/knadh/koanf/parsers/toml/v2"
-	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/BurntSushi/toml"
 	"github.com/knadh/koanf/providers/confmap"
 	kenv "github.com/knadh/koanf/providers/env/v2"
-	kfile "github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/qunaxis/skenv/internal/atomicfile"
 	"github.com/qunaxis/skenv/internal/paths"
@@ -88,15 +88,50 @@ func Find(home string) (string, error) {
 	return "", fmt.Errorf("several config files: %s; keep one", strings.Join(show, ", "))
 }
 
+// codec is a koanf.Parser over the decoders skenv already depends on
+// (BurntSushi/toml, yaml.v3, encoding/json), so koanf's own parser modules
+// and pelletier/go-toml are not needed.
+type codec struct {
+	unmarshal func([]byte, any) error
+	marshal   func(any) ([]byte, error)
+}
+
+func (c codec) Unmarshal(b []byte) (map[string]any, error) {
+	m := map[string]any{}
+	if err := c.unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c codec) Marshal(m map[string]any) ([]byte, error) { return c.marshal(m) }
+
 // parser picks the koanf parser for a config file by its extension.
 func parser(file string) koanf.Parser {
 	switch filepath.Ext(file) {
 	case ".yaml", ".yml":
-		return yaml.Parser()
+		return codec{yaml.Unmarshal, yaml.Marshal}
 	case ".json":
-		return json.Parser()
+		return codec{json.Unmarshal, func(v any) ([]byte, error) {
+			b, err := json.MarshalIndent(v, "", "  ")
+			return append(b, '\n'), err
+		}}
 	}
-	return toml.Parser()
+	return codec{toml.Unmarshal, func(v any) ([]byte, error) {
+		var b bytes.Buffer
+		err := toml.NewEncoder(&b).Encode(v)
+		return b.Bytes(), err
+	}}
+}
+
+// fileProvider is a koanf.Provider for one file, without the fsnotify
+// watcher that koanf's providers/file brings in.
+type fileProvider string
+
+func (f fileProvider) ReadBytes() ([]byte, error) { return os.ReadFile(string(f)) }
+
+func (f fileProvider) Read() (map[string]any, error) {
+	return nil, errors.New("fileProvider: use ReadBytes")
 }
 
 // loadFile returns a koanf instance holding file, empty when it is missing.
@@ -108,7 +143,7 @@ func loadFile(file string) (*koanf.Koanf, error) {
 	if _, err := os.Stat(file); errors.Is(err, fs.ErrNotExist) {
 		return k, nil
 	}
-	if err := k.Load(kfile.Provider(file), parser(file)); err != nil {
+	if err := k.Load(fileProvider(file), parser(file)); err != nil {
 		return nil, fmt.Errorf("config %s: %w", file, err)
 	}
 	return k, nil
