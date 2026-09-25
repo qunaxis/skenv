@@ -32,6 +32,7 @@ import (
 
 	"github.com/qunaxis/skenv/internal/atomicfile"
 	"github.com/qunaxis/skenv/internal/docedit"
+	"github.com/qunaxis/skenv/internal/fileformat"
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -212,16 +213,37 @@ func Resolve(home string, getenv func(string) string, key, flag, def string) (st
 // schema directive in it moves to the version of the running skenv. Without
 // a file, config.toml is created with a header and the schema directive.
 func Set(home, key, value string) (string, error) {
+	return SetFormat(home, "", key, value)
+}
+
+// Target returns the config file that SetFormat writes for format ("" for
+// the existing file or TOML): the existing file, or a new
+// config.<format>. An existing file in another format is an error.
+func Target(home, format string) (string, error) {
 	f, err := Load(home)
 	if err != nil {
 		return "", err
 	}
-	path := f.Path
+	return fileformat.Choose(Dir(home), "config", f.Path, format)
+}
+
+// SetFormat is Set with the format of a new file ("toml", "yaml", "json";
+// "" for TOML). An existing file keeps its format; format that disagrees
+// with it is an error, and nothing is written.
+func SetFormat(home, format, key, value string) (string, error) {
+	f, err := Load(home)
+	if err != nil {
+		return "", err
+	}
+	path, err := fileformat.Choose(Dir(home), "config", f.Path, format)
+	if err != nil {
+		return "", err
+	}
 	var out []byte
-	if path == "" {
-		path = filepath.Join(Dir(home), Names[0])
-		out = fmt.Appendf(nil, "#:schema %s\n# skenv configuration, written by `skenv init`\n%s = %s\n",
-			schemas.URL(schemas.Config, schemas.Running()), key, tomlString(value))
+	if f.Path == "" {
+		if out, err = newFile(filepath.Ext(path), key, value); err != nil {
+			return "", err
+		}
 	} else {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -250,6 +272,31 @@ func Set(home, key, value string) (string, error) {
 		mode = fi.Mode().Perm()
 	}
 	return path, atomicfile.Write(path, out, mode)
+}
+
+// header is the first comment of a new config file (TOML and YAML; JSON
+// has no comments).
+const header = "# skenv configuration, written by `skenv init`\n"
+
+// newFile returns a new config file in the format of ext with key = value,
+// the header and the schema directive.
+func newFile(ext, key, value string) ([]byte, error) {
+	url := schemas.URL(schemas.Config, schemas.Running())
+	if ext == ".toml" {
+		return fmt.Appendf(nil, "#:schema %s\n%s%s = %s\n", url, header, key, tomlString(value)), nil
+	}
+	d, err := docedit.Open(nil, ext)
+	if err != nil {
+		return nil, err
+	}
+	if err := d.Put(nil, key, value, false); err != nil {
+		return nil, err
+	}
+	out := d.Bytes()
+	if ext != ".json" {
+		out = append([]byte(header), out...)
+	}
+	return docedit.SetDirective(out, ext, url)
 }
 
 // A top-level TOML key line: key = "value" or 'value', with an optional

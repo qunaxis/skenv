@@ -8,8 +8,12 @@ Clone the manifest repository and sync
 
 Clone the manifest repository into `--path` (default `./<repo>` in the current
 directory, like git clone), record its skenv file as `manifest` in the config
-file (`~/.config/skenv/config.toml` unless a YAML or JSON one exists) and run
-sync. If the repository is already cloned, only the path is recorded.
+file (`~/.config/skenv/config.toml` unless a YAML or JSON one exists; a new one
+is YAML or JSON with `--format`) and run sync. If the repository is already
+cloned, only the path is recorded.
+
+An existing config file keeps its format: `--format` that disagrees with it is
+an error (exit code 2), raised before anything is cloned or written.
 
 ```
 skenv init <owner/repo> [flags]
@@ -18,10 +22,11 @@ skenv init <owner/repo> [flags]
 ### Options
 
 ```
-      --adopt         back up and replace unmanaged paths that conflict with the manifest
-      --dry-run       print the plan, change nothing
-  -h, --help          help for init
-      --path string   where to clone the repository (default ./<repo>)
+      --adopt           back up and replace unmanaged paths that conflict with the manifest
+      --dry-run         print the plan, change nothing
+      --format string   format of a new config file: toml, yaml or json (default toml; an existing file keeps its format)
+  -h, --help            help for init
+      --path string     where to clone the repository (default ./<repo>)
 ```
 
 ### SEE ALSO

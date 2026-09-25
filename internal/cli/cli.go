@@ -207,20 +207,28 @@ func dryRunFlag(fs *pflag.FlagSet, p *bool) {
 
 func initCmd(a *app) *cobra.Command {
 	var o engine.Options
-	var dir string
+	var dir, format string
 	c := &cobra.Command{
 		Use:   "init <owner/repo>",
 		Short: "Clone the manifest repository and sync",
 		Long: `Clone the manifest repository into --path (default ./<repo> in the current
 directory, like git clone), record its skenv file as "manifest" in the config
-file (~/.config/skenv/config.toml unless a YAML or JSON one exists) and run
-sync. If the repository is already cloned, only the path is recorded.`,
+file (~/.config/skenv/config.toml unless a YAML or JSON one exists; a new one
+is YAML or JSON with --format) and run sync. If the repository is already
+cloned, only the path is recorded.
+
+An existing config file keeps its format: --format that disagrees with it is
+an error (exit code 2), raised before anything is cloned or written.`,
 		Args: nArgs(1),
 		RunE: a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
-			return engine.Init(ctx, env, args[0], dir, o)
+			if err := fileformat.Valid(format); err != nil {
+				return engine.ExitFatal, usageError{"init: " + err.Error()}
+			}
+			return engine.Init(ctx, env, args[0], dir, format, o)
 		}),
 	}
 	c.Flags().StringVar(&dir, "path", "", "where to clone the repository (default ./<repo>)")
+	formatFlag(c, &format, "format of a new config file: toml, yaml or json (default toml; an existing file keeps its format)")
 	dryRunFlag(c.Flags(), &o.DryRun)
 	c.Flags().BoolVar(&o.Adopt, "adopt", false, "back up and replace unmanaged paths that conflict with the manifest")
 	return c

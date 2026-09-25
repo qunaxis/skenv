@@ -19,7 +19,9 @@ import (
 // manifest path in the skenv config file and run sync. Without dir the
 // repository is cloned into ./<repo> of the current directory, like git
 // clone. When the repository is already cloned it only records the path.
-func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, error) {
+// format is the format of a new config file ("" for TOML); an existing
+// config in another format is an error before anything is cloned.
+func Init(ctx context.Context, env Env, repo, dir, format string, opts Options) (int, error) {
 	if err := gitx.Available(); err != nil {
 		return ExitFatal, err
 	}
@@ -40,13 +42,9 @@ func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, er
 	show := func(p string) string { return paths.Collapse(env.Home, p) }
 	// A config that cannot be updated fails before anything is cloned, and
 	// --dry-run reports the same error the real run would.
-	cfg, err := config.Load(env.Home)
+	cfgPath, err := config.Target(env.Home, format)
 	if err != nil {
 		return ExitFatal, err
-	}
-	cfgPath := cfg.Path
-	if cfgPath == "" {
-		cfgPath = filepath.Join(config.Dir(env.Home), config.Names[0])
 	}
 
 	cloned := false
@@ -78,7 +76,7 @@ func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, er
 		fmt.Fprintf(env.Stdout, "would record %s in %s\n", show(manifestPath), show(cfgPath))
 		return ExitOK, nil
 	}
-	cfgFile, err := config.Set(env.Home, "manifest", show(manifestPath))
+	cfgFile, err := config.SetFormat(env.Home, format, "manifest", show(manifestPath))
 	if err != nil {
 		return ExitFatal, fmt.Errorf("record the manifest in %s: %w", show(config.Dir(env.Home)), err)
 	}
