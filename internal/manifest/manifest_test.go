@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -133,22 +134,83 @@ rev = "`+sha+`"
 }
 
 func TestRepo(t *testing.T) {
-	cases := []struct{ repo, url, key, name string }{
-		{"tt-a1i/archify", "https://github.com/tt-a1i/archify.git", "tt-a1i__archify", "archify"},
-		{"https://gitlab.com/g/sub/tool.git", "https://gitlab.com/g/sub/tool.git", "sub__tool", "tool"},
-		{"git@github.com:o/r.git", "git@github.com:o/r.git", "o__r", "r"},
-		{"https://user:tok@host/o/r", "https://user:tok@host/o/r", "o__r", "r"},
+	cases := []struct{ repo, url, name string }{
+		{"tt-a1i/archify", "https://github.com/tt-a1i/archify.git", "archify"},
+		{"https://gitlab.com/g/sub/tool.git", "https://gitlab.com/g/sub/tool.git", "tool"},
+		{"git@github.com:o/r.git", "git@github.com:o/r.git", "r"},
+		{"https://user:tok@host/o/r", "https://user:tok@host/o/r", "r"},
 	}
 	for _, c := range cases {
 		if got := RepoURL(c.repo); got != c.url {
 			t.Errorf("RepoURL(%q) = %q", c.repo, got)
 		}
-		if got := CacheKey(c.repo); got != c.key {
-			t.Errorf("CacheKey(%q) = %q", c.repo, got)
-		}
 		if got := RepoName(c.repo); got != c.name {
 			t.Errorf("RepoName(%q) = %q", c.repo, got)
 		}
+	}
+}
+
+func TestNormalizeURL(t *testing.T) {
+	cases := map[string]string{
+		"tt-a1i/archify":                          "github.com/tt-a1i/archify",
+		"https://github.com/tt-a1i/archify.git":   "github.com/tt-a1i/archify",
+		"https://GitHub.com/tt-a1i/archify/":      "github.com/tt-a1i/archify",
+		"http://github.com/tt-a1i/archify":        "github.com/tt-a1i/archify",
+		"git@github.com:tt-a1i/archify.git":       "github.com/tt-a1i/archify",
+		"ssh://git@github.com/tt-a1i/archify.git": "github.com/tt-a1i/archify",
+		"ssh://git@github.com:22/tt-a1i/archify":  "github.com/tt-a1i/archify",
+		"ssh://git@host:2222/o/r.git":             "host:2222/o/r",
+		"https://user:secret@Host.example/o/r":    "host.example/o/r",
+		"https://gitlab.com/Group/Sub/Tool.git":   "gitlab.com/Group/Sub/Tool",
+		"file:///srv/git/o/r.git":                 "/srv/git/o/r",
+		"/srv/git/o/r.git":                        "/srv/git/o/r",
+		"/srv/git/o/r/":                           "/srv/git/o/r",
+	}
+	for in, want := range cases {
+		if got := NormalizeURL(in); got != want {
+			t.Errorf("NormalizeURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestCacheKey(t *testing.T) {
+	key := CacheKey("https://github.com/tt-a1i/archify.git")
+	if !regexp.MustCompile(`^github\.com-tt-a1i-archify-[0-9a-f]{12}$`).MatchString(key) {
+		t.Errorf("CacheKey = %q", key)
+	}
+	// Spellings of one repository share a cache.
+	for _, same := range []string{"tt-a1i/archify", "git@GitHub.com:tt-a1i/archify", "https://user:tok@github.com/tt-a1i/archify/"} {
+		if got := CacheKey(same); got != key {
+			t.Errorf("CacheKey(%q) = %q, want %q", same, got, key)
+		}
+	}
+	// Different repositories never do, even when the slugs are alike.
+	distinct := []string{
+		"https://github.com/x/skills",
+		"https://gitlab.com/x/skills",
+		"https://gitlab.com/a/x/skills",
+		"https://gitlab.com/a/x/skills/more",
+		"https://gitlab.com/a-x/skills",
+		"https://gitlab.com/A/x/skills",
+		"https://gitlab.com:8443/a/x/skills",
+		"/srv/a/x/skills",
+	}
+	seen := map[string]string{}
+	for _, u := range distinct {
+		k := CacheKey(u)
+		if prev, ok := seen[k]; ok {
+			t.Errorf("CacheKey(%q) = CacheKey(%q) = %q", u, prev, k)
+		}
+		seen[k] = u
+		if strings.Contains(k, "/") || strings.HasPrefix(k, ".") || strings.HasPrefix(k, "-") {
+			t.Errorf("CacheKey(%q) = %q is not a plain directory name", u, k)
+		}
+	}
+	if k := CacheKey("https://user:secret@host/o/r"); strings.Contains(k, "secret") || strings.Contains(k, "user") {
+		t.Errorf("credentials in cache key %q", k)
+	}
+	if k := CacheKey("https://host/" + strings.Repeat("a/", 100) + "r"); len(k) > maxSlug+13 {
+		t.Errorf("long key %q", k)
 	}
 }
 
