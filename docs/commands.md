@@ -19,19 +19,114 @@ Every command that reads the manifest accepts `--manifest FILE`; see
 
 ## Machine
 
-| Command                                                                     | What it does                                                                                                                                                                                                                                                        |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `skenv init <owner/repo> [--path P] [--adopt] [--dry-run]`                  | Clone the repository that holds the manifest (`skenv.toml` with `[environment]`) into `P` (default `./<repo>` in the current directory, like `git clone`), record the manifest path in `~/.config/skenv/config.toml`, run `sync`. If the repository is already cloned, only the path is recorded.         |
-| `skenv sync [--adopt] [--dry-run] [--quiet]`                                | Clone or `pull --ff-only` own repositories (dirty or diverged copies are left alone with a warning), vendor pinned skills, link everything, remove managed paths that left the manifest. Idempotent. `--quiet` prints only warnings and errors.                      |
-| `skenv link [--adopt] [--dry-run]`                                          | Only the linking step of `sync`: store links for own skills and agent links for every skill.                                                                                                                                                                        |
-| `skenv doctor [--json]`                                                     | Compare the machine with the manifest without changing anything. Exit code 0: in sync, 1: discrepancies, 2: could not run. `--json` prints the report as JSON.                                                                                                      |
-| `skenv vendor add <owner/repo> [--path P] [--name N] [--rev SHA] [--dry-run]` | Pin a third-party skill. Without `--path` the repository must contain exactly one `SKILL.md`; without `--rev` the HEAD of the default branch is used; `--name` defaults to the last element of `--path`. The manifest is edited in place (comments and order kept) but not committed; skenv prints the commit command. |
-| `skenv vendor bump <name> [--rev SHA] [--dry-run]`                          | Move a vendored skill to a new commit (default: HEAD of the default branch), show `git log --oneline old..new -- path`, sync it.                                                                                                                                   |
-| `skenv vendor remove <name> [--dry-run]`                                    | Remove a vendored skill from the manifest and its managed paths.                                                                                                                                                                                                    |
-| `skenv autostart enable\|disable\|status`                                   | Run `skenv sync --quiet` at login and hourly: a LaunchAgent `com.qunaxis.skenv` on macOS, a systemd user timer on Linux. Log: `~/.local/state/skenv/autostart.log`.                                                                                                 |
-| `skenv version`                                                             | Version, commit and build date.                                                                                                                                                                                                                                     |
+### `skenv init`
 
-`vendor add|bump|remove` also accept `--adopt`.
+```sh
+skenv init <owner>/<repo>
+skenv init <owner>/<repo> --path ~/src/my-skills
+```
+
+Clones the repository that holds the manifest (`skenv.toml` with
+`[environment]`) into `--path` (default `./<repo>` in the current directory,
+like `git clone`), records the manifest path in
+`~/.config/skenv/config.toml` and runs `sync`. If the repository is already
+cloned, only the path is recorded. Also takes `--adopt` and `--dry-run`.
+Reference: [skenv init](commands/skenv_init.md).
+
+### `skenv sync`
+
+```sh
+skenv sync
+skenv sync --quiet   # only warnings and errors
+```
+
+Clones or runs `pull --ff-only` on own repositories (dirty or diverged
+copies are left alone with a warning), vendors pinned skills, links
+everything and removes managed paths that left the manifest. Idempotent.
+Also takes `--adopt` and `--dry-run`. Reference:
+[skenv sync](commands/skenv_sync.md).
+
+### `skenv link`
+
+```sh
+skenv link
+```
+
+Only the linking step of `sync`: store links for own skills and agent links
+for every skill. Also takes `--adopt` and `--dry-run`. Reference:
+[skenv link](commands/skenv_link.md).
+
+### `skenv doctor`
+
+```sh
+skenv doctor
+skenv doctor --json   # the report as JSON
+```
+
+Compares the machine with the manifest without changing anything. Exit
+code 0: in sync, 1: discrepancies, 2: could not run. See
+[`doctor` classes](#doctor-classes). Reference:
+[skenv doctor](commands/skenv_doctor.md).
+
+### `skenv vendor add`
+
+```sh
+skenv vendor add <owner>/<repo> --path <skill-dir>
+skenv vendor add <owner>/<repo> --path <skill-dir> --name <name> --rev <sha>
+```
+
+Pins a third-party skill. Without `--path` the repository must contain
+exactly one `SKILL.md`; without `--rev` the HEAD of the default branch is
+used; `--name` defaults to the last element of `--path`. The manifest is
+edited in place (comments and order kept) but not committed; skenv prints
+the commit command. Also takes `--dry-run`. Reference:
+[skenv vendor add](commands/skenv_vendor_add.md).
+
+### `skenv vendor bump`
+
+```sh
+skenv vendor bump <name>
+skenv vendor bump <name> --rev <sha>
+```
+
+Moves a vendored skill to a new commit (default: HEAD of the default
+branch), shows `git log --oneline old..new -- path` and syncs it. Also takes
+`--dry-run`. Reference: [skenv vendor bump](commands/skenv_vendor_bump.md).
+
+### `skenv vendor remove`
+
+```sh
+skenv vendor remove <name>
+```
+
+Removes a vendored skill from the manifest and its managed paths. Also takes
+`--dry-run`. Reference:
+[skenv vendor remove](commands/skenv_vendor_remove.md).
+
+`vendor add`, `vendor bump` and `vendor remove` also accept `--adopt`.
+
+### `skenv autostart`
+
+```sh
+skenv autostart enable
+skenv autostart disable
+skenv autostart status
+```
+
+`enable` runs `skenv sync --quiet` at login and hourly: a LaunchAgent
+`com.qunaxis.skenv` on macOS, a systemd user timer on Linux. Log:
+`~/.local/state/skenv/autostart.log`. `status` exits 1 when the job is not
+installed and loaded. Reference:
+[skenv autostart](commands/skenv_autostart.md).
+
+### `skenv version`
+
+```sh
+skenv version
+```
+
+Prints the version, commit and build date. Reference:
+[skenv version](commands/skenv_version.md).
 
 ## `--dry-run` and `--adopt`
 
