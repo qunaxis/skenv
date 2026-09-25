@@ -165,6 +165,8 @@ func (g *gen) skenv() *Schema {
 	host := g.object(reflect.TypeFor[manifest.Host]())
 	gitHost := g.object(reflect.TypeFor[manifest.GitHost]())
 	repo := g.object(reflect.TypeFor[harness.Config]())
+	project := g.object(reflect.TypeFor[manifest.Project]())
+	from := g.object(reflect.TypeFor[manifest.From]())
 
 	environment.Properties.get("host").AdditionalProperties = &Schema{Ref: "#/$defs/host"}
 	hosts := environment.Properties.get("hosts")
@@ -219,6 +221,38 @@ func (g *gen) skenv() *Schema {
 	rev.Pattern = manifest.RevPattern
 	rev.PatternErrorMessage = "A full 40-character lowercase commit SHA; branches, tags and short SHAs are not allowed."
 
+	projectHosts := project.Properties.get("hosts")
+	projectHosts.AdditionalProperties = hosts.AdditionalProperties
+	projectHosts.PropertyNames = hosts.PropertyNames
+	dir := project.Properties.get("dir")
+	dir.Pattern = RelPathPattern
+	dir.PatternErrorMessage = relPathMessage
+	dir.Not = &Schema{Const: ".", ErrorMessage: `dir must be a directory inside the repository, not its root.`}
+	dir.Default = manifest.DefaultProjectDir
+	mirrors := project.Properties.get("mirrors")
+	mirrors.UniqueItems = true
+	mirrors.Items.MinLength = 1
+	mirrors.Items.Pattern = RelPathPattern
+	mirrors.Items.PatternErrorMessage = relPathMessage
+	mirrors.Items.Not = &Schema{Const: ".", ErrorMessage: `A mirror is a directory inside the repository, not its root.`}
+	mirrors.Items.Examples = []any{".claude/skills"}
+	mode := project.Properties.get("mirrors_mode")
+	mode.Enum = manifest.MirrorModes
+	mode.Default = manifest.MirrorSymlink
+
+	from.Required = []string{"repo", "skills", "rev"}
+	from.Properties.get("repo").MinLength = 1
+	fromDir := from.Properties.get("skills_dir")
+	fromDir.Pattern = RelPathPattern
+	fromDir.PatternErrorMessage = relPathMessage
+	fromDir.Default = manifest.DefaultSkillsDir
+	fromSkills := from.Properties.get("skills")
+	fromSkills.MinItems = 1
+	fromSkills.UniqueItems = true
+	fromSkills.Items = skillName()
+	fromRev := from.Properties.get("rev")
+	*fromRev = Schema{Type: "string", Description: fromRev.Description, Pattern: rev.Pattern, PatternErrorMessage: rev.PatternErrorMessage}
+
 	repo.Required = []string{"harness", "visibility"}
 	h := repo.Properties.get("harness")
 	h.Pattern = harness.VersionPattern
@@ -230,15 +264,18 @@ func (g *gen) skenv() *Schema {
 	return &Schema{
 		Title: "skenv file",
 		Description: "The skenv file of a repository: skenv.toml, skenv.yaml, skenv.yml or skenv.json in its root. " +
-			"[repo] is the harness of a skills repository, [environment] the manifest of your machines. " +
-			"Rules the schema cannot check are enforced by skenv: skill names are unique across own and vendor skills, " +
-			"layout.ignore must not match a manifest skill, and a directory holds only one skenv file. " +
+			"[repo] is the harness of a skills repository, [environment] the manifest of your machines, " +
+			"[project] the skills a project repository carries. " +
+			"Rules the schema cannot check are enforced by skenv: skill names are unique across own and vendor skills " +
+			"(and across vendor and from skills of [project]), layout.ignore must not match a manifest skill, " +
+			"project.dir and project.mirrors do not overlap, and a directory holds only one skenv file. " +
 			"Docs: https://qunaxis.github.io/skenv/skenv-file",
 		Type: "object",
 		Properties: Props{
 			{schemaKey, &Schema{Type: "string", Description: "The URL of this schema, for editors. skenv ignores it."}},
 			{"repo", &Schema{Ref: "#/$defs/repo"}},
 			{"environment", &Schema{Ref: "#/$defs/environment"}},
+			{"project", &Schema{Ref: "#/$defs/project"}},
 		},
 		AdditionalProperties: false,
 		If: &Schema{
@@ -259,6 +296,8 @@ func (g *gen) skenv() *Schema {
 			{"vendor", vendor},
 			{"host", host},
 			{"gitHost", gitHost},
+			{"project", project},
+			{"from", from},
 		},
 	}
 }

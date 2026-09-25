@@ -86,6 +86,7 @@ const guide: DefaultTheme.SidebarItem[] = [
   { text: 'Editor support', link: '/editor-support' },
   { text: 'Manifest', link: '/manifest' },
   { text: 'Git hosts', link: '/git-hosts' },
+  { text: 'Project skills', link: '/project-skills' },
   { text: 'Harness', link: '/harness' },
   { text: 'Claude Code hook', link: '/claude-code-hook' },
 ]

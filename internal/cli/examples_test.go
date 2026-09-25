@@ -127,6 +127,19 @@ type = "gitlab"
 		}, "feat(release-notes): breaking changes first")
 	},
 	"skenv vendor remove/1": func(f *exampleWorld) { f.initialized() },
+	"skenv sync/3":          func(f *exampleWorld) { f.project(false) },
+	"skenv doctor/3": func(f *exampleWorld) {
+		dir := f.project(true)
+		writeFile(f.t, filepath.Join(dir, ".agents/skills/diagrams/SKILL.md"),
+			exampleSkill("diagrams", "Draw architecture and sequence diagrams.", "Draw the diagram in Mermaid."))
+		f.remove("src/web-app/.claude/skills/deploy")
+	},
+	"skenv vendor add/4": func(f *exampleWorld) { f.project(true) },
+	"skenv vendor update/3": func(f *exampleWorld) {
+		f.project(true)
+		f.newVendorCommits()
+	},
+	"skenv vendor remove/2": func(f *exampleWorld) { f.project(true) },
 	"skenv lint/1": func(f *exampleWorld) {
 		f.initialized()
 		f.t.Chdir(f.path("src/skills"))
@@ -311,6 +324,44 @@ func (f *exampleWorld) npxInstalled() {
 	entry["installedAt"], entry["updatedAt"] = "2026-09-01T12:00:00.000Z", "2026-09-01T12:00:00.000Z"
 	f.writeLock(map[string]lockEntry{"release-notes": entry})
 	writeFile(f.t, f.path(".claude/skills/notes/SKILL.md"), exampleSkill("notes", "Take meeting notes.", "One line per decision."))
+}
+
+// project is a project repository ~/src/web-app, the current directory,
+// whose skenv.toml pins diagrams from example-vendor/tools and code-review
+// from example-org/skills, mirrored into .claude/skills, with a
+// project-own skill deploy; synced and committed when synced is set. It
+// returns the repository.
+func (f *exampleWorld) project(synced bool) string {
+	f.pushRemotes()
+	vendorRev := f.git(filepath.Join(f.work, "example-vendor__tools"), "rev-parse", "HEAD")
+	ownRev := f.git(filepath.Join(f.work, "example-org__skills"), "rev-parse", "HEAD")
+	dir := f.path("src/web-app")
+	mustMkdir(f.t, dir)
+	f.git(dir, "init", "--quiet", "-b", "main")
+	writeFile(f.t, filepath.Join(dir, "skenv.toml"), `[project]
+dir     = ".agents/skills"
+mirrors = [".claude/skills"]
+
+[[project.vendor]]
+name = "diagrams"
+repo = "example-vendor/tools"
+path = "tools/diagrams"
+rev  = "`+vendorRev+`"
+
+[[project.from]]
+repo   = "example-org/skills"
+skills = ["code-review"]
+rev    = "`+ownRev+`"
+`)
+	writeFile(f.t, filepath.Join(dir, ".agents/skills/deploy/SKILL.md"),
+		exampleSkill("deploy", "Deploy the web app to staging, then production.", "Run the smoke tests between the two."))
+	f.t.Chdir(dir)
+	if synced {
+		f.mustRun(0, "sync")
+		f.git(dir, "add", "-A")
+		f.git(dir, "commit", "--quiet", "-m", "chore(skills): sync project skills")
+	}
+	return dir
 }
 
 // initialized is the machine after `skenv init example-org/skills`.

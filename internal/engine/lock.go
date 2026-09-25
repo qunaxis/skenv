@@ -10,7 +10,7 @@ import (
 
 // lock takes an exclusive, non-blocking flock on ~/.local/state/skenv/lock
 // so that autostart and a manual run never interleave their state writes.
-func (e *Engine) lock() error {
+func (e *base) lock() error {
 	dir := e.layout.State()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -31,7 +31,7 @@ func (e *Engine) lock() error {
 }
 
 // Close releases the lock taken by Open.
-func (e *Engine) Close() {
+func (e *base) Close() {
 	if e.lockFile != nil {
 		_ = syscall.Flock(int(e.lockFile.Fd()), syscall.LOCK_UN)
 		_ = e.lockFile.Close()

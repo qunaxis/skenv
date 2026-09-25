@@ -2,7 +2,6 @@ package engine
 
 import (
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -23,24 +22,45 @@ type VendorAddOptions struct {
 
 // VendorAdd pins a third-party skill in the manifest and syncs it.
 func (e *Engine) VendorAdd(o VendorAddOptions) (int, error) {
-	if o.Repo == "" {
-		return ExitFatal, fmt.Errorf("usage: skenv vendor add <repo> [--path P] [--name N] [--rev SHA]")
-	}
-	remote, err := e.m.Hosts.Resolve(o.Repo)
+	v, err := e.resolveVendor(o)
 	if err != nil {
 		return ExitFatal, err
+	}
+	if _, ok := e.m.FindVendor(v.Name); ok {
+		return ExitFatal, fmt.Errorf("vendor %q is already in the manifest; use `skenv vendor update %s`", v.Name, v.Name)
+	}
+	if err := e.editManifest(func(data []byte) ([]byte, error) {
+		return manifest.AppendVendor(data, filepath.Ext(e.manifestPath), skenvfile.Environment, v)
+	}); err != nil {
+		return ExitFatal, err
+	}
+	e.changef("add vendor %s (%s@%.12s, %s) to %s", v.Name, v.Repo, v.Rev, v.Path, e.show(e.manifestPath))
+	return e.syncNames([]string{v.Name}, fmt.Sprintf("add vendor skill %s", v.Name))
+}
+
+// resolveVendor turns the arguments of `vendor add` into an entry: the
+// commit (HEAD of the default branch unless o.Rev), the skill directory
+// (the only one in the repository unless o.Path) and the name (the last
+// element of the path unless o.Name).
+func (e *base) resolveVendor(o VendorAddOptions) (manifest.Vendor, error) {
+	if o.Repo == "" {
+		return manifest.Vendor{}, fmt.Errorf("usage: skenv vendor add <repo> [--path P] [--name N] [--rev SHA]")
+	}
+	remote, err := e.hosts.Resolve(o.Repo)
+	if err != nil {
+		return manifest.Vendor{}, err
 	}
 	cache, err := e.ensureCache(o.Repo, "")
 	if err != nil {
-		return ExitFatal, err
+		return manifest.Vendor{}, err
 	}
 	rev, err := e.resolveRev(cache, o.Repo, o.Rev)
 	if err != nil {
-		return ExitFatal, err
+		return manifest.Vendor{}, err
 	}
 	skillPath, err := e.findSkillPath(cache, rev, o.Path)
 	if err != nil {
-		return ExitFatal, err
+		return manifest.Vendor{}, err
 	}
 	name := o.Name
 	if name == "" {
@@ -51,17 +71,9 @@ func (e *Engine) VendorAdd(o VendorAddOptions) (int, error) {
 		name = strings.ToLower(name)
 	}
 	if err := manifest.ValidName(name); err != nil {
-		return ExitFatal, fmt.Errorf("%w; pass --name", err)
+		return manifest.Vendor{}, fmt.Errorf("%w; pass --name", err)
 	}
-	if _, ok := e.m.FindVendor(name); ok {
-		return ExitFatal, fmt.Errorf("vendor %q is already in the manifest; use `skenv vendor update %s`", name, name)
-	}
-	v := manifest.Vendor{Name: name, Repo: o.Repo, Path: skillPath, Rev: rev}
-	if err := e.editManifest(func(data []byte) ([]byte, error) { return manifest.AppendVendor(data, filepath.Ext(e.manifestPath), v) }); err != nil {
-		return ExitFatal, err
-	}
-	e.changef("add vendor %s (%s@%.12s, %s) to %s", name, o.Repo, rev, skillPath, e.show(e.manifestPath))
-	return e.syncNames([]string{name}, fmt.Sprintf("add vendor skill %s", name))
+	return manifest.Vendor{Name: name, Repo: o.Repo, Path: skillPath, Rev: rev}, nil
 }
 
 // VendorUpdate moves vendored skills to a new commit and syncs them: the
@@ -110,37 +122,48 @@ func (e *Engine) VendorUpdate(names []string, rev string) (int, error) {
 // there.
 func (e *Engine) updateRev(name, rev string) (string, error) {
 	v, _ := e.m.FindVendor(name)
-	cache, err := e.ensureCache(v.Repo, "")
-	if err != nil {
+	newRev, err := e.nextRev("vendor "+name, name, v.Repo, v.Path, v.Rev, rev)
+	if err != nil || newRev == "" {
 		return "", err
-	}
-	newRev, err := e.resolveRev(cache, v.Repo, rev)
-	if err != nil {
-		return "", err
-	}
-	if newRev == v.Rev {
-		e.infof("vendor %s is already at %.12s", name, newRev)
-		return "", nil
-	}
-	if e.hasCommit(cache, v.Rev) {
-		args := []string{"log", "--oneline", v.Rev + ".." + newRev}
-		if v.Path != "." {
-			args = append(args, "--", v.Path)
-		}
-		if log, err := e.env.Git.Run(e.ctx, cache, args...); err == nil {
-			if log == "" {
-				log = "(no commits touch " + v.Path + ")"
-			}
-			e.infof("%s %.12s..%.12s:\n%s", name, v.Rev, newRev, log)
-		}
 	}
 	old := v.Rev
 	if err := e.editManifest(func(data []byte) ([]byte, error) {
-		return manifest.SetVendorRev(data, filepath.Ext(e.manifestPath), name, newRev)
+		return manifest.SetVendorRev(data, filepath.Ext(e.manifestPath), skenvfile.Environment, name, newRev)
 	}); err != nil {
 		return "", err
 	}
 	e.changef("update vendor %s %.12s → %.12s in %s", name, old, newRev, e.show(e.manifestPath))
+	return newRev, nil
+}
+
+// nextRev resolves rev (default: HEAD of the default branch) of repo for
+// the entry what, pinned at old, and shows the log of dir between them
+// under the heading name. It returns "" when the entry is already there.
+func (e *base) nextRev(what, name, repo, dir, old, rev string) (string, error) {
+	cache, err := e.ensureCache(repo, "")
+	if err != nil {
+		return "", err
+	}
+	newRev, err := e.resolveRev(cache, repo, rev)
+	if err != nil {
+		return "", err
+	}
+	if newRev == old {
+		e.infof("%s is already at %.12s", what, newRev)
+		return "", nil
+	}
+	if e.hasCommit(cache, old) {
+		args := []string{"log", "--oneline", old + ".." + newRev}
+		if dir != "." {
+			args = append(args, "--", dir)
+		}
+		if log, err := e.env.Git.Run(e.ctx, cache, args...); err == nil {
+			if log == "" {
+				log = "(no commits touch " + dir + ")"
+			}
+			e.infof("%s %.12s..%.12s:\n%s", name, old, newRev, log)
+		}
+	}
 	return newRev, nil
 }
 
@@ -151,7 +174,7 @@ func (e *Engine) VendorRemove(name string) (int, error) {
 		return ExitFatal, fmt.Errorf("vendor %q is not in the manifest %s", name, e.show(e.manifestPath))
 	}
 	if err := e.editManifest(func(data []byte) ([]byte, error) {
-		return manifest.RemoveVendor(data, filepath.Ext(e.manifestPath), name)
+		return manifest.RemoveVendor(data, filepath.Ext(e.manifestPath), skenvfile.Environment, name)
 	}); err != nil {
 		return ExitFatal, err
 	}
@@ -168,7 +191,7 @@ func (e *Engine) VendorRemove(name string) (int, error) {
 // editManifest applies edit to the manifest text, validates the result,
 // writes it (unless --dry-run) and reloads it.
 func (e *Engine) editManifest(edit func([]byte) ([]byte, error)) error {
-	data, err := os.ReadFile(e.manifestPath)
+	data, err := e.readSkenvFile(e.manifestPath)
 	if err != nil {
 		return err
 	}
@@ -192,11 +215,9 @@ func (e *Engine) editManifest(edit func([]byte) ([]byte, error)) error {
 		e.setManifest(prev)
 		return err
 	}
-	if !e.opts.DryRun {
-		if err := manifest.WriteFile(e.manifestPath, out); err != nil {
-			e.setManifest(prev)
-			return fmt.Errorf("write manifest %s: %w", e.show(e.manifestPath), err)
-		}
+	if err := e.writeSkenvFile(e.manifestPath, out); err != nil {
+		e.setManifest(prev)
+		return fmt.Errorf("write manifest %s: %w", e.show(e.manifestPath), err)
 	}
 	return nil
 }
@@ -243,7 +264,7 @@ func (e *Engine) commitHint(msg string) {
 
 // resolveRev returns the full SHA for rev, or the HEAD of the remote's
 // default branch when rev is empty.
-func (e *Engine) resolveRev(cache, repo, rev string) (string, error) {
+func (e *base) resolveRev(cache, repo, rev string) (string, error) {
 	if rev == "" {
 		out, err := e.env.Git.Run(e.ctx, cache, "ls-remote", "origin", "HEAD")
 		if err != nil {
@@ -267,7 +288,7 @@ func (e *Engine) resolveRev(cache, repo, rev string) (string, error) {
 
 // findSkillPath returns the directory holding SKILL.md at rev: the given
 // path (verified) or the only such directory in the repository.
-func (e *Engine) findSkillPath(cache, rev, want string) (string, error) {
+func (e *base) findSkillPath(cache, rev, want string) (string, error) {
 	if want != "" {
 		want = path.Clean(strings.Trim(want, "/"))
 		if want == "" {

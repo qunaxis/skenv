@@ -77,6 +77,10 @@ Its design is guided by these mantras:
   JSON.
 - `skenv vendor add|update|remove` edit the manifest in place, keeping its
   comments and order, in TOML, YAML or JSON.
+- Project skills: a `[project]` section pins skills into a project
+  repository as committed copies, mirrors them into the directory of each
+  agent, and `skenv doctor` checks them in CI
+  ([project skills](docs/project-skills.md)).
 - JSON Schemas for the skenv file and the tool config: files skenv writes
   name their schema, so editors complete and check them
   ([editor support](docs/editor-support.md)).
@@ -255,14 +259,17 @@ The same pages, with search, are published at
 - [Adopting an existing setup](docs/adopting.md): `skenv import` and
   `skenv init --import` for a machine with skills installed by `npx skills`
   or by hand.
-- [The skenv file](docs/skenv-file.md): `skenv.toml` with its `[repo]` and
-  `[environment]` sections, formats, and moving from `env.toml`.
+- [The skenv file](docs/skenv-file.md): `skenv.toml` with its `[repo]`,
+  `[environment]` and `[project]` sections, formats, and moving from
+  `env.toml`.
 - [Editor support](docs/editor-support.md): JSON Schemas of the skenv file
   and the tool config, and editor setup.
 - [Manifest](docs/manifest.md): the `[environment]` format, where it is found,
   the layout on disk, and the mapping to `skills-lock.json`.
 - [Git hosts](docs/git-hosts.md): `repo` forms for GitHub, GitLab, Codeberg
   and self-hosted servers, host aliases, ssh and authentication.
+- [Project skills](docs/project-skills.md): `[project]`, skills committed
+  with a project, mirrors, `doctor` in CI.
 - [Harness](docs/harness.md): `skenv repo init|apply|check`, `[repo]`,
   the managed files and harness versions.
 - [Claude Code hook](docs/claude-code-hook.md): how skills are linted while

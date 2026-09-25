@@ -13,7 +13,7 @@ Generated from `skenv --help`. Start with [skenv](skenv.md).
 - [skenv completion bash](skenv_completion_bash.md): Generate the autocompletion script for bash
 - [skenv completion fish](skenv_completion_fish.md): Generate the autocompletion script for fish
 - [skenv completion zsh](skenv_completion_zsh.md): Generate the autocompletion script for zsh
-- [skenv doctor](skenv_doctor.md): Compare the machine with the manifest
+- [skenv doctor](skenv_doctor.md): Compare the machine with the manifest, or a project with its `[project]`
 - [skenv import](skenv_import.md): Add the skills already installed on this machine to the manifest
 - [skenv init](skenv_init.md): Clone the manifest repository and sync, or start a manifest
 - [skenv link](skenv_link.md): Create store and agent links without pulling
@@ -24,9 +24,9 @@ Generated from `skenv --help`. Start with [skenv](skenv.md).
 - [skenv repo check](skenv_repo_check.md): Compare the managed files with the harness templates
 - [skenv repo init](skenv_repo_init.md): Set up the harness of a skills repository
 - [skenv schema](skenv_schema.md): Print the JSON Schema of the skenv file or the tool config
-- [skenv sync](skenv_sync.md): Pull, vendor and link every skill of the manifest
+- [skenv sync](skenv_sync.md): Pull, vendor and link every skill of the manifest, or sync a project
 - [skenv vendor](skenv_vendor.md): Pin, update and remove third-party skills
-- [skenv vendor add](skenv_vendor_add.md): Pin a third-party skill in the manifest and sync it
+- [skenv vendor add](skenv_vendor_add.md): Pin a third-party skill in the manifest or a project and sync it
 - [skenv vendor remove](skenv_vendor_remove.md): Remove a vendored skill and its managed paths
 - [skenv vendor update](skenv_vendor_update.md): Move vendored skills to a new commit
 - [skenv version](skenv_version.md): Print the skenv version

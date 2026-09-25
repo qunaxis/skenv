@@ -47,24 +47,63 @@ const (
 	ExitFatal    = 2 // the command could not run
 )
 
+// base is what every command shares: the outside world, the flags, the
+// output with its counters and the vendor cache.
+type base struct {
+	env       Env
+	opts      Options
+	layout    paths.Layout
+	ctx       context.Context
+	lockFile  *os.File
+	backupDir string
+	// hosts resolve the repo values of the skenv file: the declared hosts
+	// of the manifest, or of [project].
+	hosts manifest.Hosts
+	// pending is the edited skenv file under --dry-run, which is never
+	// written: the next edit of the same command builds on it.
+	pending []byte
+
+	changes  int
+	warnings int
+	errs     int
+}
+
+func newBase(ctx context.Context, env Env, opts Options) base {
+	if env.Now == nil {
+		env.Now = time.Now
+	}
+	return base{env: env, opts: opts, layout: paths.Layout{Home: env.Home}, ctx: ctx}
+}
+
+// readSkenvFile returns the skenv file at file as the command sees it: with
+// the edits it made so far under --dry-run.
+func (e *base) readSkenvFile(file string) ([]byte, error) {
+	if e.pending != nil {
+		return e.pending, nil
+	}
+	return os.ReadFile(file)
+}
+
+// writeSkenvFile writes the edited skenv file, or keeps it in memory
+// under --dry-run.
+func (e *base) writeSkenvFile(file string, data []byte) error {
+	if e.opts.DryRun {
+		e.pending = data
+		return nil
+	}
+	return manifest.WriteFile(file, data)
+}
+
 // Engine is one command invocation over a loaded manifest and state.
 type Engine struct {
-	env          Env
-	opts         Options
-	layout       paths.Layout
+	base
 	manifestPath string
 	m            *manifest.Manifest
 	store        string
 	targets      []string
 	st           *state.State
 	stateDirty   bool
-	backupDir    string
-	ctx          context.Context
-	lockFile     *os.File
 
-	changes  int
-	warnings int
-	errs     int
 	// ownUnavailable is set when an own repository could not be listed;
 	// pruning is skipped then so its links are not mistaken for stale ones.
 	ownUnavailable bool
@@ -116,18 +155,14 @@ func Open(ctx context.Context, env Env, opts Options) (*Engine, error) {
 // open takes the lock and loads the state for the manifest m of the skenv
 // file mp, which need not exist yet (`init --import`).
 func open(ctx context.Context, env Env, opts Options, mp string, m *manifest.Manifest) (*Engine, error) {
-	if env.Now == nil {
-		env.Now = time.Now
-	}
-	layout := paths.Layout{Home: env.Home}
-	e := &Engine{env: env, opts: opts, layout: layout, manifestPath: mp, ctx: ctx}
+	e := &Engine{base: newBase(ctx, env, opts), manifestPath: mp}
 	if !opts.ReadOnly && !opts.DryRun {
 		if err := e.lock(); err != nil {
 			return nil, err
 		}
 	}
 	// Load the state under the lock so a concurrent run cannot be lost.
-	st, err := state.Load(layout.StateFile())
+	st, err := state.Load(e.layout.StateFile())
 	if err != nil {
 		e.Close()
 		return nil, err
@@ -139,6 +174,7 @@ func open(ctx context.Context, env Env, opts Options, mp string, m *manifest.Man
 
 func (e *Engine) setManifest(m *manifest.Manifest) {
 	e.m = m
+	e.hosts = m.Hosts
 	e.store = e.layout.DefaultStore()
 	if m.Layout.Store != "" {
 		e.store = paths.Expand(e.env.Home, m.Layout.Store)
@@ -272,9 +308,9 @@ func (e *Engine) desired(skills []Skill) map[string]state.Entry {
 // Output helpers. Changes go to stdout (suppressed by --quiet); warnings and
 // errors go to stderr.
 
-func (e *Engine) show(p string) string { return paths.Collapse(e.env.Home, p) }
+func (e *base) show(p string) string { return paths.Collapse(e.env.Home, p) }
 
-func (e *Engine) changef(format string, args ...any) {
+func (e *base) changef(format string, args ...any) {
 	e.changes++
 	if e.opts.Quiet {
 		return
@@ -286,19 +322,19 @@ func (e *Engine) changef(format string, args ...any) {
 	fmt.Fprintf(e.env.Stdout, "%s%s\n", prefix, gitx.Mask(fmt.Sprintf(format, args...)))
 }
 
-func (e *Engine) infof(format string, args ...any) {
+func (e *base) infof(format string, args ...any) {
 	if e.opts.Quiet {
 		return
 	}
 	fmt.Fprintf(e.env.Stdout, "%s\n", gitx.Mask(fmt.Sprintf(format, args...)))
 }
 
-func (e *Engine) warnf(format string, args ...any) {
+func (e *base) warnf(format string, args ...any) {
 	e.warnings++
 	fmt.Fprintf(e.env.Stderr, "warning: %s\n", gitx.Mask(fmt.Sprintf(format, args...)))
 }
 
-func (e *Engine) errorf(format string, args ...any) {
+func (e *base) errorf(format string, args ...any) {
 	e.errs++
 	fmt.Fprintf(e.env.Stderr, "error: %s\n", gitx.Mask(fmt.Sprintf(format, args...)))
 }
@@ -330,6 +366,11 @@ func (e *Engine) finish(cmd string) (int, error) {
 	if err := e.saveState(); err != nil {
 		return ExitFatal, fmt.Errorf("save state %s: %w", e.show(e.layout.StateFile()), err)
 	}
+	return e.summary(cmd), nil
+}
+
+// summary prints the one-line result of cmd and returns its exit code.
+func (e *base) summary(cmd string) int {
 	if !e.opts.Quiet {
 		switch {
 		case e.changes == 0 && e.warnings == 0 && e.errs == 0:
@@ -343,9 +384,9 @@ func (e *Engine) finish(cmd string) (int, error) {
 		}
 	}
 	if e.errs > 0 {
-		return ExitProblems, nil
+		return ExitProblems
 	}
-	return ExitOK, nil
+	return ExitOK
 }
 
 // OwnDir is an own repository of the manifest resolved on this machine.

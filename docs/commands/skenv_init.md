@@ -84,6 +84,16 @@ add own example-org/my-skills at ~/src/my-skills (the repository of the manifest
 +# into the agent directories. Reference: https://qunaxis.github.io/skenv/manifest
 +[environment]
 +
++[[environment.vendor]]
++name = "release-notes"
++repo = "example-vendor/tools"
++path = "tools/release-notes"
++rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
++
++[[environment.own]]
++repo = "example-org/my-skills"
++path = "~/src/my-skills"
++
 +# Your own skills repositories, kept as working copies: every skill in
 +# <path>/skills/ is linked.
 +# [[environment.own]]
@@ -99,16 +109,6 @@ add own example-org/my-skills at ~/src/my-skills (the repository of the manifest
 +# repo = "<owner>/<repo>"
 +# path = "<directory of the skill in the repository>"
 +# rev  = "<full 40-character commit SHA>"
-+
-+[[environment.vendor]]
-+name = "release-notes"
-+repo = "example-vendor/tools"
-+path = "tools/release-notes"
-+rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
-+
-+[[environment.own]]
-+repo = "example-org/my-skills"
-+path = "~/src/my-skills"
 create ~/src/my-skills/skenv.toml with [environment]
 manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
 remove release-notes from ~/.agents/.skill-lock.json (a copy goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)

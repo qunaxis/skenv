@@ -150,7 +150,8 @@ func quoteAll(names []string) string {
 }
 
 // Vendor is a third-party skill pinned to a commit; `skenv vendor
-// add|update|remove` edit these entries.
+// add|update|remove` edit these entries (with --project, the ones of
+// [project]).
 type Vendor struct {
 	// Name is the skill name: 1 to 64 lowercase letters, digits and single
 	// hyphens, with no hyphen at the start or end; "synced" is reserved.
@@ -240,12 +241,7 @@ func Parse(data []byte, ext string) (*Manifest, error) {
 			m.Own[i].SkillsDir = DefaultSkillsDir
 		}
 	}
-	for a, h := range m.Hosts {
-		if h.Type == "" {
-			h.Type = TypeGeneric
-			m.Hosts[a] = h
-		}
-	}
+	m.Hosts.fillDefaults()
 	for i := range m.Vendor {
 		if m.Vendor[i].Path == "" {
 			m.Vendor[i].Path = "."
@@ -305,20 +301,7 @@ func (m *Manifest) Validate() error {
 		if v.Name != "" {
 			where = fmt.Sprintf("vendor %q", v.Name)
 		}
-		if err := ValidName(v.Name); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", where, err))
-		}
-		if v.Repo == "" {
-			errs = append(errs, fmt.Errorf("%s: repo is required", where))
-		} else if _, err := m.Hosts.Resolve(v.Repo); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", where, err))
-		}
-		if !cleanRel(v.Path) {
-			errs = append(errs, fmt.Errorf("%s: path %q must be a relative path inside the repository (\".\" for the root)", where, v.Path))
-		}
-		if !shaRe.MatchString(v.Rev) {
-			errs = append(errs, fmt.Errorf("%s: rev %q must be a full 40-character lowercase commit SHA", where, v.Rev))
-		}
+		errs = append(errs, checkVendor(where, v, m.Hosts)...)
 		if seen[v.Name] && v.Name != "" {
 			errs = append(errs, fmt.Errorf("%s: duplicate skill name", where))
 		}

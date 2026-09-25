@@ -6,9 +6,10 @@ it would stop Claude Code from loading this file.
 - Go CLI, module `github.com/qunaxis/skenv`, binary `cmd/skenv`. Runtime
   dependency: `git` only. No network services, no other executables.
 - Layout: `internal/cli` (flags, integration tests), `internal/engine`
-  (sync, link, doctor, vendor, init, import), `internal/cli/new.go` (`skenv new`), `internal/skenvfile` (the skenv file: `[repo]` and `[environment]`,
-  TOML/YAML/JSON), `internal/manifest` (`[environment]` parsing and in-place
-  editing), `internal/config` (tool config), `internal/fileformat` (`--format`
+  (sync, link, doctor, vendor, init, import; `project*.go`: `[project]` in a
+  project repository), `internal/cli/new.go` (`skenv new`), `internal/skenvfile` (the skenv file: `[repo]`, `[environment]` and `[project]`,
+  TOML/YAML/JSON), `internal/manifest` (`[environment]` and `[project]`
+  parsing and in-place editing), `internal/config` (tool config), `internal/fileformat` (`--format`
   of new files; no write changes a file's format, `TestWritesKeepFormat`
   covers every write path), `internal/agents`, `internal/state`,
   `internal/autostart`, `internal/gitx`, `internal/buildinfo`,

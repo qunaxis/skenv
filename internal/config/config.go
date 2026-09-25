@@ -6,8 +6,9 @@
 // lowercase and case-sensitive in every format. At most one config file may
 // exist; skenv refuses to guess between two.
 //
-// The skenv file of a repository (skenv.toml with [repo] and [environment])
-// is not configuration of the tool and is read by internal/skenvfile.
+// The skenv file of a repository (skenv.toml with [repo], [environment] and
+// [project]) is not configuration of the tool and is read by
+// internal/skenvfile.
 //
 // Unknown keys are errors; "$schema" is allowed for editors. `skenv init`
 // edits the file in place: comments, other keys and their order stay.

@@ -9,6 +9,7 @@ shipped in the release archives (`make man` writes them into `man/`; see
 `skenv completion bash|zsh|fish`.
 
 - [Machine: init, import, sync, link, doctor, vendor, autostart](#machine)
+- [Projects: sync, doctor, vendor --project](#projects)
 - [`--dry-run` and `--adopt`](#--dry-run-and---adopt)
 - [`doctor` classes](#doctor-classes)
 - [Skills repositories: lint, new, repo](#skills-repositories)
@@ -81,7 +82,8 @@ skenv sync --quiet   # only warnings and errors
 Clones or runs `pull --ff-only` on own repositories (dirty or diverged
 copies are left alone with a warning), vendors pinned skills, links
 everything and removes managed paths that left the manifest. Idempotent.
-Also takes `--adopt` and `--dry-run`. Reference:
+Also takes `--adopt` and `--dry-run`. Inside a project it syncs the
+project instead (see [Projects](#projects)). Reference:
 [skenv sync](commands/skenv_sync.md).
 
 ### `skenv link`
@@ -103,7 +105,8 @@ skenv doctor --json   # the report as JSON
 
 Compares the machine with the manifest without changing anything. Exit
 code 0: in sync, 1: discrepancies, 2: could not run. See
-[`doctor` classes](#doctor-classes). Reference:
+[`doctor` classes](#doctor-classes). Inside a project it checks the
+project instead (see [Projects](#projects)). Reference:
 [skenv doctor](commands/skenv_doctor.md).
 
 ### `skenv vendor add`
@@ -147,7 +150,9 @@ Removes a vendored skill from the manifest and its managed paths. Also takes
 `--dry-run`. Reference:
 [skenv vendor remove](commands/skenv_vendor_remove.md).
 
-`vendor add`, `vendor update` and `vendor remove` also accept `--adopt`.
+`vendor add`, `vendor update` and `vendor remove` also accept `--adopt`,
+and `--project` to edit `[project]` of the current repository instead of
+the manifest (see [Projects](#projects)).
 
 ### `skenv autostart`
 
@@ -171,6 +176,26 @@ skenv version
 
 Prints the version, commit and build date. Reference:
 [skenv version](commands/skenv_version.md).
+
+## Projects
+
+```sh
+skenv sync                                              # inside a project: its [project]
+skenv doctor --project                                  # fail outside a project, e.g. in CI
+skenv vendor add <owner>/<repo> --path <skill-dir> --project
+skenv vendor update [name...] --project
+skenv vendor remove <name> --project
+skenv sync --manifest ~/src/my-skills                   # the machine, from inside a project
+```
+
+A project is a git repository whose skenv file, at its root, has a
+`[project]` section. Inside one, `sync` copies its pinned skills into
+`project.dir`, removes copies whose entry is gone and updates the mirrors;
+`doctor` checks all that offline and exits 1 on the classes `missing`,
+`wrong-rev`, `modified`, `extra-managed`, `conflict`, `broken-mirror`,
+`mirror-drift` and `unmanaged`. `--project` requires a project,
+`--manifest` works on the machine instead. The `vendor` commands edit
+`[project]` only with `--project`. See [Project skills](project-skills.md).
 
 ## `--dry-run` and `--adopt`
 
@@ -205,6 +230,8 @@ a machine that already has skills installed is usually `skenv sync --adopt`.
 
 `doctor` also warns about own repositories whose `harness` is older than the
 newest templates of the installed skenv (see [harness](harness.md)).
+Inside a project `doctor` has its own classes; see
+[`doctor` classes in a project](project-skills.md#doctor-classes-in-a-project).
 
 ## Skills repositories
 

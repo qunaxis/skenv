@@ -22,7 +22,7 @@ import (
 
 // Schema file names.
 const (
-	Skenv  = "skenv.schema.json"  // the skenv file: [repo] and [environment]
+	Skenv  = "skenv.schema.json"  // the skenv file: [repo], [environment], [project]
 	Config = "config.schema.json" // the tool config ~/.config/skenv/config.*
 )
 

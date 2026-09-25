@@ -295,6 +295,16 @@ var ReservedAliases = []string{"github", "gitlab", "codeberg"}
 var aliasRe = regexp.MustCompile(AliasPattern)
 
 // validate checks the declared hosts; errors name hosts.<alias>.
+// fillDefaults sets the type of hosts that do not name one.
+func (h Hosts) fillDefaults() {
+	for a, g := range h {
+		if g.Type == "" {
+			g.Type = TypeGeneric
+			h[a] = g
+		}
+	}
+}
+
 func (h Hosts) validate() []error {
 	var errs []error
 	for _, alias := range slices.Sorted(maps.Keys(h)) {

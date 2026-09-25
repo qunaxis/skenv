@@ -17,19 +17,23 @@ import (
 
 const markerName = ".skenv"
 
-// marker is the content of store/<name>/.skenv for vendored skills. Repo
-// is the canonical clone URL (manifest.Remote.URL), not the value written in
-// the manifest.
+// marker is the content of the .skenv file in a directory skenv copied:
+// a vendored skill in the store or in a project (repo, path, rev; hash in
+// a project), or a copy in a project mirror (mirror, hash). Repo is the
+// canonical clone URL (manifest.Remote.URL), not the value written in the
+// skenv file.
 type marker struct {
-	Repo string `toml:"repo"`
-	Path string `toml:"path"`
-	Rev  string `toml:"rev"`
+	Repo   string `toml:"repo,omitempty"`
+	Path   string `toml:"path,omitempty"`
+	Rev    string `toml:"rev,omitempty"`
+	Mirror string `toml:"mirror,omitempty"` // <dir>/<name> of the project
+	Hash   string `toml:"hash,omitempty"`   // treeHash of the content
 }
 
-// matches reports whether the marker records vendor entry v of the
-// repository remote.
-func (mk marker) matches(remote manifest.Remote, v *manifest.Vendor) bool {
-	return manifest.NormalizeURL(mk.Repo) == manifest.NormalizeURL(remote.URL) && mk.Path == v.Path && mk.Rev == v.Rev
+// matches reports whether the marker records the directory path of the
+// repository remote at rev.
+func (mk marker) matches(remote manifest.Remote, path, rev string) bool {
+	return manifest.NormalizeURL(mk.Repo) == manifest.NormalizeURL(remote.URL) && mk.Path == path && mk.Rev == rev
 }
 
 // showRepo is how output names a repository: the value of the manifest,
@@ -45,6 +49,31 @@ func readMarker(dir string) (marker, error) {
 	var mk marker
 	_, err := toml.DecodeFile(filepath.Join(dir, markerName), &mk)
 	return mk, err
+}
+
+// writeMarker writes the marker of dir, a copy skenv just made. A .skenv
+// that came with the copied content (a file, or a symlink that would
+// redirect the write) is replaced, never written through.
+func writeMarker(dir string, mk marker) error {
+	b := []byte("# managed by skenv, do not edit\n")
+	for _, kv := range [][2]string{{"repo", mk.Repo}, {"path", mk.Path}, {"rev", mk.Rev}, {"mirror", mk.Mirror}, {"hash", mk.Hash}} {
+		if kv[1] != "" {
+			b = fmt.Appendf(b, "%s = %q\n", kv[0], kv[1])
+		}
+	}
+	p := filepath.Join(dir, markerName)
+	if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(b); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // Sync runs `skenv sync`: update own working copies, materialize vendored
@@ -133,8 +162,8 @@ func (e *Engine) syncOwn() {
 // rev (when given) is present. The cache directory is keyed by the URL git
 // really fetches from (after url.<base>.insteadOf), and a cache whose origin
 // is another repository is cloned again, so two repositories never share one.
-func (e *Engine) ensureCache(repo, rev string) (string, error) {
-	remote, err := e.m.Hosts.Resolve(repo)
+func (e *base) ensureCache(repo, rev string) (string, error) {
+	remote, err := e.hosts.Resolve(repo)
 	if err != nil {
 		return "", err
 	}
@@ -176,7 +205,7 @@ func (e *Engine) ensureCache(repo, rev string) (string, error) {
 // cacheIsFor reports whether dir is a clone whose origin is resolved,
 // compared after manifest.NormalizeURL. A clone of another repository is
 // reported (credentials masked) so the caller clones again.
-func (e *Engine) cacheIsFor(dir, resolved string) bool {
+func (e *base) cacheIsFor(dir, resolved string) bool {
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 		return false
 	}
@@ -195,7 +224,7 @@ func (e *Engine) cacheIsFor(dir, resolved string) bool {
 // cloneCache makes dir a fresh partial clone of url. The clone goes into a
 // temporary sibling first and replaces dir only when it is complete, so an
 // interrupted clone never leaves a broken cache behind.
-func (e *Engine) cloneCache(git gitx.Git, url, dir string) error {
+func (e *base) cloneCache(git gitx.Git, url, dir string) error {
 	tmp, err := os.MkdirTemp(filepath.Dir(dir), ".skenv-tmp-"+filepath.Base(dir)+"-")
 	if err != nil {
 		return err
@@ -210,7 +239,7 @@ func (e *Engine) cloneCache(git gitx.Git, url, dir string) error {
 	return replace(tmp, dir)
 }
 
-func (e *Engine) hasCommit(dir, rev string) bool {
+func (e *base) hasCommit(dir, rev string) bool {
 	return e.env.Git.OK(e.ctx, dir, "cat-file", "-e", rev+"^{commit}")
 }
 
@@ -220,7 +249,7 @@ func (e *Engine) syncVendor(s Skill) {
 	dst := e.storePath(s.Name)
 	remote, _ := e.m.Hosts.Resolve(v.Repo) // Validate resolved it already
 	if e.st.Is(dst) {
-		if mk, err := readMarker(dst); err == nil && mk.matches(remote, v) {
+		if mk, err := readMarker(dst); err == nil && mk.matches(remote, v.Path, v.Rev) {
 			e.manage(dst, state.Entry{Kind: state.VendorDir, Skill: s.Name})
 			return
 		}
@@ -242,21 +271,31 @@ func (e *Engine) syncVendor(s Skill) {
 // materialize copies the vendored skill v into dst with a .skenv marker
 // that records url, the canonical clone URL of its repository.
 func (e *Engine) materialize(v *manifest.Vendor, url, dst string) error {
-	cache, err := e.ensureCache(v.Repo, v.Rev)
+	return e.copySkill(v.Repo, url, v.Path, v.Rev, dst, false)
+}
+
+// copySkill makes dst a copy of the directory skillPath of repo at rev
+// with a .skenv marker that records url, the canonical clone URL of repo,
+// replacing what is there only once the copy is complete. withHash records
+// the content hash in the marker, for copies that are committed to a
+// project and checked by doctor there.
+func (e *base) copySkill(repo, url, skillPath, rev, dst string, withHash bool) error {
+	cache, err := e.ensureCache(repo, rev)
 	if err != nil {
 		return err
 	}
-	if _, err := e.env.Git.Run(e.ctx, cache, "checkout", "--quiet", "--force", "--detach", v.Rev); err != nil {
+	if _, err := e.env.Git.Run(e.ctx, cache, "checkout", "--quiet", "--force", "--detach", rev); err != nil {
 		return err
 	}
-	src := filepath.Join(cache, filepath.FromSlash(v.Path))
+	src := filepath.Join(cache, filepath.FromSlash(skillPath))
 	if !fileExists(filepath.Join(src, "SKILL.md")) {
-		return fmt.Errorf("%s has no SKILL.md at %s@%.12s; fix path in the manifest", v.Path, v.Repo, v.Rev)
+		return fmt.Errorf("%s has no SKILL.md at %s@%.12s; fix path in the skenv file", skillPath, repo, rev)
 	}
-	if err := os.MkdirAll(e.store, 0o755); err != nil {
+	parent := filepath.Dir(dst)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.MkdirTemp(e.store, ".skenv-tmp-"+v.Name+"-")
+	tmp, err := os.MkdirTemp(parent, ".skenv-tmp-"+filepath.Base(dst)+"-")
 	if err != nil {
 		return err
 	}
@@ -269,9 +308,13 @@ func (e *Engine) materialize(v *manifest.Vendor, url, dst string) error {
 	if err := copyTree(src, content); err != nil {
 		return err
 	}
-	var b []byte
-	b = fmt.Appendf(b, "# managed by skenv, do not edit\nrepo = %q\npath = %q\nrev = %q\n", url, v.Path, v.Rev)
-	if err := os.WriteFile(filepath.Join(content, markerName), b, 0o644); err != nil {
+	mk := marker{Repo: url, Path: skillPath, Rev: rev}
+	if withHash {
+		if mk.Hash, err = treeHash(content); err != nil {
+			return err
+		}
+	}
+	if err := writeMarker(content, mk); err != nil {
 		return err
 	}
 	return replace(content, dst)

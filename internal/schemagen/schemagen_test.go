@@ -3,6 +3,7 @@ package schemagen
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -101,7 +102,7 @@ func instance(t *testing.T, text, ext string) any {
 }
 
 // parseSkenv is everything skenv checks in a skenv file without the file
-// system: the top level, [environment] and [repo].
+// system: the top level, [repo], [environment] and [project].
 func parseSkenv(text, ext string) error {
 	if _, _, err := harness.Parse([]byte(text), ext); err != nil {
 		return err
@@ -110,6 +111,9 @@ func parseSkenv(text, ext string) error {
 		if _, err := manifest.Parse([]byte(text), ext); err != nil && !strings.Contains(err.Error(), "no [environment] section") {
 			return err
 		}
+	}
+	if _, err := manifest.ParseProject([]byte(text), ext); err != nil && !errors.Is(err, manifest.ErrNoProject) {
+		return err
 	}
 	return nil
 }
@@ -197,8 +201,9 @@ func examples(t *testing.T) (skenv, cfg []example) {
 		_, repo := top["repo"]
 		_, env := top["environment"]
 		_, man := top["manifest"]
+		_, project := top["project"]
 		switch {
-		case repo || env:
+		case repo || env || project:
 			skenv = append(skenv, e)
 		case man:
 			cfg = append(cfg, e)
@@ -298,6 +303,23 @@ func TestSchemaAndParserAgree(t *testing.T) {
 		{"unknown key in host", ".toml", hosts + "token = \"x\"\n", false, "additional properties 'token'"},
 		{"uppercase alias", ".toml", "[environment.hosts.Work]\nurl = \"https://a.example\"\n", false, "does not match pattern"},
 		{"built-in alias", ".toml", "[environment.hosts.gitlab]\nurl = \"https://a.example\"\n", false, "'not' failed"},
+		{"minimal project", ".toml", "[project]\n", true, ""},
+		{"full project", ".toml", "[project]\ndir = \"skills\"\nmirrors = [\".claude/skills\", \".pi/skills\"]\nmirrors_mode = \"copy\"\n" +
+			"[[project.vendor]]\n" + full + "[[project.from]]\nrepo = \"a/c\"\nskills_dir = \"s\"\nskills = [\"x\", \"y\"]\nrev = \"" + sha + "\"\n", true, ""},
+		{"project with repo and environment", ".yaml", "repo: {harness: 0.4.0, visibility: public}\nproject:\n  mirrors: [.claude/skills]\n", true, ""},
+		{"project dir is the root", ".toml", "[project]\ndir = \".\"\n", false, "'not' failed"},
+		{"project dir escapes", ".toml", "[project]\ndir = \"../skills\"\n", false, "does not match pattern"},
+		{"empty mirror", ".toml", "[project]\nmirrors = [\"\"]\n", false, "minLength"},
+		{"duplicate mirror", ".toml", "[project]\nmirrors = [\"a\", \"a\"]\n", false, "items at 0 and 1 are equal"},
+		{"bad mirrors_mode", ".toml", "[project]\nmirrors_mode = \"hardlink\"\n", false, "value must be one of"},
+		{"unknown key in project", ".toml", "[project]\nmirror = [\"a\"]\n", false, "additional properties 'mirror'"},
+		{"project vendor short rev", ".toml", "[[project.vendor]]\n" + strings.Replace(full, sha, sha[:7], 1), false, "does not match pattern"},
+		{"from without skills", ".toml", "[[project.from]]\nrepo = \"a/b\"\nrev = \"" + sha + "\"\n", false, "missing property 'skills'"},
+		{"from with empty skills", ".toml", "[[project.from]]\nrepo = \"a/b\"\nskills = []\nrev = \"" + sha + "\"\n", false, "minItems"},
+		{"from with a branch", ".toml", "[[project.from]]\nrepo = \"a/b\"\nskills = [\"x\"]\nrev = \"main\"\n", false, "does not match pattern"},
+		{"project host", ".toml", "[project.hosts.work]\nurl = \"https://git.example.com\"\n[[project.from]]\nrepo = \"work:g/r\"\nskills = [\"x\"]\nrev = \"" + sha + "\"\n", true, ""},
+		{"project host without url", ".toml", "[project.hosts.work]\ntype = \"gitlab\"\n", false, "missing property 'url'"},
+		{"project built-in alias", ".toml", "[project.hosts.codeberg]\nurl = \"https://a.example\"\n", false, "'not' failed"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

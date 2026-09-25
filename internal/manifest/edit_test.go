@@ -22,7 +22,7 @@ skip = []
 `
 
 func TestAppendVendor(t *testing.T) {
-	out, err := AppendVendor([]byte(base), ".toml", Vendor{Name: "b", Repo: "x/b", Path: "skills/b", Rev: sha})
+	out, err := AppendVendor([]byte(base), ".toml", "environment", Vendor{Name: "b", Repo: "x/b", Path: "skills/b", Rev: sha})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,14 +37,14 @@ func TestAppendVendor(t *testing.T) {
 	if len(m.Vendor) != 2 || len(m.Host) != 1 {
 		t.Error("appended table breaks the structure")
 	}
-	if _, err := AppendVendor([]byte(base), ".toml", Vendor{Name: "a", Repo: "x/a", Path: ".", Rev: sha}); err == nil {
+	if _, err := AppendVendor([]byte(base), ".toml", "environment", Vendor{Name: "a", Repo: "x/a", Path: ".", Rev: sha}); err == nil {
 		t.Error("duplicate append must fail validation")
 	}
 }
 
 func TestSetVendorRev(t *testing.T) {
 	next := strings.Repeat("b", 40)
-	out, err := SetVendorRev([]byte(base), ".toml", "a", next)
+	out, err := SetVendorRev([]byte(base), ".toml", "environment", "a", next)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,17 +52,17 @@ func TestSetVendorRev(t *testing.T) {
 	if string(out) != want {
 		t.Errorf("got:\n%s\nwant:\n%s", out, want)
 	}
-	if _, err := SetVendorRev([]byte(base), ".toml", "missing", next); err == nil {
+	if _, err := SetVendorRev([]byte(base), ".toml", "environment", "missing", next); err == nil {
 		t.Error("unknown vendor must fail")
 	}
 }
 
 func TestRemoveVendor(t *testing.T) {
-	with, err := AppendVendor([]byte(base), ".toml", Vendor{Name: "b", Repo: "x/b", Path: ".", Rev: sha})
+	with, err := AppendVendor([]byte(base), ".toml", "environment", Vendor{Name: "b", Repo: "x/b", Path: ".", Rev: sha})
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := RemoveVendor(with, ".toml", "a")
+	out, err := RemoveVendor(with, ".toml", "environment", "a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestRemoveVendor(t *testing.T) {
 	if strings.Contains(s, `name = "a"`) || strings.Contains(s, "pinned on purpose") {
 		t.Errorf("vendor a not removed:\n%s", s)
 	}
-	out, err = RemoveVendor(out, ".toml", "b")
+	out, err = RemoveVendor(out, ".toml", "environment", "b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,14 +98,14 @@ func TestEditOtherFormats(t *testing.T) {
 	} {
 		t.Run(ext, func(t *testing.T) {
 			next := strings.Repeat("b", 40)
-			out, err := AppendVendor([]byte(text), ext, Vendor{Name: "b", Repo: "x/b", Path: ".", Rev: sha})
+			out, err := AppendVendor([]byte(text), ext, "environment", Vendor{Name: "b", Repo: "x/b", Path: ".", Rev: sha})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if out, err = SetVendorRev(out, ext, "a", next); err != nil {
+			if out, err = SetVendorRev(out, ext, "environment", "a", next); err != nil {
 				t.Fatal(err)
 			}
-			if out, err = RemoveVendor(out, ext, "b"); err != nil {
+			if out, err = RemoveVendor(out, ext, "environment", "b"); err != nil {
 				t.Fatal(err)
 			}
 			m, err := Parse(out, ext)
@@ -115,7 +115,7 @@ func TestEditOtherFormats(t *testing.T) {
 			if len(m.Vendor) != 1 || m.Vendor[0].Rev != next || len(m.Own) != 1 {
 				t.Errorf("result:\n%s", out)
 			}
-			if _, err := SetVendorRev(out, ext, "missing", next); err == nil {
+			if _, err := SetVendorRev(out, ext, "environment", "missing", next); err == nil {
 				t.Error("unknown vendor must fail")
 			}
 		})
@@ -131,7 +131,7 @@ func TestParseNeedsEnvironment(t *testing.T) {
 // A vendor table header may carry a comment and spaces.
 func TestVendorHeaderWithComment(t *testing.T) {
 	text := "[environment.layout]\nstore = \"~/s\"\n\n[[ environment . vendor ]]  # pinned\nname = \"b\"\nrepo = \"x/b\"\nrev  = \"" + sha + "\"\n"
-	out, err := RemoveVendor([]byte(text), ".toml", "b")
+	out, err := RemoveVendor([]byte(text), ".toml", "environment", "b")
 	if err != nil {
 		t.Fatal(err)
 	}

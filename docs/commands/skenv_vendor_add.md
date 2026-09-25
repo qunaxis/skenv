@@ -2,7 +2,7 @@
 
 ## skenv vendor add
 
-Pin a third-party skill in the manifest and sync it
+Pin a third-party skill in the manifest or a project and sync it
 
 ### Synopsis
 
@@ -13,6 +13,11 @@ Pin a third-party skill in the manifest (HEAD of the default branch unless
 gitlab:group/sub/repo, codeberg:owner/repo, `<alias>:path` of a host declared
 under `[environment.hosts.<alias>]`, or a full git URL. An unknown prefix is
 an error. See https://qunaxis.github.io/skenv/git-hosts
+
+With `--project`: add a [[project.vendor]] entry to the skenv file of the
+current repository and sync the project, which copies the skill into its
+dir and mirrors. Its hosts are the ones declared under
+`[project.hosts.<alias>]`. Commit the file and the copies with the project.
 
 ```
 skenv vendor add <repo> [flags]
@@ -59,6 +64,19 @@ manifest changed but not committed; to commit:
 vendor: 4 changes, 0 warnings, 0 errors
 ```
 
+Pin it in the current project instead:
+
+```console
+$ skenv vendor add example-vendor/tools --path tools/release-notes --project
+add vendor release-notes (example-vendor/tools@27f221f8f2a4, tools/release-notes) to [project] of ~/src/web-app/skenv.toml
+copy .agents/skills/release-notes from example-vendor/tools@27f221f8f2a4 (tools/release-notes)
+link .claude/skills/release-notes → ../../.agents/skills/release-notes
+the project skills changed; to commit them:
+  git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
+  git -C ~/src/web-app commit -m "chore(skills): add vendor skill release-notes"
+vendor: 3 changes, 0 warnings, 0 errors
+```
+
 ### Options
 
 ```
@@ -68,6 +86,7 @@ vendor: 4 changes, 0 warnings, 0 errors
       --manifest string   skenv file with the [environment] section, or its directory
       --name string       skill name (default: last element of --path)
       --path string       directory with SKILL.md inside the repository ("." for the root)
+      --project           edit [project] of the current repository instead of the manifest, and sync the project
       --rev string        commit to pin (default: HEAD of the default branch)
 ```
 

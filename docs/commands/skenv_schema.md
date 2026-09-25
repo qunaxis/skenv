@@ -7,8 +7,8 @@ Print the JSON Schema of the skenv file or the tool config
 ### Synopsis
 
 Print the JSON Schema of this skenv version to stdout: `skenv` (default) for
-the skenv file (`skenv.toml`, `.yaml`, `.yml` or `.json` with `[repo]` and
-`[environment]`), `config` for the tool config `~/.config/skenv/config.*`.
+the skenv file (`skenv.toml`, `.yaml`, `.yml` or `.json` with `[repo]`, `[environment]`
+and `[project]`), `config` for the tool config `~/.config/skenv/config.*`.
 
 Files that skenv writes name their schema in a directive, so most editors
 need no setup. Use this for offline work or a custom mapping, for example a
