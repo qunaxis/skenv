@@ -97,9 +97,13 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, repo st
 			return engine.ExitFatal, errors.New(msg)
 		case 1:
 			root, skillsDir = matches[0].Path, matches[0].SkillsDir
-			if o := matches[0].Own; !o.Selects(name) {
-				note = fmt.Sprintf("note: [[environment.own]] %s selects its skills with skills/exclude and does not select %s; "+
-					"add it to skills in the manifest to install it", o.Repo, name)
+			switch o := matches[0].Own; {
+			case o.Excluded(name):
+				note = fmt.Sprintf("note: %s matches exclude of [[environment.own]] %s in the manifest, so it is not installed; "+
+					"change the pattern to install it", name, o.Repo)
+			case !o.Selects(name):
+				note = fmt.Sprintf("note: [[environment.own]] %s lists its skills in skills, without %s; "+
+					"add it there in the manifest to install it", o.Repo, name)
 			}
 		default:
 			var names []string

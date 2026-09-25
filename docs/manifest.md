@@ -132,8 +132,9 @@ skip = ["gamma"]
   same name as long as only one of them selects it. The check does not
   depend on the host, so `host.<name>.skip` cannot resolve a clash and a
   manifest is valid or not on every machine alike.
-- **`skenv new`** in a repository that selects its skills warns that the
-  new skill is not installed until you add it to `skills`.
+- **`skenv new`** warns when the new skill is not selected: when the
+  repository lists its skills in `skills` without it (add it there), or
+  when an `exclude` pattern matches it.
 - **Per-agent selection** (a skill only for Claude Code, say) is not
   supported: every selected skill is linked into every agent directory.
   `layout.targets` chooses the agents for all skills at once.

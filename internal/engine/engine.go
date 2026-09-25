@@ -144,12 +144,17 @@ type Skill struct {
 	Vendor *manifest.Vendor
 }
 
-func (e *Engine) skipped() map[string]bool {
-	skip := e.m.Skipped(e.env.Hostname)
+// skipped maps the skills skipped on this host to the host key that skips
+// them: the full hostname, or the short one.
+func (e *Engine) skipped() map[string]string {
+	skip := map[string]string{}
 	if short, _, ok := strings.Cut(e.env.Hostname, "."); ok {
 		for k := range e.m.Skipped(short) {
-			skip[k] = true
+			skip[k] = short
 		}
+	}
+	for k := range e.m.Skipped(e.env.Hostname) {
+		skip[k] = e.env.Hostname
 	}
 	return skip
 }
@@ -208,8 +213,13 @@ func (e *Engine) skills() ([]Skill, error) {
 	skip := e.skipped()
 	var out []Skill
 	for _, r := range refs {
-		if skip[r.Name] {
-			e.unselected[r.Name] = "skipped on this host (host." + e.env.Hostname + ".skip)"
+		// A name that another own repository or a vendor entry installs is
+		// not "unselected".
+		delete(e.unselected, r.Name)
+	}
+	for _, r := range refs {
+		if host, ok := skip[r.Name]; ok {
+			e.unselected[r.Name] = fmt.Sprintf("skipped on this host (host.%q.skip)", host)
 			continue
 		}
 		s := Skill{Name: r.Name, Vendor: r.Vendor}

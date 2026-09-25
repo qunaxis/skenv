@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -113,6 +114,17 @@ func TestOwnSelection(t *testing.T) {
 	w.mustNotBeLinked("alpha")
 	w.mustNotBeLinked("gamma")
 	w.mustNotBeLinked("exp-one")
+	// A link left from before the skip is explained by the host key.
+	writeFile(t, w.path(ownPath+"/skenv.toml"), selectManifest(rev, "exclude = [\"exp-*\", \"gamma\"]\n", ""))
+	w.mustRun(0, "link")
+	writeFile(t, w.path(ownPath+"/skenv.toml"), selectManifest(rev, "exclude = [\"exp-*\", \"gamma\"]\n",
+		"\n[environment.host.\""+host+"\"]\nskip = [\"alpha\"]\n"))
+	out, _ = w.mustRun(1, "doctor")
+	if !strings.Contains(out, "skipped on this host (host."+strconv.Quote(host)+".skip)") {
+		t.Errorf("doctor must explain the skipped skill:\n%s", out)
+	}
+	w.git(w.path(ownPath), "checkout", "--quiet", "--", "skenv.toml")
+	w.mustRun(0, "sync")
 	out, _ = w.mustRun(0, "doctor", "--json")
 	var report struct{ Skills int }
 	if err := json.Unmarshal([]byte(out), &report); err != nil || report.Skills != 2 { // beta, archify
@@ -172,6 +184,16 @@ func TestOwnSelectionSameName(t *testing.T) {
 	if !strings.Contains(errOut, `skill "alpha" is defined twice`) {
 		t.Errorf("sync with a clash:\n%s", errOut)
 	}
+	// Names are unique before host.skip: skipping one side does not help.
+	host, err := os.Hostname()
+	if err != nil {
+		t.Skip("no hostname")
+	}
+	w.push("me/skills", map[string]string{"skenv.toml": selectManifest(rev, "",
+		second+"skills = [\"delta\", \"alpha\"]\n\n[environment.host.\""+host+"\"]\nskip = [\"alpha\"]\n")}, "chore: clash with skip")
+	if _, errOut = w.mustRun(2, "sync"); !strings.Contains(errOut, `skill "alpha" is defined twice`) {
+		t.Errorf("sync with a clash and host.skip:\n%s", errOut)
+	}
 }
 
 // skenv new in an own repository with an allowlist says that the new
@@ -185,7 +207,16 @@ func TestNewSkillNotSelected(t *testing.T) {
 	}, "feat: allowlist")
 	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
 	_, errOut := w.mustRun(0, "new", "fresh")
-	if !strings.Contains(errOut, "does not select fresh; add it to skills") {
+	if !strings.Contains(errOut, "lists its skills in skills, without fresh; add it there") {
 		t.Errorf("new without the hint:\n%s", errOut)
+	}
+	// Excluded by a pattern: adding it to skills would not help.
+	writeFile(t, w.path(ownPath+"/skenv.toml"), selectManifest(rev, "exclude = [\"exp-*\"]\n", "\n[repo]\nharness = \""+harness.Latest+"\"\nvisibility = \"private\"\n"))
+	_, errOut = w.mustRun(0, "new", "exp-one")
+	if !strings.Contains(errOut, "exp-one matches exclude") || strings.Contains(errOut, "add it there") {
+		t.Errorf("new of an excluded name:\n%s", errOut)
+	}
+	if _, errOut = w.mustRun(0, "new", "plain"); strings.Contains(errOut, "note:") {
+		t.Errorf("new of a selected name:\n%s", errOut)
 	}
 }
