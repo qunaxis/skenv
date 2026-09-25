@@ -18,7 +18,7 @@ func runMain(args ...string) (int, string, string) {
 // and completion exit 0.
 func TestExitCodes(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	for _, args := range []string{"", "bogus", "sync --bogus", "sync -quiet", "sync extra", "vendor", "vendor frob", "vendor add", "autostart", "autostart frob", "repo", "repo frob", "init", "completion", "completion powershell", "schema bogus", "schema skenv config"} {
+	for _, args := range []string{"", "bogus", "sync --bogus", "sync -quiet", "sync extra", "vendor", "vendor frob", "vendor add", "autostart", "autostart frob", "repo", "repo frob", "init a/b c/d", "init --format yml", "completion", "completion powershell", "schema bogus", "schema skenv config"} {
 		code, _, errOut := runMain(strings.Fields(args)...)
 		if code != 2 || errOut == "" {
 			t.Errorf("skenv %s: exit %d, stderr %q; want exit 2 with a message", args, code, errOut)
@@ -35,13 +35,15 @@ func TestExitCodes(t *testing.T) {
 }
 
 // Shell completion comes from the command tree: subcommands, flags and
-// the fixed values of --visibility.
+// the fixed values of --visibility and --format.
 func TestCompletion(t *testing.T) {
 	for args, want := range map[string][]string{
 		"":                        {"sync", "vendor", "repo", "lint", "completion"},
 		"vendor ":                 {"add", "bump", "remove"},
 		"sync --":                 {"--quiet", "--dry-run", "--adopt", "--manifest"},
 		"repo init --visibility ": {"private", "public"},
+		"repo init --format ":     {"toml", "yaml", "json"},
+		"init --format ":          {"toml", "yaml", "json"},
 		"schema ":                 {"skenv", "config"},
 	} {
 		fields := strings.Fields(args)

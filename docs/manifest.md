@@ -26,7 +26,9 @@ with an error that suggests `skenv init <owner/repo>` or `--manifest`.
 
 The manifest is the `[environment]` section of the skenv file at the root
 of your skills repository (`skenv.toml`, or `skenv.yaml`, `skenv.yml`,
-`skenv.json`; see [the skenv file](skenv-file.md)). In TOML:
+`skenv.json`; see [the skenv file](skenv-file.md)). `skenv init` without
+`<owner/repo>` starts one in the current repository (see
+[Creating the file](skenv-file.md#creating-the-file)). In TOML:
 
 ```toml
 [environment.layout]

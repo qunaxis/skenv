@@ -8,7 +8,9 @@ it would stop Claude Code from loading this file.
 - Layout: `internal/cli` (flags, integration tests), `internal/engine`
   (sync, link, doctor, vendor, init), `internal/cli/new.go` (`skenv new`), `internal/skenvfile` (the skenv file: `[repo]` and `[environment]`,
   TOML/YAML/JSON), `internal/manifest` (`[environment]` parsing and in-place
-  editing), `internal/config` (tool config), `internal/agents`, `internal/state`,
+  editing), `internal/config` (tool config), `internal/fileformat` (`--format`
+  of new files; no write changes a file's format, `TestWritesKeepFormat`
+  covers every write path), `internal/agents`, `internal/state`,
   `internal/autostart`, `internal/gitx`, `internal/buildinfo`,
   `internal/lint` (L1-L6; `publish.go`: P1 publication check, stop-list
   phrases are never printed), `internal/harness` (`[repo]`, `repo

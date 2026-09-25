@@ -21,12 +21,14 @@ import (
 
 	"github.com/qunaxis/skenv/internal/atomicfile"
 	"github.com/qunaxis/skenv/internal/docedit"
+	"github.com/qunaxis/skenv/internal/fileformat"
 	"github.com/qunaxis/skenv/internal/skenvfile"
 	"github.com/qunaxis/skenv/schemas"
 )
 
 // ConfigFile is the skenv file that `repo init` creates when the
-// repository has none.
+// repository has none and --format is not given; errors about a file not
+// read from disk name it too.
 const ConfigFile = "skenv.toml"
 
 // Latest is the harness version of the embedded templates; `repo init`
@@ -172,9 +174,13 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// repoHeader is the first comment of a skenv file that `repo init`
+// creates.
+const repoHeader = "# Repository harness: `skenv repo apply` regenerates the managed files.\n"
+
 func (c *Config) encode() []byte {
 	var b bytes.Buffer
-	b.WriteString("# Repository harness: `skenv repo apply` regenerates the managed files.\n")
+	b.WriteString(repoHeader)
 	b.WriteString("[repo]\n")
 	fmt.Fprintf(&b, "harness    = %q\n", c.Harness)
 	fmt.Fprintf(&b, "visibility = %q\n", c.Visibility)
@@ -480,10 +486,16 @@ func mergeBlock(it item, data, want string, exists bool) (string, error) {
 }
 
 // Init adds the [repo] section and all managed files. Without a skenv file
-// it creates skenv.toml; an existing one (a manifest repository) gets the
-// section added. It refuses when [repo] exists already.
-func Init(root, visibility string, dryRun, force bool) (*Config, []Change, error) {
+// it creates skenv.<format> (format "" is TOML); an existing one (a
+// manifest repository) gets the section added in its own format, and a
+// format that disagrees with it is an error. It refuses when [repo] exists
+// already.
+func Init(root, visibility, format string, dryRun, force bool) (*Config, []Change, error) {
 	file, err := skenvfile.Find(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	target, err := fileformat.Choose(root, "skenv", file, format)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -502,7 +514,7 @@ func Init(root, visibility string, dryRun, force bool) (*Config, []Change, error
 			return nil, nil, err
 		}
 	} else {
-		c.File = filepath.Join(root, ConfigFile)
+		c.File = target
 	}
 	if err := c.validate(); err != nil {
 		return nil, nil, err
@@ -563,7 +575,13 @@ func addRepo(data []byte, ext string, c *Config) ([]byte, error) {
 	if err := d.Put(nil, skenvfile.Repo, repo, true); err != nil {
 		return nil, err
 	}
-	return d.Bytes(), nil
+	out := d.Bytes()
+	// A new YAML file starts with the same comment as a TOML one; JSON has
+	// no comments.
+	if ext != ".json" && len(bytes.TrimSpace(data)) == 0 {
+		out = append([]byte(repoHeader), out...)
+	}
+	return out, nil
 }
 
 var (

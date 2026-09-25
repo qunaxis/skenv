@@ -2,26 +2,41 @@
 
 ## skenv init
 
-Clone the manifest repository and sync
+Clone the manifest repository and sync, or start a manifest
 
 ### Synopsis
 
-Clone the manifest repository into `--path` (default `./<repo>` in the current
-directory, like git clone), record its skenv file as `manifest` in the config
-file (`~/.config/skenv/config.toml` unless a YAML or JSON one exists) and run
-sync. If the repository is already cloned, only the path is recorded.
+With `<owner/repo>`: clone the manifest repository into `--path` (default
+`./<repo>` in the current directory, like git clone), record its skenv file as
+`manifest` in the config file (`~/.config/skenv/config.toml` unless a YAML or
+JSON one exists; a new one is YAML or JSON with `--format`) and run sync. If the
+repository is already cloned, only the path is recorded.
+
+Without `<owner/repo>`: start a manifest in the git repository of the current
+directory (or `--dir`). Its skenv file gets an `[environment]` section with a
+commented skeleton, or `skenv.toml` is created with one (`skenv.yaml` or
+`skenv.json` with `--format`); the repository itself becomes its first own
+repository when its origin is on GitHub. The file is recorded
+as `manifest` in the config file (a new one in the same format), and nothing
+is synced. It refuses when the file has `[environment]` already or its `[repo]`
+is public.
+
+An existing file keeps its format: `--format` that disagrees with it is an
+error (exit code 2), and nothing is written.
 
 ```
-skenv init <owner/repo> [flags]
+skenv init [<owner/repo>] [flags]
 ```
 
 ### Options
 
 ```
-      --adopt         back up and replace unmanaged paths that conflict with the manifest
-      --dry-run       print the plan, change nothing
-  -h, --help          help for init
-      --path string   where to clone the repository (default ./<repo>)
+      --adopt           back up and replace unmanaged paths that conflict with the manifest
+      --dir string      without <owner/repo>: the repository to start the manifest in (default: the current one)
+      --dry-run         print the plan, change nothing
+      --format string   format of a new file: toml, yaml or json (default toml; an existing file keeps its format)
+  -h, --help            help for init
+      --path string     where to clone the repository (default ./<repo>)
 ```
 
 ### SEE ALSO

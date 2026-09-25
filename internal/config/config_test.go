@@ -243,3 +243,53 @@ func TestSetKeepsTheRest(t *testing.T) {
 		t.Errorf("appended key:\n%s", got)
 	}
 }
+
+// A new config file takes the format of --format, with the header where the
+// format has comments and the schema directive; later writes keep it.
+func TestSetFormat(t *testing.T) {
+	for format, want := range map[string]string{
+		"toml": "#:schema " + schemas.URL(schemas.Config, schemas.Running()) + "\n# skenv configuration, written by `skenv init`\nmanifest = \"~/a b/skenv.toml\"\n",
+		"yaml": "# yaml-language-server: $schema=" + schemas.URL(schemas.Config, schemas.Running()) + "\n# skenv configuration, written by `skenv init`\nmanifest: ~/a b/skenv.toml\n",
+		"json": "{\n  \"$schema\": \"" + schemas.URL(schemas.Config, schemas.Running()) + "\",\n  \"manifest\": \"~/a b/skenv.toml\"\n}\n",
+	} {
+		t.Run(format, func(t *testing.T) {
+			home := t.TempDir()
+			p, err := SetFormat(home, format, "manifest", "~/a b/skenv.toml")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if filepath.Base(p) != "config."+format {
+				t.Fatalf("path = %s", p)
+			}
+			if got, _ := os.ReadFile(p); string(got) != want {
+				t.Errorf("new config.%s:\n%s\nwant:\n%s", format, got, want)
+			}
+			// Without --format the file keeps its format.
+			if p2, err := Set(home, "manifest", "~/other"); err != nil || p2 != p {
+				t.Fatalf("Set: %s, %v", p2, err)
+			}
+			if f, err := Load(home); err != nil || f.Path != p {
+				t.Fatalf("Load: %+v, %v", f, err)
+			} else if v, _, _ := f.String("manifest"); v != "~/other" {
+				t.Errorf("manifest = %q", v)
+			}
+			// --format that disagrees with the file is an error; nothing changes.
+			before, _ := os.ReadFile(p)
+			other := "json"
+			if format == "json" {
+				other = "toml"
+			}
+			if _, err := SetFormat(home, other, "manifest", "~/x"); err == nil || !strings.Contains(err.Error(), "does not convert it") {
+				t.Errorf("mismatch: %v", err)
+			}
+			if _, err := Target(home, other); err == nil {
+				t.Error("Target accepted a mismatch")
+			}
+			after, _ := os.ReadFile(p)
+			entries, _ := os.ReadDir(Dir(home))
+			if string(after) != string(before) || len(entries) != 1 {
+				t.Errorf("mismatch wrote something: %d files\n%s", len(entries), after)
+			}
+		})
+	}
+}

@@ -7,9 +7,13 @@ Set up the harness of a skills repository
 ### Synopsis
 
 Set up the harness of a skills repository: the `[repo]` section and the schema
-directive of `skenv.toml` (added to an existing skenv file), `lefthook.yml`, CI
-workflow, linter configs and the managed blocks of `AGENTS.md` and `.gitignore`;
-then `lefthook install`. Refuses if `[repo]` exists.
+directive of the skenv file, `lefthook.yml`, CI workflow, linter configs and the
+managed blocks of `AGENTS.md` and `.gitignore`; then `lefthook install`. Refuses
+if `[repo]` exists.
+
+Without a skenv file it creates `skenv.toml`, or `skenv.yaml` or `skenv.json` with
+`--format`. An existing skenv file gets `[repo]` added in its own format;
+`--format` that disagrees with it is an error, and nothing is written.
 
 ```
 skenv repo init --visibility private|public [flags]
@@ -20,6 +24,7 @@ skenv repo init --visibility private|public [flags]
 ```
       --dry-run             print the plan, change nothing
       --force               replace existing files that skenv does not manage yet
+      --format string       format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)
   -h, --help                help for init
       --visibility string   private or public (required)
 ```

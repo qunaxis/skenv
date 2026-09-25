@@ -17,6 +17,7 @@ import (
 	"github.com/qunaxis/skenv/internal/autostart"
 	"github.com/qunaxis/skenv/internal/buildinfo"
 	"github.com/qunaxis/skenv/internal/engine"
+	"github.com/qunaxis/skenv/internal/fileformat"
 	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/paths"
 	"github.com/qunaxis/skenv/schemas"
@@ -190,6 +191,12 @@ func groupRun(cmd *cobra.Command, args []string) error {
 	return usageError{fmt.Sprintf("%s: missing subcommand (see `%s --help`)", cmdName(cmd), cmd.CommandPath())}
 }
 
+// formatFlag adds --format with the completion of its values.
+func formatFlag(c *cobra.Command, p *string, usage string) {
+	c.Flags().StringVar(p, "format", "", usage)
+	_ = c.RegisterFlagCompletionFunc("format", cobra.FixedCompletions(fileformat.Names, cobra.ShellCompDirectiveNoFileComp))
+}
+
 func manifestFlag(fs *pflag.FlagSet, o *engine.Options) {
 	fs.StringVar(&o.Manifest, "manifest", "", "skenv file with the [environment] section, or its directory")
 }
@@ -200,20 +207,52 @@ func dryRunFlag(fs *pflag.FlagSet, p *bool) {
 
 func initCmd(a *app) *cobra.Command {
 	var o engine.Options
-	var dir string
+	var dir, here, format string
 	c := &cobra.Command{
-		Use:   "init <owner/repo>",
-		Short: "Clone the manifest repository and sync",
-		Long: `Clone the manifest repository into --path (default ./<repo> in the current
-directory, like git clone), record its skenv file as "manifest" in the config
-file (~/.config/skenv/config.toml unless a YAML or JSON one exists) and run
-sync. If the repository is already cloned, only the path is recorded.`,
-		Args: nArgs(1),
+		Use:   "init [<owner/repo>]",
+		Short: "Clone the manifest repository and sync, or start a manifest",
+		Long: `With <owner/repo>: clone the manifest repository into --path (default
+./<repo> in the current directory, like git clone), record its skenv file as
+"manifest" in the config file (~/.config/skenv/config.toml unless a YAML or
+JSON one exists; a new one is YAML or JSON with --format) and run sync. If the
+repository is already cloned, only the path is recorded.
+
+Without <owner/repo>: start a manifest in the git repository of the current
+directory (or --dir). Its skenv file gets an [environment] section with a
+commented skeleton, or skenv.toml is created with one (skenv.yaml or
+skenv.json with --format); the repository itself becomes its first own
+repository when its origin is on GitHub. The file is recorded
+as "manifest" in the config file (a new one in the same format), and nothing
+is synced. It refuses when the file has [environment] already or its [repo]
+is public.
+
+An existing file keeps its format: --format that disagrees with it is an
+error (exit code 2), and nothing is written.`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 1 {
+				return usageError{fmt.Sprintf("init: expected at most 1 argument, got %d (see `%s --help`)", len(args), cmd.CommandPath())}
+			}
+			return nil
+		},
 		RunE: a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
-			return engine.Init(ctx, env, args[0], dir, o)
+			if err := fileformat.Valid(format); err != nil {
+				return engine.ExitFatal, usageError{"init: " + err.Error()}
+			}
+			if len(args) == 0 {
+				if dir != "" || o.Adopt {
+					return engine.ExitFatal, usageError{"init: --path and --adopt need <owner/repo>; without it, --dir names the repository"}
+				}
+				return engine.NewManifest(ctx, env, here, format, o.DryRun)
+			}
+			if here != "" {
+				return engine.ExitFatal, usageError{"init: --dir is for starting a manifest without <owner/repo>; use --path"}
+			}
+			return engine.Init(ctx, env, args[0], dir, format, o)
 		}),
 	}
 	c.Flags().StringVar(&dir, "path", "", "where to clone the repository (default ./<repo>)")
+	c.Flags().StringVar(&here, "dir", "", "without <owner/repo>: the repository to start the manifest in (default: the current one)")
+	formatFlag(c, &format, "format of a new file: toml, yaml or json (default toml; an existing file keeps its format)")
 	dryRunFlag(c.Flags(), &o.DryRun)
 	c.Flags().BoolVar(&o.Adopt, "adopt", false, "back up and replace unmanaged paths that conflict with the manifest")
 	return c

@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/qunaxis/skenv/internal/engine"
+	"github.com/qunaxis/skenv/internal/fileformat"
 	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/lint"
@@ -176,7 +177,7 @@ func gitRoot(ctx context.Context, dir string) (string, error) {
 }
 
 func repoCmd(a *app) *cobra.Command {
-	var dir, visibility string
+	var dir, visibility, format string
 	var dryRun, force bool
 	sub := func(name, use, short, long string) *cobra.Command {
 		c := &cobra.Command{
@@ -185,7 +186,7 @@ func repoCmd(a *app) *cobra.Command {
 			Long:  long,
 			Args:  nArgs(0),
 			RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
-				return runRepo(ctx, env, name, dir, visibility, dryRun, force)
+				return runRepo(ctx, env, name, dir, visibility, format, dryRun, force)
 			}),
 		}
 		if name != "check" {
@@ -195,9 +196,10 @@ func repoCmd(a *app) *cobra.Command {
 		return c
 	}
 	initC := sub("init", "init --visibility private|public", "Set up the harness of a skills repository",
-		"Set up the harness of a skills repository: the [repo] section and the schema\ndirective of skenv.toml (added to an existing skenv file), lefthook.yml, CI\nworkflow, linter configs and the managed blocks of AGENTS.md and .gitignore;\nthen `lefthook install`. Refuses if [repo] exists.")
+		"Set up the harness of a skills repository: the [repo] section and the schema\ndirective of the skenv file, lefthook.yml, CI workflow, linter configs and the\nmanaged blocks of AGENTS.md and .gitignore; then `lefthook install`. Refuses\nif [repo] exists.\n\nWithout a skenv file it creates skenv.toml, or skenv.yaml or skenv.json with\n--format. An existing skenv file gets [repo] added in its own format;\n--format that disagrees with it is an error, and nothing is written.")
 	initC.Flags().StringVar(&visibility, "visibility", "", "private or public (required)")
 	_ = initC.RegisterFlagCompletionFunc("visibility", cobra.FixedCompletions([]string{"private", "public"}, cobra.ShellCompDirectiveNoFileComp))
+	formatFlag(initC, &format, "format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)")
 	apply := sub("apply", "apply", "Regenerate the managed files of the harness",
 		"Regenerate the managed files and blocks from the templates of this skenv\n(harness "+harness.Latest+"; an older repo.harness is moved to it) and point\nthe schema directive of the skenv file at that version; then\n`lefthook install`.")
 	check := sub("check", "check", "Compare the managed files with the harness templates",
@@ -207,7 +209,7 @@ func repoCmd(a *app) *cobra.Command {
 	return c
 }
 
-func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility string, dryRun, force bool) (int, error) {
+func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, format string, dryRun, force bool) (int, error) {
 	root, err := gitRoot(ctx, dir)
 	if err != nil {
 		return engine.ExitFatal, err
@@ -217,7 +219,10 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility string, d
 		if visibility == "" {
 			return engine.ExitFatal, usageError{"repo init: --visibility private|public is required"}
 		}
-		c, changes, err := harness.Init(root, visibility, dryRun, force)
+		if err := fileformat.Valid(format); err != nil {
+			return engine.ExitFatal, usageError{"repo init: " + err.Error()}
+		}
+		c, changes, err := harness.Init(root, visibility, format, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
 			return engine.ExitFatal, err

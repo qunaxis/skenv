@@ -33,8 +33,20 @@ a schema directive for editors (see [Editor support](editor-support.md)):
 manifest = "~/src/my-skills/skenv.toml"
 ```
 
-An existing file keeps its format: `skenv init` changes only `manifest`,
-and comments, other keys and their order stay.
+To create `config.yaml` or `config.json` instead, pass `--format`:
+
+```sh
+skenv init <owner>/<skills-repo> --format yaml
+```
+
+`skenv init` without `<owner/repo>`, which starts a manifest in the current
+repository, creates the config in the format of the skenv file it writes.
+skenv reads `config.yml` but never creates it.
+
+An existing file keeps its format and name: `skenv init` changes only
+`manifest`, and comments, other keys and their order stay. It never
+converts the file: `skenv init <owner/repo> --format` that disagrees with
+it is an error (exit code 2), raised before anything is cloned or written.
 
 ## Keys
 
