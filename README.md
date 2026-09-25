@@ -80,8 +80,9 @@ Its design is guided by these mantras:
 - JSON Schemas for the skenv file and the tool config: files skenv writes
   name their schema, so editors complete and check them
   ([editor support](docs/editor-support.md)).
-- Per-host skips, custom agent directories, and ignore patterns for skills
-  owned by other tools.
+- A selection of skills per own repository (`skills`, `exclude`), per-host
+  skips, custom agent directories, and ignore patterns for skills owned by
+  other tools.
 - `skenv autostart` runs `sync` at login and hourly via launchd or systemd.
 - `skenv lint` checks skills against the Agent Skills rules (L1–L6) and,
   with `--publish`, runs a publication check before a skill goes public.

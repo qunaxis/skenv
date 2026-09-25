@@ -10,7 +10,9 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/skenvfile"
@@ -81,6 +83,65 @@ type Own struct {
 	// SkillsDir is the directory inside the repository whose
 	// subdirectories with a SKILL.md are the skills. Default: "skills".
 	SkillsDir string `toml:"skills_dir" yaml:"skills_dir" json:"skills_dir"`
+	// Skills lists the skills of this repository to install; without it
+	// every skill is installed, and a skill added to the repository later
+	// is too. A name that is not a skill of the repository is an error. It
+	// must not be empty: remove the entry instead.
+	Skills []string `toml:"skills" yaml:"skills" json:"skills"`
+	// Exclude lists glob patterns over skill names (no "/") that are not
+	// installed, applied after skills; host.<name>.skip applies after both.
+	// A pattern that matches nothing is fine.
+	Exclude []string `toml:"exclude" yaml:"exclude" json:"exclude"`
+}
+
+// Select returns the names in found (the skills of the repository) that o
+// installs: skills (all when unset), minus exclude. A name in skills that
+// is not in found is an error.
+func (o *Own) Select(found []string) ([]string, error) {
+	in := make(map[string]bool, len(found))
+	for _, n := range found {
+		in[n] = true
+	}
+	var missing []string
+	for _, n := range o.Skills {
+		if !in[n] {
+			missing = append(missing, n)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("own %s: skills lists %s, not found in %s/%s (a directory with SKILL.md)",
+			o.Repo, quoteAll(missing), o.Path, o.SkillsDir)
+	}
+	var out []string
+	for _, n := range found {
+		if o.Selects(n) {
+			out = append(out, n)
+		}
+	}
+	return out, nil
+}
+
+// Excluded reports whether name matches a pattern of exclude.
+func (o *Own) Excluded(name string) bool {
+	for _, pat := range o.Exclude {
+		if ok, _ := path.Match(pat, name); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// Selects reports whether o installs the skill name of its repository.
+func (o *Own) Selects(name string) bool {
+	return (o.Skills == nil || slices.Contains(o.Skills, name)) && !o.Excluded(name)
+}
+
+func quoteAll(names []string) string {
+	q := make([]string, len(names))
+	for i, n := range names {
+		q[i] = strconv.Quote(n)
+	}
+	return strings.Join(q, ", ")
 }
 
 // Vendor is a third-party skill pinned to a commit; `skenv vendor
@@ -203,6 +264,23 @@ func (m *Manifest) Validate() error {
 		}
 		if !cleanRel(o.SkillsDir) {
 			errs = append(errs, fmt.Errorf("own[%d] (%s): skills_dir %q must be a relative path inside the repository", i, o.Repo, o.SkillsDir))
+		}
+		if o.Skills != nil && len(o.Skills) == 0 {
+			errs = append(errs, fmt.Errorf("own[%d] (%s): skills is empty; list the skills to install, or remove the entry (without skills, every skill is installed)", i, o.Repo))
+		}
+		seenSkill := map[string]bool{}
+		for _, n := range o.Skills {
+			if err := ValidName(n); err != nil {
+				errs = append(errs, fmt.Errorf("own[%d] (%s): skills: %w", i, o.Repo, err))
+			} else if seenSkill[n] {
+				errs = append(errs, fmt.Errorf("own[%d] (%s): skills lists %q twice", i, o.Repo, n))
+			}
+			seenSkill[n] = true
+		}
+		for _, pat := range o.Exclude {
+			if _, err := path.Match(pat, ""); err != nil || pat == "" || strings.Contains(pat, "/") {
+				errs = append(errs, fmt.Errorf("own[%d] (%s): exclude: %q must be a glob over skill names (no \"/\")", i, o.Repo, pat))
+			}
 		}
 	}
 	seen := map[string]bool{}

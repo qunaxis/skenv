@@ -153,7 +153,7 @@ a machine that already has skills installed is usually `skenv sync --adopt`.
 | ----------------------------- | --------------------------------------------------------------------------------------------------- |
 | `missing`                     | a skill is not in the store, or not linked for any agent; an own repository is not cloned           |
 | `agent-mismatch`              | a skill is linked for some agents but not all                                                       |
-| `extra-managed`               | a path skenv created is no longer in the manifest (`sync` removes it)                               |
+| `extra-managed`               | a path skenv created is no longer in the manifest, not selected, or skipped on this host (`sync` removes it) |
 | `unmanaged`                   | something in the store or an agent directory that is not from the manifest                          |
 | `conflict`                    | a path the manifest needs is taken by something skenv did not create                                |
 | `wrong-rev`                   | a vendored copy does not match the pinned repo/path/rev                                             |
