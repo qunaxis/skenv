@@ -7,6 +7,7 @@ skills repository, next to your own skills, so every machine that runs
 - [Where the manifest is found](#where-the-manifest-is-found)
 - [Format](#format)
 - [Rules](#rules)
+- [Git hosts](git-hosts.md): GitLab, Codeberg and self-hosted servers
 - [Selecting skills of an own repository](#selecting-skills-of-an-own-repository)
 - [Layout on disk](#layout-on-disk)
 - [How vendoring works](#how-vendoring-works)
@@ -37,20 +38,24 @@ store   = "~/.agents/skills"                          # optional, this is the de
 targets = ["~/.claude/skills", "~/.pi/agent/skills"]  # optional, replaces the agent table
 ignore  = ["peon-ping-*"]                            # optional, entries owned by other tools
 
+[environment.hosts.work]       # optional, a self-hosted server (see Git hosts)
+url  = "https://git.example.com"
+type = "gitlab"                # github | gitlab | gitea | generic
+
 [[environment.own]]            # your skills repository, kept as a working copy
 repo = "<owner>/<skills-repo>" # any name
 path = "~/src/my-skills"       # any location
 skills_dir = "skills"          # optional, default "skills"
 
 [[environment.own]]            # a shared repository: only some of its skills
-repo = "<team>/<shared-skills>"
+repo = "work:platform/shared-skills" # on the host declared as "work"
 path = "~/src/shared-skills"
 skills  = ["alpha", "beta"]    # optional allowlist; default: every skill
 exclude = ["experimental-*"]   # optional globs, applied after skills
 
 [[environment.vendor]]         # someone else's skill, pinned to a commit
 name = "archify"
-repo = "tt-a1i/archify"         # owner/repo on github.com or a full git URL
+repo = "tt-a1i/archify"        # owner/repo on github.com, gitlab:, codeberg:, an alias or a URL
 path = "archify"               # directory with SKILL.md; "." for the root
 rev  = "<full 40-character commit SHA>"
 
@@ -77,8 +82,13 @@ skip = ["bpmn-process-modeler"]
   the start or end (`^[a-z0-9]+(-[a-z0-9]+)*$`). `synced` is reserved.
   `skenv lint` and `skenv new` apply the same rule.
 - Skill names are unique across own and vendor skills; a clash is an error.
-- `owner/repo` is cloned from `https://github.com/owner/repo.git`. To use ssh,
-  map it in git: `git config --global url."git@github.com:".insteadOf https://github.com/`.
+- `repo` is `owner/repo` on github.com (cloned from
+  `https://github.com/owner/repo.git`), `gitlab:group/sub/repo`,
+  `codeberg:owner/repo`, `<alias>:path` of a host declared under
+  `[environment.hosts.<alias>]`, or a full git URL. An unknown prefix is an
+  error. Short forms are cloned over https; to use ssh, map the host with
+  git's `url.<base>.insteadOf`. Every form, host declarations and
+  authentication: [Git hosts](git-hosts.md).
 - Skills listed in `host.<name>.skip` are neither stored nor linked on that host.
 - `layout.ignore` holds glob patterns over entry names in the store and the
   agent directories that belong to other tools (for example the skills of

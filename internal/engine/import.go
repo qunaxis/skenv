@@ -415,7 +415,7 @@ func (e *Engine) ownOf(f found) (g *ownGroup, why string) {
 	if err != nil || remote == "" {
 		return nil, where + " without an origin remote; push it somewhere, then import again"
 	}
-	repo, ok := manifest.GitHubRepo(remote)
+	repo, ok := e.m.Hosts.ShortForm(remote)
 	if !ok {
 		if hasCredentials(remote) {
 			return nil, where + " whose origin URL carries credentials; add the own repository by hand"

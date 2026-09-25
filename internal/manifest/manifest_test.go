@@ -133,26 +133,22 @@ rev = "`+sha+`"
 	}
 }
 
-func TestRepo(t *testing.T) {
-	cases := []struct{ repo, url, name string }{
-		{"tt-a1i/archify", "https://github.com/tt-a1i/archify.git", "archify"},
-		{"https://gitlab.com/g/sub/tool.git", "https://gitlab.com/g/sub/tool.git", "tool"},
-		{"git@github.com:o/r.git", "git@github.com:o/r.git", "r"},
-		{"https://user:tok@host/o/r", "https://user:tok@host/o/r", "r"},
-	}
-	for _, c := range cases {
-		if got := RepoURL(c.repo); got != c.url {
-			t.Errorf("RepoURL(%q) = %q", c.repo, got)
-		}
-		if got := RepoName(c.repo); got != c.name {
-			t.Errorf("RepoName(%q) = %q", c.repo, got)
+func TestRepoName(t *testing.T) {
+	for repo, name := range map[string]string{
+		"https://github.com/tt-a1i/archify.git": "archify",
+		"https://gitlab.com/g/sub/tool.git":     "tool",
+		"git@github.com:o/r.git":                "r",
+		"https://user:tok@host/o/r":             "r",
+		"gitlab:g/sub/tool":                     "tool",
+	} {
+		if got := RepoName(repo); got != name {
+			t.Errorf("RepoName(%q) = %q, want %q", repo, got, name)
 		}
 	}
 }
 
 func TestNormalizeURL(t *testing.T) {
 	cases := map[string]string{
-		"tt-a1i/archify":                          "github.com/tt-a1i/archify",
 		"https://github.com/tt-a1i/archify.git":   "github.com/tt-a1i/archify",
 		"https://GitHub.com/tt-a1i/archify/":      "github.com/tt-a1i/archify",
 		"http://github.com/tt-a1i/archify":        "github.com/tt-a1i/archify",
@@ -179,7 +175,7 @@ func TestCacheKey(t *testing.T) {
 		t.Errorf("CacheKey = %q", key)
 	}
 	// Spellings of one repository share a cache.
-	for _, same := range []string{"tt-a1i/archify", "git@GitHub.com:tt-a1i/archify", "https://user:tok@github.com/tt-a1i/archify/"} {
+	for _, same := range []string{"git@GitHub.com:tt-a1i/archify", "https://user:tok@github.com/tt-a1i/archify/"} {
 		if got := CacheKey(same); got != key {
 			t.Errorf("CacheKey(%q) = %q, want %q", same, got, key)
 		}

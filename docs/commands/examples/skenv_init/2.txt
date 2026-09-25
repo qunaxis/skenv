@@ -2,6 +2,6 @@ exit 0
 create ~/src/my-skills/skenv.toml with [environment], example-org/my-skills as its first own repository
 manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
 next steps:
-  - skenv vendor add <owner/repo> --path <dir>   pin a third-party skill
+  - skenv vendor add <repo> --path <dir>         pin a third-party skill
   - skenv sync                                  link the skills of the manifest
-  - commit skenv.toml; on another machine: skenv init <owner>/<repo>
+  - commit skenv.toml; on another machine: skenv init example-org/my-skills

@@ -241,6 +241,7 @@ func TestSchemaAndParserAgree(t *testing.T) {
 		return "[[environment.vendor]]\n" + fields
 	}
 	ownEntry := "[[environment.own]]\nrepo = \"a/b\"\npath = \"~/x\"\n"
+	hosts := "[environment.hosts.work]\nurl = \"https://git.example.com\"\ntype = \"gitlab\"\n"
 	full := `name = "archify"` + "\n" + `repo = "a/b"` + "\n" + `rev = "` + sha + `"` + "\n"
 	cases := []struct {
 		name, ext, text string
@@ -287,6 +288,16 @@ func TestSchemaAndParserAgree(t *testing.T) {
 		{"bad skills name", ".toml", ownEntry + "skills = [\"a_b\"]\n", false, "does not match pattern"},
 		{"exclude with a slash", ".toml", ownEntry + "exclude = [\"a/*\"]\n", false, "does not match pattern"},
 		{"null skills", ".yaml", "environment:\n  own:\n    - {repo: a/b, path: ~/x, skills: }\n", false, "want array"},
+		{"declared host", ".toml", hosts + "[[environment.own]]\nrepo = \"work:g/sub/r\"\npath = \"~/x\"\n", true, ""},
+		{"host in YAML", ".yaml", "environment:\n  hosts:\n    work: {url: \"https://git.example.com\", type: gitea, ssh: \"git@git.example.com\"}\n", true, ""},
+		{"host in JSON", ".json", `{"environment": {"hosts": {"work": {"url": "https://git.example.com/scm"}}}}`, true, ""},
+		{"host without url", ".toml", "[environment.hosts.work]\ntype = \"gitlab\"\n", false, "missing property 'url'"},
+		{"host url with credentials", ".toml", "[environment.hosts.work]\nurl = \"https://u:t@git.example.com\"\n", false, "does not match pattern"},
+		{"host url without scheme", ".toml", "[environment.hosts.work]\nurl = \"git.example.com\"\n", false, "does not match pattern"},
+		{"unknown host type", ".toml", "[environment.hosts.work]\nurl = \"https://a.example\"\ntype = \"bitbucket\"\n", false, "value must be one of"},
+		{"unknown key in host", ".toml", hosts + "token = \"x\"\n", false, "additional properties 'token'"},
+		{"uppercase alias", ".toml", "[environment.hosts.Work]\nurl = \"https://a.example\"\n", false, "does not match pattern"},
+		{"built-in alias", ".toml", "[environment.hosts.gitlab]\nurl = \"https://a.example\"\n", false, "'not' failed"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

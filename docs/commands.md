@@ -33,6 +33,8 @@ Clones the repository that holds the manifest (`skenv.toml` with
 like `git clone`), records the manifest path in
 `~/.config/skenv/config.toml` and runs `sync`. If the repository is already
 cloned, only the path is recorded. Also takes `--adopt` and `--dry-run`.
+`<owner>/<repo>` may also be `gitlab:group/sub/repo`, `codeberg:owner/repo`
+or a full git URL (see [Git hosts](git-hosts.md)).
 
 Without `<owner/repo>` it starts a manifest instead:
 
@@ -111,7 +113,9 @@ skenv vendor add <owner>/<repo> --path <skill-dir>
 skenv vendor add <owner>/<repo> --path <skill-dir> --name <name> --rev <sha>
 ```
 
-Pins a third-party skill. Without `--path` the repository must contain
+Pins a third-party skill from any [git host](git-hosts.md): `owner/repo`
+on GitHub, `gitlab:group/sub/repo`, `codeberg:owner/repo`, an alias
+declared under `[environment.hosts]` or a full URL. Without `--path` the repository must contain
 exactly one `SKILL.md`; without `--rev` the HEAD of the default branch is
 used; `--name` defaults to the last element of `--path`. The manifest is
 edited in place (comments and order kept) but not committed; skenv prints

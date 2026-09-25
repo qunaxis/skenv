@@ -85,6 +85,7 @@ const guide: DefaultTheme.SidebarItem[] = [
   { text: 'The skenv file', link: '/skenv-file' },
   { text: 'Editor support', link: '/editor-support' },
   { text: 'Manifest', link: '/manifest' },
+  { text: 'Git hosts', link: '/git-hosts' },
   { text: 'Harness', link: '/harness' },
   { text: 'Claude Code hook', link: '/claude-code-hook' },
 ]
@@ -153,7 +154,7 @@ export default defineConfig({
   },
   themeConfig: {
     nav: [
-      { text: 'Guide', link: '/install', activeMatch: '^/(install|getting-started|skenv-file|editor-support|manifest|harness|claude-code-hook)' },
+      { text: 'Guide', link: '/install', activeMatch: '^/(install|getting-started|skenv-file|editor-support|manifest|git-hosts|harness|claude-code-hook)' },
       { text: 'Reference', link: '/commands', activeMatch: '^/(commands|configuration)' },
       { text: 'Contributing', link: '/contributing', activeMatch: '^/(contributing|releasing)' },
       { text: 'Releases', link: `${repo}/releases` },

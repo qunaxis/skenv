@@ -20,11 +20,14 @@ ignores), and unknown keys inside a section are errors.
 | Section         | What it is                                                                                            | Who writes it                              | Reference                     |
 | --------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------ | ----------------------------- |
 | `[repo]`        | The harness of a skills repository: `harness`, `visibility`, `runner`.                                | [`skenv repo init`](harness.md#skenv-repo-init), [`skenv repo apply`](harness.md#skenv-repo-apply) | [harness](harness.md)         |
-| `[environment]` | The manifest of your machines: `layout`, `own`, `vendor`, `host`.                                     | you, [`skenv init`](#creating-the-file) (starts it), [`skenv vendor add`](commands.md#skenv-vendor-add), [`update`](commands.md#skenv-vendor-update), [`remove`](commands.md#skenv-vendor-remove) | [manifest](manifest.md)       |
+| `[environment]` | The manifest of your machines: `layout`, `hosts`, `own`, `vendor`, `host`.                            | you, [`skenv init`](#creating-the-file) (starts it), [`skenv vendor add`](commands.md#skenv-vendor-add), [`update`](commands.md#skenv-vendor-update), [`remove`](commands.md#skenv-vendor-remove) | [manifest](manifest.md)       |
 
 - A skills repository has `[repo]`.
 - The repository that holds your manifest has `[environment]`, and usually
   `[repo]` too, because it is also where your own skills live.
+- `repo` in `[environment]` takes `owner/repo` on GitHub, `gitlab:` and
+  `codeberg:` short forms, aliases of self-hosted servers declared under
+  `[environment.hosts.<alias>]`, and any git URL; see [Git hosts](git-hosts.md).
 - A **public** repository must not have `[environment]`. The manifest is
   personal: it names paths in your home directory, your host names and the
   skills you use. `skenv repo init --visibility public` refuses such a file
@@ -123,8 +126,9 @@ skenv init --format json                             # skenv.json with [environm
 comment that says what the section is for, and every new file names its
 schema (see [Editor support](#editor-support)). A new `[environment]` is a
 commented skeleton: your repository becomes its first `[[environment.own]]`
-entry when its `origin` is on GitHub, and `[[environment.vendor]]` is shown
-as a commented example in TOML.
+entry when its `origin` is on a network host (GitHub, GitLab and Codeberg in
+their short forms, see [Git hosts](git-hosts.md#skenv-init-without-a-repository)),
+and `[[environment.vendor]]` is shown as a commented example in TOML.
 
 When the repository already has a skenv file, both commands add their
 section to it in its own format. They never convert it: `--format` that

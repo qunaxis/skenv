@@ -63,28 +63,6 @@ func TestAddEnvironmentFlowYAML(t *testing.T) {
 	}
 }
 
-func TestGitHubRepo(t *testing.T) {
-	for remote, want := range map[string]string{
-		"https://github.com/me/skills.git":     "me/skills",
-		"https://github.com/me/skills":         "me/skills",
-		"https://user@github.com/me/skills/":   "me/skills",
-		"ssh://git@github.com/me/skills.git":   "me/skills",
-		"git@github.com:me/skills.git":         "me/skills",
-		"git@GitHub.com:me/sk.ills":            "me/sk.ills",
-		"https://gitlab.com/me/skills.git":     "",
-		"git@gitlab.com:me/skills.git":         "",
-		"file:///tmp/remotes/me/skills.git":    "",
-		"/tmp/remotes/me/skills.git":           "",
-		"https://github.com/me/skills/sub.git": "",
-		"":                                     "",
-	} {
-		got, ok := GitHubRepo(remote)
-		if got != want || ok != (want != "") {
-			t.Errorf("GitHubRepo(%q) = %q, %v; want %q", remote, got, ok, want)
-		}
-	}
-}
-
 // Added lines take the line endings of the file.
 func TestAddEnvironmentCRLF(t *testing.T) {
 	for ext, in := range map[string]string{

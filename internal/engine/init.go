@@ -29,13 +29,19 @@ func Init(ctx context.Context, env Env, repo, dir, format string, opts Options) 
 		env.Now = time.Now
 	}
 	if repo == "" {
-		return ExitFatal, errors.New("usage: skenv init <owner/repo> [--path P]")
+		return ExitFatal, errors.New("usage: skenv init <repo> [--path P]")
+	}
+	// The manifest, with its declared hosts, is not cloned yet: only the
+	// built-in forms resolve here.
+	remote, err := manifest.Hosts(nil).Resolve(repo)
+	if err != nil {
+		return ExitFatal, fmt.Errorf("%w; a host declared in the manifest is not known before it is cloned, so pass the full URL", err)
 	}
 	if dir == "" {
-		dir = manifest.RepoName(repo)
+		dir = manifest.RepoName(remote.URL)
 	}
 	// The config must hold an absolute path: skenv runs from any directory.
-	dir, err := filepath.Abs(paths.Expand(env.Home, dir))
+	dir, err = filepath.Abs(paths.Expand(env.Home, dir))
 	if err != nil {
 		return ExitFatal, err
 	}
@@ -57,8 +63,8 @@ func Init(ctx context.Context, env Env, repo, dir, format string, opts Options) 
 		if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 			return ExitFatal, err
 		}
-		if _, err := env.Git.Run(ctx, "", "clone", "--quiet", manifest.RepoURL(repo), dir); err != nil {
-			return ExitFatal, fmt.Errorf("clone %s: %w (check access: ssh key or git credential helper)", repo, err)
+		if _, err := env.Git.Run(ctx, "", "clone", "--quiet", remote.URL, dir); err != nil {
+			return ExitFatal, fmt.Errorf("clone %s: %w (%s)", repo, err, remote.AccessHint())
 		}
 		fmt.Fprintf(env.Stdout, "cloned %s into %s\n", repo, show(dir))
 		cloned = true

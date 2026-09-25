@@ -145,7 +145,8 @@ func (e *Engine) doctorOwn(add func(class, skill, p, detail string), warn func(s
 		o := &e.m.Own[i]
 		dir := e.ownPath(o)
 		if _, err := os.Stat(dir); err != nil {
-			add(ClassMissing, "", dir, fmt.Sprintf("own repo %s is not cloned; run `skenv sync`", o.Repo))
+			remote, _ := e.m.Hosts.Resolve(o.Repo)
+			add(ClassMissing, "", dir, fmt.Sprintf("own repo %s is not cloned; run `skenv sync`", e.showRepo(o.Repo, remote)))
 			continue
 		}
 		if !e.env.Git.OK(e.ctx, dir, "rev-parse", "--is-inside-work-tree") {
@@ -214,9 +215,10 @@ func (e *Engine) doctorStore(s Skill, add func(class, skill, p, detail string)) 
 		return
 	}
 	v := s.Vendor
-	if mk.Repo != v.Repo || mk.Path != v.Path || mk.Rev != v.Rev {
+	remote, _ := e.m.Hosts.Resolve(v.Repo)
+	if !mk.matches(remote, v) {
 		add(ClassWrongRev, s.Name, p, fmt.Sprintf("store has %s@%.12s (%s), manifest wants %s@%.12s (%s); run `skenv sync`",
-			mk.Repo, mk.Rev, mk.Path, v.Repo, v.Rev, v.Path))
+			gitx.Mask(mk.Repo), mk.Rev, mk.Path, gitx.Mask(remote.URL), v.Rev, v.Path))
 	}
 }
 

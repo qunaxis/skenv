@@ -17,11 +17,28 @@ import (
 
 const markerName = ".skenv"
 
-// marker is the content of store/<name>/.skenv for vendored skills.
+// marker is the content of store/<name>/.skenv for vendored skills. Repo
+// is the canonical clone URL (manifest.Remote.URL), not the value written in
+// the manifest.
 type marker struct {
 	Repo string `toml:"repo"`
 	Path string `toml:"path"`
 	Rev  string `toml:"rev"`
+}
+
+// matches reports whether the marker records vendor entry v of the
+// repository remote.
+func (mk marker) matches(remote manifest.Remote, v *manifest.Vendor) bool {
+	return manifest.NormalizeURL(mk.Repo) == manifest.NormalizeURL(remote.URL) && mk.Path == v.Path && mk.Rev == v.Rev
+}
+
+// showRepo is how output names a repository: the value of the manifest,
+// followed by its canonical URL when that differs, credentials masked.
+func (e *Engine) showRepo(repo string, remote manifest.Remote) string {
+	if remote.URL == "" || remote.URL == repo {
+		return gitx.Mask(repo)
+	}
+	return gitx.Mask(repo + " (" + remote.URL + ")")
 }
 
 func readMarker(dir string) (marker, error) {
@@ -70,9 +87,10 @@ func (e *Engine) syncOwn() {
 	for i := range e.m.Own {
 		o := &e.m.Own[i]
 		dir := e.ownPath(o)
-		url := manifest.RepoURL(o.Repo)
 		if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
-			e.changef("clone %s into %s", o.Repo, e.show(dir))
+			// Validate resolved every repo of the manifest already.
+			remote, _ := e.m.Hosts.Resolve(o.Repo)
+			e.changef("clone %s into %s", e.showRepo(o.Repo, remote), e.show(dir))
 			if e.opts.DryRun {
 				continue
 			}
@@ -80,8 +98,8 @@ func (e *Engine) syncOwn() {
 				e.errorf("clone %s: %v", o.Repo, err)
 				continue
 			}
-			if _, err := e.env.Git.Run(e.ctx, "", "clone", "--quiet", url, dir); err != nil {
-				e.errorf("clone %s: %v (check access to the repository: ssh key or git credential helper)", o.Repo, err)
+			if _, err := e.env.Git.Run(e.ctx, "", "clone", "--quiet", remote.URL, dir); err != nil {
+				e.errorf("clone %s: %v (%s)", o.Repo, err, remote.AccessHint())
 			}
 			continue
 		}
@@ -116,7 +134,11 @@ func (e *Engine) syncOwn() {
 // really fetches from (after url.<base>.insteadOf), and a cache whose origin
 // is another repository is cloned again, so two repositories never share one.
 func (e *Engine) ensureCache(repo, rev string) (string, error) {
-	url := manifest.CloneURL(repo)
+	remote, err := e.m.Hosts.Resolve(repo)
+	if err != nil {
+		return "", err
+	}
+	url := remote.URL
 	root := e.layout.Cache()
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return "", err
@@ -134,7 +156,7 @@ func (e *Engine) ensureCache(repo, rev string) (string, error) {
 	dir := filepath.Join(root, manifest.CacheKey(resolved))
 	if !e.cacheIsFor(dir, resolved) {
 		if err := e.cloneCache(git, url, dir); err != nil {
-			return "", err
+			return "", fmt.Errorf("%w (%s)", err, remote.AccessHint())
 		}
 	} else if rev == "" || !e.hasCommit(dir, rev) {
 		if _, err := e.env.Git.Run(e.ctx, dir, "fetch", "--quiet", "--force", "origin"); err != nil {
@@ -196,9 +218,9 @@ func (e *Engine) hasCommit(dir, rev string) bool {
 func (e *Engine) syncVendor(s Skill) {
 	v := s.Vendor
 	dst := e.storePath(s.Name)
-	want := marker{Repo: v.Repo, Path: v.Path, Rev: v.Rev}
+	remote, _ := e.m.Hosts.Resolve(v.Repo) // Validate resolved it already
 	if e.st.Is(dst) {
-		if mk, err := readMarker(dst); err == nil && mk == want {
+		if mk, err := readMarker(dst); err == nil && mk.matches(remote, v) {
 			e.manage(dst, state.Entry{Kind: state.VendorDir, Skill: s.Name})
 			return
 		}
@@ -210,14 +232,16 @@ func (e *Engine) syncVendor(s Skill) {
 	if e.opts.DryRun {
 		return
 	}
-	if err := e.materialize(v, dst); err != nil {
+	if err := e.materialize(v, remote.URL, dst); err != nil {
 		e.errorf("vendor %s: %v", s.Name, err)
 		return
 	}
 	e.manage(dst, state.Entry{Kind: state.VendorDir, Skill: s.Name})
 }
 
-func (e *Engine) materialize(v *manifest.Vendor, dst string) error {
+// materialize copies the vendored skill v into dst with a .skenv marker
+// that records url, the canonical clone URL of its repository.
+func (e *Engine) materialize(v *manifest.Vendor, url, dst string) error {
 	cache, err := e.ensureCache(v.Repo, v.Rev)
 	if err != nil {
 		return err
@@ -246,7 +270,7 @@ func (e *Engine) materialize(v *manifest.Vendor, dst string) error {
 		return err
 	}
 	var b []byte
-	b = fmt.Appendf(b, "# managed by skenv, do not edit\nrepo = %q\npath = %q\nrev = %q\n", v.Repo, v.Path, v.Rev)
+	b = fmt.Appendf(b, "# managed by skenv, do not edit\nrepo = %q\npath = %q\nrev = %q\n", url, v.Path, v.Rev)
 	if err := os.WriteFile(filepath.Join(content, markerName), b, 0o644); err != nil {
 		return err
 	}

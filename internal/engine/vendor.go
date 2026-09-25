@@ -24,7 +24,11 @@ type VendorAddOptions struct {
 // VendorAdd pins a third-party skill in the manifest and syncs it.
 func (e *Engine) VendorAdd(o VendorAddOptions) (int, error) {
 	if o.Repo == "" {
-		return ExitFatal, fmt.Errorf("usage: skenv vendor add <owner/repo> [--path P] [--name N] [--rev SHA]")
+		return ExitFatal, fmt.Errorf("usage: skenv vendor add <repo> [--path P] [--name N] [--rev SHA]")
+	}
+	remote, err := e.m.Hosts.Resolve(o.Repo)
+	if err != nil {
+		return ExitFatal, err
 	}
 	cache, err := e.ensureCache(o.Repo, "")
 	if err != nil {
@@ -42,7 +46,7 @@ func (e *Engine) VendorAdd(o VendorAddOptions) (int, error) {
 	if name == "" {
 		name = path.Base(skillPath)
 		if skillPath == "." {
-			name = manifest.RepoName(o.Repo)
+			name = manifest.RepoName(remote.URL)
 		}
 		name = strings.ToLower(name)
 	}

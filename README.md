@@ -162,6 +162,9 @@ skenv autostart enable          # sync at login and hourly
 `git clone`) or into `--path`, records the manifest location in
 `~/.config/skenv/config.toml` and runs `sync`. If the repository is already
 cloned, point `--path` at it: `skenv init <owner>/<skills-repo> --path ~/src/my-skills`.
+`<owner>/<skills-repo>` is on GitHub; for GitLab (`gitlab:group/sub/repo`),
+Codeberg (`codeberg:owner/repo`) or a self-hosted server see
+[Git hosts](docs/git-hosts.md).
 
 > [!WARNING]
 > **Upgrading from v0.3.0 or earlier:** `env.toml` and the old
@@ -191,8 +194,9 @@ hand)? `skenv init --import` also writes them into the new manifest and
 takes them over; see [Adopting an existing setup](docs/adopting.md).
 
 A minimal manifest lists the repository itself, so skenv keeps its working
-copy up to date (`skenv init` adds this entry when the repository's `origin`
-is on GitHub):
+copy up to date (`skenv init` adds this entry from the repository's
+`origin`; GitLab, Codeberg and self-hosted servers are covered in
+[Git hosts](docs/git-hosts.md)):
 
 ```toml
 [[environment.own]]
@@ -257,6 +261,8 @@ The same pages, with search, are published at
   and the tool config, and editor setup.
 - [Manifest](docs/manifest.md): the `[environment]` format, where it is found,
   the layout on disk, and the mapping to `skills-lock.json`.
+- [Git hosts](docs/git-hosts.md): `repo` forms for GitHub, GitLab, Codeberg
+  and self-hosted servers, host aliases, ssh and authentication.
 - [Harness](docs/harness.md): `skenv repo init|apply|check`, `[repo]`,
   the managed files and harness versions.
 - [Claude Code hook](docs/claude-code-hook.md): how skills are linted while

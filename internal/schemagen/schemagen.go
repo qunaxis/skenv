@@ -59,6 +59,7 @@ type Schema struct {
 	Properties           Props    `json:"properties,omitempty"`
 	Required             []string `json:"required,omitempty"`
 	AdditionalProperties any      `json:"additionalProperties,omitempty"` // false or *Schema
+	PropertyNames        *Schema  `json:"propertyNames,omitempty"`
 	Not                  *Schema  `json:"not,omitempty"`
 	If                   *Schema  `json:"if,omitempty"`
 	Then                 *Schema  `json:"then,omitempty"`
@@ -162,9 +163,27 @@ func (g *gen) skenv() *Schema {
 	own := g.object(reflect.TypeFor[manifest.Own]())
 	vendor := g.object(reflect.TypeFor[manifest.Vendor]())
 	host := g.object(reflect.TypeFor[manifest.Host]())
+	gitHost := g.object(reflect.TypeFor[manifest.GitHost]())
 	repo := g.object(reflect.TypeFor[harness.Config]())
 
 	environment.Properties.get("host").AdditionalProperties = &Schema{Ref: "#/$defs/host"}
+	hosts := environment.Properties.get("hosts")
+	hosts.AdditionalProperties = &Schema{Ref: "#/$defs/gitHost"}
+	hosts.PropertyNames = &Schema{
+		Pattern:             manifest.AliasPattern,
+		PatternErrorMessage: `An alias is lowercase letters, digits and "-", starting with a letter.`,
+		Not:                 &Schema{Enum: manifest.ReservedAliases, ErrorMessage: "This prefix is built in and cannot be declared."},
+	}
+
+	gitHost.Required = []string{"url"}
+	hostURL := gitHost.Properties.get("url")
+	hostURL.Pattern = `^[A-Za-z][A-Za-z0-9+.-]*://[^/@?#]+(/[^?#]*)?$`
+	hostURL.PatternErrorMessage = `A base URL such as "https://git.example.com", without credentials.`
+	hostURL.Examples = []any{"https://git.example.com"}
+	hostType := gitHost.Properties.get("type")
+	hostType.Enum = manifest.HostTypes
+	hostType.Default = manifest.TypeGeneric
+	gitHost.Properties.get("ssh").Examples = []any{"git@git.example.com"}
 
 	layout.Properties.get("store").Examples = []any{"~/.agents/skills"}
 	ignore := layout.Properties.get("ignore").Items
@@ -239,6 +258,7 @@ func (g *gen) skenv() *Schema {
 			{"own", own},
 			{"vendor", vendor},
 			{"host", host},
+			{"gitHost", gitHost},
 		},
 	}
 }

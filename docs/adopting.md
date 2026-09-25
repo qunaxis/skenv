@@ -29,7 +29,8 @@ skenv doctor
 (adds `[environment]` to the skenv file of the repository or creates
 `skenv.toml`, and records it as your manifest), imports the installed skills
 into it, and runs `skenv sync --adopt`. The repository itself becomes an own
-repository when its `origin` is on GitHub, as with `skenv init`. Commit the
+repository, written from its `origin` as with `skenv init` (see
+[Git hosts](git-hosts.md#skenv-init-without-a-repository)). Commit the
 manifest afterwards:
 
 ```sh
@@ -102,7 +103,9 @@ The inverse mapping, from a manifest to the project lock
 
 **Links into a working copy**: a symlink whose target is a skill directory
 (with `SKILL.md`) inside a git working copy becomes an own repository:
-`repo` from its `origin` (`owner/repo` on GitHub, the URL otherwise),
+`repo` from its `origin` (the short form on GitHub, GitLab, Codeberg or a
+host declared in the manifest, see [Git hosts](git-hosts.md); the URL
+otherwise),
 `path` the working copy, `skills_dir` the directory that holds the skill.
 When only some skills of that directory are linked, the entry lists them
 in `skills` (see
