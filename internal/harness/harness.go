@@ -28,7 +28,7 @@ const ConfigFile = "skenv.toml"
 
 // Latest is the newest harness version this skenv binary ships templates
 // for; `repo init` uses it and `repo apply --upgrade` moves to it.
-const Latest = "0.2.0"
+const Latest = "0.3.0"
 
 // DefaultRunner is the runs-on of private repositories (the self-hosted
 // Docker runner).
@@ -60,14 +60,24 @@ func LoadConfig(root string) (*Config, error) {
 // Version returns the harness version recorded in root/skenv.toml without
 // validating the rest; ok is false when there is no skenv.toml.
 func Version(root string) (version string, ok bool, err error) {
+	c, ok, err := ReadRaw(root)
+	if c == nil {
+		return "", ok, err
+	}
+	return c.Harness, ok, err
+}
+
+// ReadRaw decodes root/skenv.toml without validating it; ok is false when
+// there is no skenv.toml.
+func ReadRaw(root string) (*Config, bool, error) {
 	var c Config
 	if _, err := toml.DecodeFile(filepath.Join(root, ConfigFile), &c); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return "", false, nil
+			return nil, false, nil
 		}
-		return "", true, fmt.Errorf("%s: %w", ConfigFile, err)
+		return nil, true, fmt.Errorf("%s: %w", ConfigFile, err)
 	}
-	return c.Harness, true, nil
+	return &c, true, nil
 }
 
 func (c *Config) validate() error {
@@ -129,6 +139,23 @@ var items = []item{
 	{Path: ".markdownlint.yaml", Template: "markdownlint.yaml", Kind: whole, Comment: "#"},
 	{Path: "AGENTS.md", Template: "AGENTS.md.block", Kind: block, Comment: "<!--"},
 	{Path: ".gitignore", Template: "gitignore.block", Kind: block, Comment: "#"},
+	// JSON has no comments: the template carries the header in "$comment".
+	{Path: ".claude/settings.json", Template: "claude-settings.json", Kind: whole, Comment: jsonHeader},
+}
+
+// jsonHeader marks items whose template writes its own header.
+const jsonHeader = "json"
+
+// itemsFor returns the items that exist in the templates of c.Harness:
+// later harness versions add files (0.3.0: .claude/settings.json).
+func itemsFor(c *Config) []item {
+	var out []item
+	for _, it := range items {
+		if _, err := fs.Stat(templates, path.Join("templates", c.Harness, it.Template)); err == nil {
+			out = append(out, it)
+		}
+	}
+	return out
 }
 
 // Header is the first line of a managed file without the comment prefix.
@@ -163,6 +190,9 @@ func render(c *Config, it item) (string, error) {
 	begin, end := markers(it, c.Harness)
 	if it.Kind == block {
 		return begin + "\n" + text + end + "\n", nil
+	}
+	if it.Comment == jsonHeader {
+		return text, nil
 	}
 	return it.Comment + " " + Header(c.Harness) + "\n" + text, nil
 }
@@ -231,7 +261,7 @@ func Check(root string) ([]Drift, error) {
 			out = append(out, Drift{Path: filepath.ToSlash(p), Reason: "must not exist: it disables loading of AGENTS.md in Claude Code; move its content to AGENTS.md"})
 		}
 	}
-	for _, it := range items {
+	for _, it := range itemsFor(c) {
 		want, err := render(c, it)
 		if err != nil {
 			return nil, err
@@ -265,6 +295,16 @@ func Check(root string) ([]Drift, error) {
 	return out, nil
 }
 
+// isManaged reports whether a file carries the skenv header in its first
+// lines (a comment, or the "$comment" key of JSON files).
+func isManaged(data []byte) bool {
+	head := data
+	if lines := bytes.SplitN(data, []byte("\n"), 4); len(lines) > 3 {
+		head = bytes.Join(lines[:3], []byte("\n"))
+	}
+	return bytes.Contains(head, []byte("managed by skenv "))
+}
+
 func normalize(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	if s != "" && !strings.HasSuffix(s, "\n") {
@@ -280,13 +320,30 @@ type Change struct {
 }
 
 // Apply regenerates every managed file and block in root for c. Text
-// outside the managed blocks is kept. With dryRun nothing is written.
-func Apply(root string, c *Config, dryRun bool) ([]Change, error) {
+// outside the managed blocks is kept. An existing file that skenv does not
+// manage yet (no "managed by skenv" header) is only replaced with force.
+// With dryRun nothing is written.
+func Apply(root string, c *Config, dryRun, force bool) ([]Change, error) {
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
+	if !force {
+		var foreign []string
+		for _, it := range itemsFor(c) {
+			if it.Kind != whole {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(it.Path)))
+			if err == nil && !isManaged(data) {
+				foreign = append(foreign, it.Path)
+			}
+		}
+		if len(foreign) > 0 {
+			return nil, fmt.Errorf("%s exist and are not managed by skenv; move what you need out of them (local Claude Code settings: .claude/settings.local.json), then rerun with --force to replace them", strings.Join(foreign, ", "))
+		}
+	}
 	var changes []Change
-	for _, it := range items {
+	for _, it := range itemsFor(c) {
 		want, err := render(c, it)
 		if err != nil {
 			return nil, err
@@ -354,7 +411,7 @@ func mergeBlock(it item, data, want string, exists bool) (string, error) {
 
 // Init creates skenv.toml and all managed files. It refuses to run when
 // skenv.toml already exists.
-func Init(root, visibility string, dryRun bool) (*Config, []Change, error) {
+func Init(root, visibility string, dryRun, force bool) (*Config, []Change, error) {
 	if _, err := os.Stat(filepath.Join(root, ConfigFile)); err == nil {
 		return nil, nil, fmt.Errorf("%s already exists; use `skenv repo apply` to regenerate the managed files", ConfigFile)
 	}
@@ -362,13 +419,19 @@ func Init(root, visibility string, dryRun bool) (*Config, []Change, error) {
 	if err := c.validate(); err != nil {
 		return nil, nil, err
 	}
+	if !force {
+		// Refuse before writing skenv.toml, so a rerun with --force works.
+		if _, err := Apply(root, c, true, false); err != nil {
+			return nil, nil, err
+		}
+	}
 	changes := []Change{{Path: ConfigFile, Action: "create"}}
 	if !dryRun {
 		if err := atomicfile.Write(filepath.Join(root, ConfigFile), c.encode(), 0o644); err != nil {
 			return nil, nil, err
 		}
 	}
-	more, err := Apply(root, c, dryRun)
+	more, err := Apply(root, c, dryRun, true)
 	return c, append(changes, more...), err
 }
 

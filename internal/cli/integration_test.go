@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/qunaxis/skenv/internal/engine"
+	"github.com/qunaxis/skenv/internal/harness"
 )
 
 func assertStandardLayout(t *testing.T, w *world) {
@@ -460,7 +461,7 @@ func TestDoctorWarnsAboutOldHarness(t *testing.T) {
 	w.push("me/skills-private", map[string]string{"skenv.toml": "harness = \"0.1.0\"\nvisibility = \"private\"\n"}, "chore: harness")
 	w.mustRun(0, "init", "me/skills-private", "--path", "~/"+ownPath)
 	_, errOut := w.mustRun(0, "doctor")
-	if !strings.Contains(errOut, "harness 0.1.0 is older than 0.2.0") {
+	if !strings.Contains(errOut, "harness 0.1.0 is older than "+harness.Latest) {
 		t.Errorf("stderr = %q", errOut)
 	}
 	out, _ := w.mustRun(0, "doctor", "--json")

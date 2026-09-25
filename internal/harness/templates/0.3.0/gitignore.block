@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+.pyright/
+.pytest_cache/
+# Node (npx pyright, markdownlint)
+node_modules/
+# Secrets never belong in a skills repository
+.env
+*.pem
+*.key
+.credentials*
+# OS
+.DS_Store

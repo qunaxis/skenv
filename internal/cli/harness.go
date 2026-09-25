@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,12 +18,17 @@ import (
 )
 
 func cmdLint(ctx context.Context, env engine.Env, args []string) (int, error) {
-	var staged bool
-	fs := newFlags(env, "lint", "skenv lint [path...] [--staged]\n\nCheck skills (directories with SKILL.md) under each path (default \".\"):\nL1 frontmatter, L2 name, L3 Agent Skills limits, L4 relative links,\nL5 file size and secret-like files, L6 shebangs. Exit code 0: clean, 1: problems.")
+	var staged, publish, hook bool
+	fs := newFlags(env, "lint", "skenv lint [path...] [--staged] [--publish]\n       skenv lint --hook   (Claude Code PostToolUse hook, reads the event on stdin)\n\nCheck skills (directories with SKILL.md) under each path (default \".\"):\nL1 frontmatter, L2 name, L3 Agent Skills limits, L4 relative links,\nL5 file size and secret-like files, L6 shebangs. --publish adds P1: a license,\nmetadata.source not book/internal/third-party-copy, no stop-list phrase\n($SKENV_DENYLIST or ~/.config/skenv/denylist.txt) and gitleaks over the whole\nhistory. Exit code 0: clean, 1: problems, 2: error (--hook: 2 with findings,\nso Claude Code shows them to the agent).")
 	fs.BoolVar(&staged, "staged", false, "only skills with files changed in the git index")
+	fs.BoolVar(&publish, "publish", false, "also run the publication checks (P1)")
+	fs.BoolVar(&hook, "hook", false, "lint the skill of the file named in a Claude Code hook event on stdin")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return engine.ExitFatal, err
+	}
+	if hook {
+		return lintHook(env)
 	}
 	var skills []string
 	switch {
@@ -56,14 +63,50 @@ func cmdLint(ctx context.Context, env engine.Env, args []string) (int, error) {
 			skills = append(skills, found...)
 		}
 	}
+	var deny *lint.Denylist
+	if publish {
+		if deny, err = lint.LoadDenylist(env.Home, env.Getenv); err != nil {
+			return engine.ExitFatal, err
+		}
+	}
 	cwd, _ := os.Getwd()
 	problems := 0
-	for _, s := range skills {
-		for _, f := range lint.Skill(s) {
+	report := func(fs []lint.Finding) {
+		for _, f := range fs {
 			if rel, err := filepath.Rel(cwd, f.Skill); err == nil && !strings.HasPrefix(rel, "..") {
 				f.Skill = rel
 			}
 			fmt.Fprintln(env.Stdout, f)
+			problems++
+		}
+	}
+	for _, s := range skills {
+		report(lint.Skill(s))
+		if publish {
+			report(lint.Publish(s))
+		}
+	}
+	if publish {
+		dir := "."
+		if len(pos) > 0 {
+			dir = pos[0]
+		}
+		root, err := gitRoot(ctx, dir)
+		if err != nil {
+			return engine.ExitFatal, fmt.Errorf("--publish scans the repository and its history: %w", err)
+		}
+		// The whole repository is published, not only the skills.
+		files, err := lint.RepoFiles(root)
+		if err != nil {
+			return engine.ExitFatal, err
+		}
+		report(lint.ScanDenylist(root, files, deny))
+		leaks, err := lint.Gitleaks(root)
+		if err != nil {
+			return engine.ExitFatal, err
+		}
+		if leaks != "" {
+			fmt.Fprintf(env.Stdout, "%s: P1: gitleaks found secrets in the history (redacted report below)\n%s", root, leaks)
 			problems++
 		}
 	}
@@ -72,6 +115,39 @@ func cmdLint(ctx context.Context, env engine.Env, args []string) (int, error) {
 		return engine.ExitProblems, nil
 	}
 	return engine.ExitOK, nil
+}
+
+// hookStdin is the Claude Code hook event; replaced in tests.
+var hookStdin io.Reader = os.Stdin
+
+// lintHook handles a Claude Code PostToolUse event: lint the skill that
+// contains the edited file and, when there are findings, print them to
+// stderr with exit code 2, which Claude Code feeds back to the agent.
+// Files outside skills and malformed events are ignored (exit 0) so the
+// hook never gets in the way of unrelated edits.
+func lintHook(env engine.Env) (int, error) {
+	var event struct {
+		ToolName  string `json:"tool_name"`
+		ToolInput struct {
+			FilePath string `json:"file_path"`
+		} `json:"tool_input"`
+	}
+	if err := json.NewDecoder(hookStdin).Decode(&event); err != nil || event.ToolInput.FilePath == "" {
+		return engine.ExitOK, nil //nolint:nilerr // not an edit event: nothing to lint
+	}
+	skill, ok := lint.SkillOf(event.ToolInput.FilePath)
+	if !ok {
+		return engine.ExitOK, nil
+	}
+	findings := lint.Skill(skill)
+	if len(findings) == 0 {
+		return engine.ExitOK, nil
+	}
+	fmt.Fprintf(env.Stderr, "skenv lint: %s has %d problems after %s; fix them:\n", skill, len(findings), event.ToolName)
+	for _, f := range findings {
+		fmt.Fprintln(env.Stderr, f)
+	}
+	return engine.ExitFatal, nil
 }
 
 func gitRoot(ctx context.Context, dir string) (string, error) {
@@ -89,7 +165,7 @@ func cmdRepo(ctx context.Context, env engine.Env, args []string) (int, error) {
 	}
 	sub, args := args[0], args[1:]
 	var dir, visibility string
-	var dryRun, upgrade bool
+	var dryRun, upgrade, force bool
 	var synopsis string
 	switch sub {
 	case "init":
@@ -108,6 +184,7 @@ func cmdRepo(ctx context.Context, env engine.Env, args []string) (int, error) {
 	}
 	if sub != "check" {
 		fs.BoolVar(&dryRun, "dry-run", false, "print the plan, change nothing")
+		fs.BoolVar(&force, "force", false, "replace existing files that skenv does not manage yet")
 	}
 	if sub == "apply" {
 		fs.BoolVar(&upgrade, "upgrade", false, "move harness to "+harness.Latest+" (the templates of this skenv)")
@@ -129,7 +206,7 @@ func cmdRepo(ctx context.Context, env engine.Env, args []string) (int, error) {
 			fs.Usage()
 			return engine.ExitFatal, usageError{"repo init: --visibility private|public is required"}
 		}
-		c, changes, err := harness.Init(root, visibility, dryRun)
+		c, changes, err := harness.Init(root, visibility, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
 			return engine.ExitFatal, err
@@ -151,7 +228,7 @@ func cmdRepo(ctx context.Context, env engine.Env, args []string) (int, error) {
 		case cmp < 0:
 			fmt.Fprintf(env.Stderr, "note: this skenv has harness %s, the repository uses %s; `skenv repo apply --upgrade` moves to it\n", harness.Latest, c.Harness)
 		}
-		changes, err := harness.Apply(root, c, dryRun)
+		changes, err := harness.Apply(root, c, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
 			return engine.ExitFatal, err

@@ -1,0 +1,51 @@
+# Git hooks for a skills repository; `lefthook install` activates them.
+# Needs skenv, uv and gitleaks on PATH[[ if not .Private ]] and the stop-list
+# ~/.config/skenv/denylist.txt[[ end ]].
+pre-commit:
+  commands:
+    skenv-lint:
+      run: skenv lint --staged
+    ruff-format:
+      glob: "*.py"
+      run: uvx ruff@0.16.9 format --check {staged_files}
+    ruff-check:
+      glob: "*.py"
+      run: uvx ruff@0.16.9 check {staged_files}
+    shellcheck:
+      # staged *.sh and executables with a sh/bash shebang
+      run: |
+        files=""
+        for f in {staged_files}; do
+          [ -f "$f" ] || continue
+          case "$f" in
+            *.sh) files="$files $f" ;;
+            *) [ -x "$f" ] && head -n1 "$f" | grep -qE '^#!.*\b(ba)?sh\b' && files="$files $f" ;;
+          esac
+        done
+        [ -z "$files" ] || uvx --from shellcheck-py==0.11.0.1 shellcheck -x $files
+    gitleaks:
+      run: gitleaks git --pre-commit --staged --redact --no-banner .
+pre-push:
+  commands:
+[[- if not .Private ]]
+    publish-check:
+      # Public repository: nothing leaves the machine without the publication
+      # check (stop-list from ~/.config/skenv/denylist.txt, gitleaks history).
+      run: skenv lint --publish
+[[- end ]]
+    skill-checks:
+      # ./check of every skill changed against the upstream branch (all
+      # skills with ./check when there is no upstream yet), run from the
+      # skill directory
+      run: |
+        base=$(git rev-parse --verify -q '@{upstream}' || true)
+        if [ -n "$base" ]; then
+          changed=$(git diff --name-only "$base" HEAD -- skills/ | cut -d/ -f2 | sort -u)
+        else
+          changed=$(ls skills 2>/dev/null || true)
+        fi
+        for s in $changed; do
+          [ -x "skills/$s/check" ] || continue
+          echo "== skills/$s/check"
+          (cd "skills/$s" && ./check) || exit 1
+        done

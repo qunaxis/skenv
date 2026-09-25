@@ -1,0 +1,204 @@
+# Checks for a skills repository; regenerate with `skenv repo apply`.
+[[- if .Private ]]
+#
+# Private repository: jobs run on the self-hosted runner [[ .RunsOn ]].
+# Tools come from the runner's shared tool cache, not the Actions cache (that
+# writes to the Actions storage quota): setup actions run with caching off,
+# uv keeps its cache and Python builds under $RUNNER_TOOL_CACHE.
+[[- end ]]
+name: check
+
+on:
+  push:
+  pull_request:
+
+env:
+  SKENV_VERSION: "[[ .Harness ]]"
+  GITLEAKS_VERSION: "8.30.1"
+  RUFF_VERSION: "0.16.9"
+  PYRIGHT_VERSION: "1.1.414"
+  SHELLCHECK_PY_VERSION: "0.11.0.1"
+  MARKDOWNLINT_CLI2_VERSION: "0.23.3"
+
+jobs:
+  skenv:
+    name: skenv repo check + lint
+    runs-on: [[ .RunsOn ]]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: install skenv
+        run: |
+          arch=$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/)
+          dir="$RUNNER_TOOL_CACHE/skenv/$SKENV_VERSION/$arch"
+          # The tool cache is shared and the download may be cut short: unpack
+          # into a temporary directory, verify, then rename into place.
+          if ! "$dir/skenv" version >/dev/null 2>&1; then
+            tmp=$(mktemp -d)
+            curl -fsSL "https://github.com/qunaxis/skenv/releases/download/v$SKENV_VERSION/skenv_${SKENV_VERSION}_linux_${arch}.tar.gz" | tar xz -C "$tmp" skenv
+            "$tmp/skenv" version
+            mkdir -p "$dir" && cp "$tmp/skenv" "$dir/skenv.$$" && mv -f "$dir/skenv.$$" "$dir/skenv"
+            rm -rf "$tmp"
+          fi
+          echo "$dir" >> "$GITHUB_PATH"
+      - run: skenv repo check
+      - run: skenv lint
+
+  gitleaks:
+[[- if not .Private ]]
+    name: gitleaks + skenv lint --publish
+[[- end ]]
+    runs-on: [[ .RunsOn ]]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: install gitleaks
+        run: |
+          arch=$(uname -m | sed -e s/x86_64/x64/ -e s/aarch64/arm64/)
+          dir="$RUNNER_TOOL_CACHE/gitleaks/$GITLEAKS_VERSION/$arch"
+          if ! "$dir/gitleaks" version >/dev/null 2>&1; then
+            tmp=$(mktemp -d)
+            curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_linux_${arch}.tar.gz" | tar xz -C "$tmp" gitleaks
+            "$tmp/gitleaks" version
+            mkdir -p "$dir" && cp "$tmp/gitleaks" "$dir/gitleaks.$$" && mv -f "$dir/gitleaks.$$" "$dir/gitleaks"
+            rm -rf "$tmp"
+          fi
+          echo "$dir" >> "$GITHUB_PATH"
+      - name: gitleaks (whole history)
+        run: gitleaks git --redact --no-banner .
+[[- if not .Private ]]
+      - name: install skenv
+        run: |
+          arch=$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/)
+          dir="$RUNNER_TOOL_CACHE/skenv/$SKENV_VERSION/$arch"
+          if ! "$dir/skenv" version >/dev/null 2>&1; then
+            tmp=$(mktemp -d)
+            curl -fsSL "https://github.com/qunaxis/skenv/releases/download/v$SKENV_VERSION/skenv_${SKENV_VERSION}_linux_${arch}.tar.gz" | tar xz -C "$tmp" skenv
+            "$tmp/skenv" version
+            mkdir -p "$dir" && cp "$tmp/skenv" "$dir/skenv.$$" && mv -f "$dir/skenv.$$" "$dir/skenv"
+            rm -rf "$tmp"
+          fi
+          echo "$dir" >> "$GITHUB_PATH"
+      - name: skenv lint --publish
+        # Public repository: every skill must pass the publication check. The
+        # stop-list comes from the SKENV_DENYLIST secret and is never printed.
+        env:
+          DENYLIST: ${{ secrets.SKENV_DENYLIST }}
+        run: |
+          if [ -z "$DENYLIST" ]; then
+            echo "::error::the SKENV_DENYLIST secret (publication stop-list) is not set"
+            exit 1
+          fi
+          list=$(mktemp)
+          trap 'rm -f "$list"' EXIT
+          printf '%s\n' "$DENYLIST" > "$list"
+          SKENV_DENYLIST="$list" skenv lint --publish
+[[- end ]]
+
+  lint:
+    runs-on: [[ .RunsOn ]]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.10"
+          enable-cache: false
+[[- if .Private ]]
+      - run: |
+          echo "UV_CACHE_DIR=$RUNNER_TOOL_CACHE/uv-cache" >> "$GITHUB_ENV"
+          echo "UV_PYTHON_INSTALL_DIR=$RUNNER_TOOL_CACHE/uv-python" >> "$GITHUB_ENV"
+[[- end ]]
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: ruff format
+        run: uvx "ruff@$RUFF_VERSION" format --check .
+      - name: ruff check
+        run: uvx "ruff@$RUFF_VERSION" check .
+      - name: pyright
+        # Third-party imports of the skills go to requirements-dev.txt.
+        run: |
+          uv venv -q .venv
+          if [ -f requirements-dev.txt ]; then uv pip install -q --python .venv/bin/python -r requirements-dev.txt; fi
+          npx --yes "pyright@$PYRIGHT_VERSION"
+      - name: shellcheck
+        # *.sh plus every executable tracked file with a sh/bash shebang (e.g. skills/*/check)
+        run: |
+          files=()
+          while IFS= read -r f; do
+            case "$f" in
+              *.sh) files+=("$f") ;;
+              *) head -n1 "$f" | grep -qE '^#!.*\b(ba)?sh\b' && files+=("$f") ;;
+            esac
+          done < <(git ls-files -s | awk '$1 == "100755" || $4 ~ /\.sh$/ { print $4 }')
+          if [ ${#files[@]} -eq 0 ]; then echo "no shell scripts"; exit 0; fi
+          uvx --from "shellcheck-py==$SHELLCHECK_PY_VERSION" shellcheck -x "${files[@]}"
+      - name: markdownlint
+        run: npx --yes "markdownlint-cli2@$MARKDOWNLINT_CLI2_VERSION" "**/*.md" "#node_modules" "#.venv"
+
+  changes:
+    runs-on: [[ .RunsOn ]]
+    timeout-minutes: 10
+    outputs:
+      skills: ${{ steps.pick.outputs.skills }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: pick
+        # Skills with an executable ./check that changed: PR — vs base, push — vs
+        # event.before; before empty, zero or unknown — every skill with ./check.
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          all=false
+          if [ -z "$BASE" ] || [ -z "${BASE//0/}" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            all=true
+          fi
+          if $all; then
+            candidates=$(ls skills 2>/dev/null || true)
+          else
+            candidates=$(git diff --name-only "$BASE" HEAD -- skills/ | cut -d/ -f2 | sort -u)
+          fi
+          json=""
+          for s in $candidates; do
+            [ -x "skills/$s/check" ] || continue
+            json="${json:+$json,}\"$s\""
+          done
+          echo "all=$all base=${BASE:-<none>} skills=[$json]"
+          echo "skills=[$json]" >> "$GITHUB_OUTPUT"
+
+  skills:
+    needs: changes
+    if: needs.changes.outputs.skills != '[]'
+    runs-on: [[ .RunsOn ]]
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: ${{ fromJSON(needs.changes.outputs.skills) }}
+        python: ["3.9", "3.12"]
+    name: ${{ matrix.skill }} (py${{ matrix.python }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.10"
+          enable-cache: false
+[[- if .Private ]]
+      - run: |
+          echo "UV_CACHE_DIR=$RUNNER_TOOL_CACHE/uv-cache" >> "$GITHUB_ENV"
+          echo "UV_PYTHON_INSTALL_DIR=$RUNNER_TOOL_CACHE/uv-python" >> "$GITHUB_ENV"
+[[- end ]]
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: check
+        working-directory: skills/${{ matrix.skill }}
+        env:
+          CHECK_PYTHON: ${{ matrix.python }}
+          UV_PYTHON: ${{ matrix.python }}
+        run: ./check
