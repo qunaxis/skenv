@@ -3,12 +3,13 @@ package cli
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/spf13/cobra"
 
 	"github.com/qunaxis/skenv/internal/engine"
 	"github.com/qunaxis/skenv/internal/harness"
@@ -20,21 +21,28 @@ var skillNameRe = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 // cmdNew scaffolds a skill (P3) in the own repository whose skenv.toml has
 // the requested visibility (private by default), or in --dir.
-func cmdNew(ctx context.Context, env engine.Env, args []string) (int, error) {
+func newCmd(a *app) *cobra.Command {
 	var o engine.Options
 	var repo, dir string
-	fs := newFlags(env, "new", "skenv new <name> [--repo private|public] [--dir D] [--manifest FILE]\n\nCreate skills/<name>/ with SKILL.md (frontmatter) and references/ in the own\nrepository of the manifest whose skenv.toml has that visibility (default\nprivate), or in the git repository at --dir.")
-	manifestFlag(fs, &o)
-	fs.StringVar(&repo, "repo", "private", "visibility of the target repository: private or public")
-	fs.StringVar(&dir, "dir", "", "target repository instead of the manifest's own repositories")
-	pos, err := parse(fs, args)
-	if err != nil {
-		return engine.ExitFatal, err
+	c := &cobra.Command{
+		Use:   "new <name>",
+		Short: "Scaffold a skill",
+		Long: `Create skills/<name>/ with SKILL.md (frontmatter) and references/ in the own
+repository of the manifest whose skenv.toml has that visibility (default
+private), or in the git repository at --dir.`,
+		Args: nArgs(1),
 	}
-	if err := wantArgs(fs, pos, 1); err != nil {
-		return engine.ExitFatal, err
-	}
-	name := pos[0]
+	c.RunE = a.action(func(ctx context.Context, env engine.Env, pos []string) (int, error) {
+		return runNew(ctx, env, o, pos[0], repo, c.Flags().Changed("repo"), dir)
+	})
+	manifestFlag(c.Flags(), &o)
+	c.Flags().StringVar(&repo, "repo", "private", "visibility of the target repository: private or public")
+	c.Flags().StringVar(&dir, "dir", "", "target repository instead of the manifest's own repositories")
+	return c
+}
+
+func runNew(ctx context.Context, env engine.Env, o engine.Options, name, repo string, repoSet bool, dir string) (int, error) {
+	var err error
 	if !skillNameRe.MatchString(name) || len(name) > lint.MaxNameLen {
 		return engine.ExitFatal, fmt.Errorf("skill name %q must be lowercase letters, digits and single hyphens, at most %d characters", name, lint.MaxNameLen)
 	}
@@ -42,8 +50,6 @@ func cmdNew(ctx context.Context, env engine.Env, args []string) (int, error) {
 		return engine.ExitFatal, usageError{fmt.Sprintf("new: --repo must be private or public, got %q", repo)}
 	}
 
-	repoSet := false
-	fs.Visit(func(f *flag.Flag) { repoSet = repoSet || f.Name == "repo" })
 	var root, skillsDir string
 	if dir != "" {
 		if root, err = gitRoot(ctx, dir); err != nil {
