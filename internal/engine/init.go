@@ -18,8 +18,9 @@ import (
 const ManifestFile = "env.toml"
 
 // Init bootstraps a machine (B1): clone the manifest repository, record the
-// manifest path in ~/.config/skenv/config.toml and run sync. When the
-// repository is already cloned it only records the path.
+// manifest path in ~/.config/skenv/config.toml and run sync. Without dir the
+// repository is cloned into ./<repo> of the current directory, like git
+// clone. When the repository is already cloned it only records the path.
 func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, error) {
 	if err := gitx.Available(); err != nil {
 		return ExitFatal, err
@@ -31,9 +32,13 @@ func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, er
 		return ExitFatal, errors.New("usage: skenv init <owner/repo> [--path P]")
 	}
 	if dir == "" {
-		dir = filepath.Join(env.Home, "Personal", "lab", manifest.RepoName(repo))
+		dir = manifest.RepoName(repo)
 	}
-	dir = paths.Expand(env.Home, dir)
+	// config.toml must hold an absolute path: skenv runs from any directory.
+	dir, err := filepath.Abs(paths.Expand(env.Home, dir))
+	if err != nil {
+		return ExitFatal, err
+	}
 	manifestPath := filepath.Join(dir, ManifestFile)
 	layout := paths.Layout{Home: env.Home}
 	show := func(p string) string { return paths.Collapse(env.Home, p) }

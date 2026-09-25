@@ -50,10 +50,5 @@ func (l Layout) Cache() string { return filepath.Join(l.Home, ".cache", "skenv",
 // ConfigFile is ~/.config/skenv/config.toml.
 func (l Layout) ConfigFile() string { return filepath.Join(l.Home, ".config", "skenv", "config.toml") }
 
-// DefaultManifest is ~/Personal/lab/skills-private/env.toml.
-func (l Layout) DefaultManifest() string {
-	return filepath.Join(l.Home, "Personal", "lab", "skills-private", "env.toml")
-}
-
 // DefaultStore is ~/.agents/skills.
 func (l Layout) DefaultStore() string { return filepath.Join(l.Home, ".agents", "skills") }

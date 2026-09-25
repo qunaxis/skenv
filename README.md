@@ -28,9 +28,17 @@ mkdir -p ~/.local/bin
 gh release download -R qunaxis/skenv \
   -p "skenv_*_$(uname -s | tr A-Z a-z)_$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/).tar.gz" -O - \
   | tar xz -C ~/.local/bin skenv
-skenv init qunaxis/skills-private
+cd ~/src                        # any directory; the clone lands in ./<skills-repo>
+skenv init <owner>/<skills-repo>
 skenv autostart enable
 ```
+
+`<owner>/<skills-repo>` is your skills repository, the one that holds
+`env.toml`. Its name and where you keep it are up to you: skenv hardcodes
+neither. `skenv init` clones it into the current directory (like `git
+clone`) or into `--path`, and records the manifest location in
+`~/.config/skenv/config.toml`. If the repository is already cloned, point
+`--path` at it: `skenv init <owner>/<skills-repo> --path ~/src/my-skills`.
 
 `~/.local/bin` must be on your `PATH`. With Go installed you can use
 `go install github.com/qunaxis/skenv/cmd/skenv@latest` instead.
@@ -39,7 +47,7 @@ skenv autostart enable
 
 | Command                                                           | What it does                                                                                                                                                                                                                                                        |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `skenv init <owner/repo> [--path P]`                              | Clone the repository that holds `env.toml` (default `~/Personal/lab/<repo>`), record the manifest path in `~/.config/skenv/config.toml`, run `sync`. If the repository is already cloned, only the path is recorded.                                                |
+| `skenv init <owner/repo> [--path P]`                              | Clone the repository that holds `env.toml` into `P` (default `./<repo>` in the current directory, like `git clone`), record the manifest path in `~/.config/skenv/config.toml`, run `sync`. If the repository is already cloned, only the path is recorded.         |
 | `skenv sync [--adopt] [--dry-run] [--quiet]`                      | Clone or `pull --ff-only` own repositories (dirty or diverged copies are left alone with a warning), vendor pinned skills, link everything, remove managed paths that left the manifest. Idempotent.                                                                |
 | `skenv link [--adopt] [--dry-run]`                                | Only the linking step of `sync`.                                                                                                                                                                                                                                    |
 | `skenv doctor [--json]`                                           | Compare the machine with the manifest without changing anything. Exit code 0: in sync, 1: discrepancies, 2: could not run.                                                                                                                                          |
@@ -112,9 +120,8 @@ repositories:
 Creates `skills/<name>/` with `SKILL.md` (frontmatter with `name`, a TODO
 `description`, `metadata.source: original`) and `references/notes.md`, then
 lints it. The target is the own repository of the manifest whose
-`skenv.toml` has the requested visibility (default `private`, i.e.
-skills-private), or the git repository at `--dir` (its `skenv.toml`
-decides the visibility there).
+`skenv.toml` has the requested visibility (default `private`), or the git
+repository at `--dir` (its `skenv.toml` decides the visibility there).
 
 ### Claude Code hook
 
@@ -207,7 +214,9 @@ newest templates of the installed skenv.
 ## Manifest: `env.toml`
 
 Found via `--manifest`, then `$SKENV_MANIFEST`, then `manifest` in
-`~/.config/skenv/config.toml`, then `~/Personal/lab/skills-private/env.toml`.
+`~/.config/skenv/config.toml` (written by `skenv init`). There is no default
+location: when none of them is set, commands that need the manifest stop
+with an error that suggests `skenv init <owner/repo>` or `--manifest`.
 
 ```toml
 [layout]
@@ -216,8 +225,8 @@ targets = ["~/.claude/skills", "~/.pi/agent/skills"]  # optional, replaces the a
 ignore  = ["peon-ping-*"]                            # optional, entries owned by other tools
 
 [[own]]                        # your skills repository, kept as a working copy
-repo = "qunaxis/skills-private"
-path = "~/Personal/lab/skills-private"
+repo = "<owner>/<skills-repo>" # any name
+path = "~/src/my-skills"       # any location
 skills_dir = "skills"          # optional, default "skills"
 
 [[vendor]]                     # someone else's skill, pinned to a commit

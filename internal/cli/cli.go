@@ -151,8 +151,8 @@ func wantArgs(fs *flag.FlagSet, pos []string, n int) error {
 func cmdInit(ctx context.Context, env engine.Env, args []string) (int, error) {
 	var o engine.Options
 	var dir string
-	fs := newFlags(env, "init", "skenv init <owner/repo> [--path P] [--dry-run]\n\nClone the manifest repository (default ~/Personal/lab/<repo>), record its env.toml\nin ~/.config/skenv/config.toml and run sync. If the repository is already\ncloned, only the path is recorded.")
-	fs.StringVar(&dir, "path", "", "where to clone the repository")
+	fs := newFlags(env, "init", "skenv init <owner/repo> [--path P] [--dry-run]\n\nClone the manifest repository into P (default ./<repo> in the current\ndirectory, like git clone), record its env.toml in ~/.config/skenv/config.toml\nand run sync. If the repository is already cloned, only the path is recorded.")
+	fs.StringVar(&dir, "path", "", "where to clone the repository (default ./<repo>)")
 	fs.BoolVar(&o.DryRun, "dry-run", false, "print the plan, change nothing")
 	fs.BoolVar(&o.Adopt, "adopt", false, "back up and replace unmanaged paths that conflict with the manifest")
 	pos, err := parse(fs, args)

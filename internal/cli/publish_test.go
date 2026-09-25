@@ -107,8 +107,8 @@ func TestLintHook(t *testing.T) {
 func TestNewSkill(t *testing.T) {
 	w := newWorld(t)
 	w.standard("")
-	w.push("me/skills-private", map[string]string{"skenv.toml": "harness = \"0.3.0\"\nvisibility = \"private\"\n"}, "chore: harness")
-	w.mustRun(0, "init", "me/skills-private", "--path", "~/"+ownPath)
+	w.push("me/skills", map[string]string{"skenv.toml": "harness = \"0.3.0\"\nvisibility = \"private\"\n"}, "chore: harness")
+	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
 
 	out, _ := w.mustRun(0, "new", "my-skill")
 	skill := w.path(ownPath + "/skills/my-skill")

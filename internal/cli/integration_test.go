@@ -60,7 +60,7 @@ func TestInitOnCleanHome(t *testing.T) {
 		t.Errorf("doctor output = %q", out)
 	}
 	// Already cloned: init only records the path.
-	out, _ = w.mustRun(0, "init", "me/skills-private", "--path", "~/"+ownPath)
+	out, _ = w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
 	if !strings.Contains(out, "already cloned") {
 		t.Errorf("second init output = %q", out)
 	}
@@ -94,7 +94,7 @@ func TestRemoveSkillsFromManifest(t *testing.T) {
 	// Remove the vendor skill from the manifest and an own skill from the
 	// repository, upstream; sync pulls both changes.
 	text, _, _ := strings.Cut(manifestText(rev, ""), "# pinned")
-	w.push("me/skills-private", map[string]string{"env.toml": text, "skills/beta": ""}, "chore: drop skills")
+	w.push("me/skills", map[string]string{"env.toml": text, "skills/beta": ""}, "chore: drop skills")
 	out, errOut := w.mustRun(0, "sync")
 	for _, p := range []string{".agents/skills/archify", ".claude/skills/archify", ".pi/agent/skills/archify",
 		".agents/skills/beta", ".claude/skills/beta", ".pi/agent/skills/beta"} {
@@ -146,7 +146,7 @@ func TestConflictWithUnmanagedPath(t *testing.T) {
 	manual := w.path(".claude/skills/alpha/SKILL.md")
 	writeFile(t, manual, "hand-installed\n")
 
-	code, _, errOut := w.run("init", "me/skills-private", "--path", "~/"+ownPath)
+	code, _, errOut := w.run("init", "me/skills", "--path", "~/"+ownPath)
 	if code != 1 || !strings.Contains(errOut, "conflict: ~/.claude/skills/alpha") || !strings.Contains(errOut, "--adopt") {
 		t.Fatalf("init with conflict: exit %d, stderr:\n%s", code, errOut)
 	}
@@ -178,7 +178,7 @@ func TestDirtyOwnCopyIsNotOverwritten(t *testing.T) {
 	w.initStandard("")
 	local := w.path(ownPath + "/skills/alpha/SKILL.md")
 	writeFile(t, local, "local edit\n")
-	w.push("me/skills-private", map[string]string{"skills/alpha/SKILL.md": skillMD("alpha", "upstream")}, "feat: upstream")
+	w.push("me/skills", map[string]string{"skills/alpha/SKILL.md": skillMD("alpha", "upstream")}, "feat: upstream")
 
 	_, errOut := w.mustRun(0, "sync")
 	if !strings.Contains(errOut, "uncommitted changes; not pulling") {
@@ -223,14 +223,14 @@ path = "tools/other"
 rev  = "PLACEHOLDER"
 `)
 	// Pin "other" at the same commit.
-	w.push("me/skills-private", map[string]string{"env.toml": strings.ReplaceAll(manifestText(rev, `
+	w.push("me/skills", map[string]string{"env.toml": strings.ReplaceAll(manifestText(rev, `
 [[vendor]]
 name = "other"
 repo = "ext/tools"
 path = "tools/other"
 rev  = "`+rev+`"
 `), "PLACEHOLDER", rev)}, "chore: fix manifest")
-	w.mustRun(0, "init", "me/skills-private", "--path", "~/"+ownPath)
+	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
 	w.mustRun(0, "doctor")
 	own := w.path(ownPath)
 	newRev := w.push("ext/tools", map[string]string{"tools/archify/SKILL.md": skillMD("archify", "v2")}, "fix: v2")
@@ -241,7 +241,7 @@ rev  = "`+rev+`"
 	writeFile(t, filepath.Join(own, "env.toml"), text)
 	// unpushed: a local commit; behind: a new upstream commit.
 	w.git(own, "commit", "--quiet", "-am", "chore: local")
-	w.push("me/skills-private", map[string]string{"notes.txt": "x\n"}, "docs: upstream")
+	w.push("me/skills", map[string]string{"notes.txt": "x\n"}, "docs: upstream")
 	// dirty + conflict: a new own skill whose store path is taken by hand.
 	writeFile(t, filepath.Join(own, "skills/gamma/SKILL.md"), skillMD("gamma", ""))
 	writeFile(t, w.path(".agents/skills/gamma/SKILL.md"), "manual\n")
@@ -337,11 +337,11 @@ func TestVendorAddAndRemove(t *testing.T) {
 func TestDryRunChangesNothing(t *testing.T) {
 	w := newWorld(t)
 	w.standard("")
-	w.mustRun(0, "init", "me/skills-private", "--path", "~/"+ownPath, "--dry-run")
+	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath, "--dry-run")
 	if w.exists(ownPath) || w.exists(".config/skenv/config.toml") {
 		t.Fatal("init --dry-run changed the machine")
 	}
-	w.git(w.home, "clone", "--quiet", "https://github.com/me/skills-private", w.path(ownPath))
+	w.git(w.home, "clone", "--quiet", "https://github.com/me/skills", w.path(ownPath))
 	manifest := "--manifest=~/" + ownPath + "/env.toml"
 	out, _ := w.mustRun(0, "sync", "--dry-run", manifest)
 	if !strings.Contains(out, "would vendor archify") || !strings.Contains(out, "would link ~/.claude/skills/alpha") {
@@ -362,13 +362,86 @@ func TestDryRunChangesNothing(t *testing.T) {
 func TestManifestFromEnvironment(t *testing.T) {
 	w := newWorld(t)
 	w.standard("")
-	w.git(w.home, "clone", "--quiet", "https://github.com/me/skills-private", w.path(ownPath))
+	w.git(w.home, "clone", "--quiet", "https://github.com/me/skills", w.path(ownPath))
 	_, errOut := w.mustRun(2, "doctor")
 	if !strings.Contains(errOut, "skenv init") {
 		t.Errorf("missing manifest error must say how to fix it: %s", errOut)
 	}
 	t.Setenv("SKENV_MANIFEST", "~/"+ownPath+"/env.toml")
 	w.mustRun(0, "sync", "--quiet")
+}
+
+// No manifest configured and no default guessed: commands that need a
+// manifest fail and say how to fix it.
+func TestNoManifestConfigured(t *testing.T) {
+	w := newWorld(t)
+	for _, args := range [][]string{{"doctor"}, {"sync"}, {"vendor", "bump", "archify"}} {
+		_, errOut := w.mustRun(2, args...)
+		if !strings.Contains(errOut, "no manifest configured") || !strings.Contains(errOut, "skenv init <owner/repo>") ||
+			!strings.Contains(errOut, "--manifest") {
+			t.Errorf("skenv %s: missing manifest error must say how to fix it: %s", strings.Join(args, " "), errOut)
+		}
+	}
+	if w.exists(".local/state/skenv") || w.exists(".agents") {
+		t.Error("a failed command without a manifest changed the machine")
+	}
+}
+
+// Without --path, init clones into ./<repo> of the current directory, like
+// git clone, and records the absolute manifest path.
+func TestInitClonesIntoCurrentDirectory(t *testing.T) {
+	w := newWorld(t)
+	w.standard("")
+	mustMkdir(t, w.path("src"))
+	t.Chdir(w.path("src"))
+	out, _ := w.mustRun(0, "init", "me/skills")
+	if !strings.Contains(out, "cloned me/skills into ~/"+ownPath) {
+		t.Errorf("init output = %q", out)
+	}
+	cfg := readFile(t, w.path(".config/skenv/config.toml"))
+	if !strings.Contains(cfg, `manifest = "~/`+ownPath+`/env.toml"`) {
+		t.Fatalf("config.toml does not record the manifest:\n%s", cfg)
+	}
+	assertStandardLayout(t, w)
+	w.mustRun(0, "doctor")
+	// Already cloned: a second init from the same directory only records it.
+	out, _ = w.mustRun(0, "init", "me/skills")
+	if !strings.Contains(out, "already cloned") {
+		t.Errorf("second init output = %q", out)
+	}
+}
+
+// The skills repository name and location are the user's choice: a
+// repository with any name at any path works end to end.
+func TestInitCustomRepositoryAndPath(t *testing.T) {
+	w := newWorld(t)
+	rev := w.push("ext/tools", map[string]string{"tools/archify/SKILL.md": skillMD("archify", "v1")}, "feat: initial")
+	const kit = "work/team/kit"
+	w.push("acme/agent-kit", map[string]string{
+		"env.toml": `[[own]]
+repo = "acme/agent-kit"
+path = "~/` + kit + `"
+
+[[vendor]]
+name = "archify"
+repo = "ext/tools"
+path = "tools/archify"
+rev  = "` + rev + `"
+`,
+		"skills/gamma/SKILL.md": skillMD("gamma", ""),
+	}, "feat: initial")
+	w.mustRun(0, "init", "acme/agent-kit", "--path", "~/"+kit)
+	if cfg := readFile(t, w.path(".config/skenv/config.toml")); !strings.Contains(cfg, `manifest = "~/`+kit+`/env.toml"`) {
+		t.Fatalf("config.toml does not record the manifest:\n%s", cfg)
+	}
+	if got, want := w.readlink(".agents/skills/gamma"), w.path(kit+"/skills/gamma"); got != want {
+		t.Errorf("store link gamma -> %s, want %s", got, want)
+	}
+	w.mustRun(0, "sync", "--quiet")
+	out, _ := w.mustRun(0, "doctor")
+	if !strings.HasPrefix(out, "ok: 2 skills") {
+		t.Errorf("doctor output = %q", out)
+	}
 }
 
 func TestUsageErrors(t *testing.T) {
@@ -458,8 +531,8 @@ func TestConcurrentRunIsRejected(t *testing.T) {
 func TestDoctorWarnsAboutOldHarness(t *testing.T) {
 	w := newWorld(t)
 	w.standard("")
-	w.push("me/skills-private", map[string]string{"skenv.toml": "harness = \"0.1.0\"\nvisibility = \"private\"\n"}, "chore: harness")
-	w.mustRun(0, "init", "me/skills-private", "--path", "~/"+ownPath)
+	w.push("me/skills", map[string]string{"skenv.toml": "harness = \"0.1.0\"\nvisibility = \"private\"\n"}, "chore: harness")
+	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
 	_, errOut := w.mustRun(0, "doctor")
 	if !strings.Contains(errOut, "harness 0.1.0 is older than "+harness.Latest) {
 		t.Errorf("stderr = %q", errOut)
@@ -477,12 +550,12 @@ func TestLayoutIgnore(t *testing.T) {
 	w := newWorld(t)
 	rev := w.standard("")
 	text := strings.Replace(manifestText(rev, ""), "# test manifest\n", "# test manifest\n[layout]\nignore = [\"peon-ping-*\"]\n\n", 1)
-	w.push("me/skills-private", map[string]string{"env.toml": text}, "chore: ignore peon-ping")
+	w.push("me/skills", map[string]string{"env.toml": text}, "chore: ignore peon-ping")
 	writeFile(t, w.path(".claude/skills/peon-ping-toggle/SKILL.md"), "brew\n")
 	writeFile(t, w.path(".agents/skills/peon-ping-use/SKILL.md"), "brew\n")
 	writeFile(t, w.path(".claude/skills/manual/SKILL.md"), "hand\n")
 
-	w.mustRun(0, "init", "me/skills-private", "--path", "~/"+ownPath)
+	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
 	out, _ := w.mustRun(1, "doctor", "--json")
 	if strings.Contains(out, "peon-ping") || !strings.Contains(out, "manual") {
 		t.Errorf("doctor must hide ignored paths only:\n%s", out)
