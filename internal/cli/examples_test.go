@@ -77,6 +77,12 @@ var exampleScenarios = map[string]func(f *exampleWorld){
 		f.git(f.path("src"), "clone", "--quiet", "https://github.com/example-org/skills.git")
 		f.t.Chdir(f.path("src/skills"))
 	},
+	"skenv list/1": func(f *exampleWorld) {
+		// A skill written in the working copy, not linked yet.
+		f.initialized()
+		writeFile(f.t, f.path("src/skills/skills/write-tests/SKILL.md"),
+			exampleSkill("write-tests", "Write table-driven tests for a Go function.", "Cover the edge cases first."))
+	},
 	"skenv import/1": func(f *exampleWorld) { f.initialized(); f.npxInstalled() },
 	"skenv import/2": func(f *exampleWorld) { f.initialized(); f.npxInstalled() },
 	"skenv import/3": func(f *exampleWorld) {

@@ -5,10 +5,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -19,6 +21,7 @@ import (
 	"github.com/qunaxis/skenv/internal/engine"
 	"github.com/qunaxis/skenv/internal/fileformat"
 	"github.com/qunaxis/skenv/internal/gitx"
+	"github.com/qunaxis/skenv/internal/manifest"
 	"github.com/qunaxis/skenv/internal/paths"
 	"github.com/qunaxis/skenv/schemas"
 )
@@ -88,8 +91,9 @@ First steps, by situation:
 - Another machine: ` + "`skenv clone <repo>`" + ` clones your manifest repository
   and uses it; ` + "`skenv use .`" + ` in a checkout you already have.
 
-Then ` + "`skenv sync`" + ` applies the manifest, ` + "`skenv vendor add <repo>`" + ` installs a
-third-party skill and ` + "`skenv doctor`" + ` checks the machine.
+Then ` + "`skenv sync`" + ` applies the manifest, ` + "`skenv list`" + ` shows the skills and
+whether they are installed, ` + "`skenv vendor add <repo>`" + ` installs a third-party
+skill and ` + "`skenv doctor`" + ` checks the machine.
 
 In a project repository whose skenv file has a [project] section, sync and
 doctor work on the skills of the project instead. The manifest location and
@@ -101,7 +105,8 @@ the exit code; "skenv doctor" exits 0 only when the machine matches.`,
 		Example: `# Set up a machine from the manifest repository
 skenv clone example-org/skills
 skenv sync
-# Check the machine
+# See what is installed, then check the machine
+skenv list
 skenv doctor`,
 		Version:           buildinfo.Get().String(),
 		SilenceErrors:     true,
@@ -123,7 +128,7 @@ skenv doctor`,
 		&cobra.Group{ID: groupMachine, Title: "Machine:"},
 	)
 	addTo(root, groupStart, initCmd(a), cloneCmd(a), useCmd(a), importCmd(a))
-	addTo(root, groupEveryday, syncCmd(a, "sync"), doctorCmd(a), vendorCmd(a), syncCmd(a, "link"))
+	addTo(root, groupEveryday, syncCmd(a, "sync"), listCmd(a), doctorCmd(a), vendorCmd(a), syncCmd(a, "link"))
 	addTo(root, groupAuthor, newCmd(a), lintCmd(a), repoCmd(a))
 	addTo(root, groupMachine, autostartCmd(a), schemaCmd(a), &cobra.Command{
 		Use:     "version",
@@ -495,6 +500,45 @@ skenv use .`,
 	return c
 }
 
+func listCmd(a *app) *cobra.Command {
+	o := engine.Options{ReadOnly: true}
+	var asJSON bool
+	c := &cobra.Command{
+		Use:   "list",
+		Short: "List the skills of the manifest and whether they are installed",
+		Long: `List the manifest, the store and the agent directories, then every skill of
+the manifest: KIND is editable for an own skill (linked from a git working
+copy, VERSION is its path) and pinned for a vendored one (a copy at a
+commit, VERSION is the commit). STATE is:
+
+- installed: in the store and linked into every agent directory;
+- not synced: in the manifest, but its copy or a link is missing or out of
+  date: run ` + "`skenv sync`" + `;
+- conflict: a path skenv does not manage is in the way: ` + "`skenv sync --adopt`" + `
+  backs it up and replaces it;
+- not selected: a skill of an own repository left out by skills or exclude;
+- skipped on this host: left out by host.<name>.skip.
+
+Own repositories that are not cloned yet are listed below the table. It is
+read-only and offline and exits 0: ` + "`skenv doctor`" + ` is the check. Project skills
+are files committed with the project; ` + "`skenv doctor --project`" + ` checks them.`,
+		Example: `# The skills of the manifest on this machine
+skenv list`,
+		Args: nArgs(0),
+		RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
+			e, err := engine.Open(ctx, env, o)
+			if err != nil {
+				return engine.ExitFatal, err
+			}
+			defer e.Close()
+			return e.List(asJSON)
+		}),
+	}
+	manifestFlag(c.Flags(), &o)
+	c.Flags().BoolVar(&asJSON, "json", false, "print the list as JSON")
+	return c
+}
+
 func importCmd(a *app) *cobra.Command {
 	var o engine.Options
 	var sync, project bool
@@ -774,6 +818,26 @@ func vendorCmd(a *app) *cobra.Command {
 			})(cmd, args)
 		}
 	}
+	// pinned completes the names of the skills pinned in the manifest, or
+	// in [project] with --project, leaving out the names already given.
+	// It reads files only and stays silent on errors: completion must not
+	// print or touch the network.
+	pinned := func(f *flags, maxArgs int) cobra.CompletionFunc {
+		return func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+			if len(args) >= maxArgs {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			env, err := newEnv(io.Discard, io.Discard)
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			names, err := pinnedNames(cmd.Context(), env, f.project, f.o.Manifest)
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return slices.DeleteFunc(names, func(n string) bool { return slices.Contains(args, n) }), cobra.ShellCompDirectiveNoFileComp
+		}
+	}
 	revUsage := "commit to pin (default: HEAD of the default branch)"
 
 	var addF flags
@@ -859,6 +923,7 @@ skenv vendor update --project`,
 			}
 			return nil
 		},
+		ValidArgsFunction: pinned(&updateF, math.MaxInt),
 		RunE: withEngine(&updateF, func(v vendorer, args []string) (int, error) {
 			return v.VendorUpdate(args, rev)
 		}),
@@ -886,7 +951,8 @@ is removed by editing the skills of that entry.
 		Example: "skenv vendor remove diagrams\n" +
 			"# Remove a skill pinned in the current project\n" +
 			"skenv vendor remove diagrams --project",
-		Args: nArgs(1),
+		Args:              nArgs(1),
+		ValidArgsFunction: pinned(&rmF, 1),
 		RunE: withEngine(&rmF, func(v vendorer, args []string) (int, error) {
 			return v.VendorRemove(args[0])
 		}),
@@ -905,6 +971,42 @@ pulls.`
 		"skenv vendor update\n" +
 		"skenv vendor remove diagrams"
 	return c
+}
+
+// pinnedNames are the names of the skills pinned in the manifest, or in the
+// [project] section of the current repository.
+func pinnedNames(ctx context.Context, env engine.Env, project bool, manifestFlag string) ([]string, error) {
+	var vendors []manifest.Vendor
+	if project {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		file, err := engine.FindProject(ctx, env, cwd)
+		if err != nil || file == "" {
+			return nil, err
+		}
+		p, err := manifest.LoadProject(file)
+		if err != nil {
+			return nil, err
+		}
+		vendors = p.Vendor
+	} else {
+		file, err := engine.ResolveManifest(env, manifestFlag)
+		if err != nil {
+			return nil, err
+		}
+		m, err := manifest.Load(file)
+		if err != nil {
+			return nil, err
+		}
+		vendors = m.Vendor
+	}
+	names := make([]string, 0, len(vendors))
+	for _, v := range vendors {
+		names = append(names, v.Name)
+	}
+	return names, nil
 }
 
 func schemaCmd(a *app) *cobra.Command {

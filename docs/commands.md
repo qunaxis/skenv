@@ -8,7 +8,7 @@ shipped in the release archives (`make man` writes them into `man/`; see
 [Install](../README.md#install)); shell completion comes from
 `skenv completion bash|zsh|fish`.
 
-- [Machine: init, clone, use, import, sync, link, doctor, vendor, autostart](#machine)
+- [Machine: init, clone, use, import, sync, list, link, doctor, vendor, autostart](#machine)
 - [Projects: sync, doctor, vendor --project](#projects)
 - [`--dry-run` and `--adopt`](#--dry-run-and---adopt)
 - [`doctor` classes](#doctor-classes)
@@ -109,6 +109,20 @@ everything and removes managed paths that left the manifest. Idempotent.
 Also takes `--adopt` and `--dry-run`. Inside a project it syncs the
 project instead (see [Projects](#projects)). Reference:
 [skenv sync](commands/skenv_sync.md).
+
+### `skenv list`
+
+```sh
+skenv list
+skenv list --json
+```
+
+Lists the manifest, the store and the agent directories, then every skill
+of the manifest: `editable` (an own skill, linked from its working copy) or
+`pinned` (a vendored copy at a commit), its source, the commit or working
+copy, and its state on this machine: `installed`, `not synced`, `conflict`,
+`not selected` or `skipped on this host`. Offline and read-only; exit 0.
+Reference: [skenv list](commands/skenv_list.md).
 
 ### `skenv link`
 

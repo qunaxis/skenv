@@ -19,8 +19,9 @@ First steps, by situation:
 - Another machine: `skenv clone <repo>` clones your manifest repository
   and uses it; `skenv use .` in a checkout you already have.
 
-Then `skenv sync` applies the manifest, `skenv vendor add <repo>` installs a
-third-party skill and `skenv doctor` checks the machine.
+Then `skenv sync` applies the manifest, `skenv list` shows the skills and
+whether they are installed, `skenv vendor add <repo>` installs a third-party
+skill and `skenv doctor` checks the machine.
 
 In a project repository whose skenv file has a `[project]` section, sync and
 doctor work on the skills of the project instead. The manifest location and
@@ -43,9 +44,10 @@ $ skenv clone example-org/skills
 $ skenv sync
 ```
 
-Check the machine:
+See what is installed, then check the machine:
 
 ```console
+$ skenv list
 $ skenv doctor
 ```
 
@@ -65,6 +67,7 @@ $ skenv doctor
 * [skenv init](skenv_init.md)	 - Start a manifest in a git repository
 * [skenv link](skenv_link.md)	 - Create store and agent links without pulling
 * [skenv lint](skenv_lint.md)	 - Check skills for format, links, size and secrets
+* [skenv list](skenv_list.md)	 - List the skills of the manifest and whether they are installed
 * [skenv new](skenv_new.md)	 - Scaffold a skill
 * [skenv repo](skenv_repo.md)	 - Set up and check the harness of a skills repository
 * [skenv schema](skenv_schema.md)	 - Print the JSON Schema of the skenv file or the tool config

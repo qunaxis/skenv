@@ -75,6 +75,8 @@ Its design is guided by these mantras:
 
 - Sync own skills (git working copies) and vendored skills (pinned copies)
   from one manifest into Claude Code, Codex and pi.
+- `skenv list` shows every skill of the manifest, editable or pinned, its
+  source and version, and whether it is installed on this machine.
 - `skenv doctor` compares the machine with the manifest and classifies every
   discrepancy (missing, conflict, wrong-rev, dirty, unpushed, …), as text or
   JSON.
@@ -234,7 +236,8 @@ skenv clone <owner>/<skills-repo>
 skenv sync --dry-run
 skenv sync --adopt
 
-# 3. Check that the machine matches the manifest (exit 0: in sync).
+# 3. See what is installed, and check that the machine matches (exit 0: in sync).
+skenv list
 skenv doctor
 
 # 4. Pin a third-party skill; skenv edits skenv.toml and prints the commit command.

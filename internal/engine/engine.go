@@ -1,5 +1,5 @@
-// Package engine implements the skenv commands: sync, link, doctor, vendor,
-// init, clone, use and import.
+// Package engine implements the skenv commands: sync, link, doctor, list,
+// vendor, init, clone, use and import.
 package engine
 
 import (
@@ -207,10 +207,12 @@ func (e *Engine) setManifest(m *manifest.Manifest) {
 	e.targets = agents.Targets(e.env.Home, e.env.Getenv, m.Layout.Targets, e.store)
 }
 
-// Skill is a manifest skill resolved against the file system.
+// Skill is a manifest skill resolved against the file system: Own and
+// OwnDir for an own skill, Vendor for a vendored one.
 type Skill struct {
 	Name   string
-	OwnDir string // for own skills: <own.path>/<skills_dir>/<name>
+	Own    *manifest.Own
+	OwnDir string // <own.path>/<skills_dir>/<name>
 	Vendor *manifest.Vendor
 }
 
@@ -232,6 +234,32 @@ func (e *Engine) skipped() map[string]string {
 // ownPath is the expanded working copy path of o.
 func (e *Engine) ownPath(o *manifest.Own) string { return paths.Expand(e.env.Home, o.Path) }
 
+// ownSkillsDir is the expanded <own.path>/<skills_dir> of o.
+func (e *Engine) ownSkillsDir(o *manifest.Own) string {
+	return filepath.Join(e.ownPath(o), filepath.FromSlash(o.SkillsDir))
+}
+
+// ownFound lists the skills in dir, the skills directory of an own
+// repository: its subdirectories with a SKILL.md. It fails when dir cannot
+// be read, as before the repository is cloned.
+func ownFound(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var found []string
+	for _, de := range entries {
+		if strings.HasPrefix(de.Name(), ".") || !de.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, de.Name(), "SKILL.md")); err != nil {
+			continue
+		}
+		found = append(found, de.Name())
+	}
+	return found, nil
+}
+
 // skills lists every skill of the manifest that applies to this host.
 // Own repositories that are not cloned yet contribute no skills.
 func (e *Engine) skills() ([]Skill, error) {
@@ -240,21 +268,11 @@ func (e *Engine) skills() ([]Skill, error) {
 	e.unselected = map[string]string{}
 	for i := range e.m.Own {
 		o := &e.m.Own[i]
-		dir := filepath.Join(e.ownPath(o), filepath.FromSlash(o.SkillsDir))
-		entries, err := os.ReadDir(dir)
+		dir := e.ownSkillsDir(o)
+		found, err := ownFound(dir)
 		if err != nil {
 			e.ownUnavailable = true
 			continue
-		}
-		var found []string
-		for _, de := range entries {
-			if strings.HasPrefix(de.Name(), ".") || !de.IsDir() {
-				continue
-			}
-			if _, err := os.Stat(filepath.Join(dir, de.Name(), "SKILL.md")); err != nil {
-				continue
-			}
-			found = append(found, de.Name())
 		}
 		// skills and exclude select from the repository; M1 is checked on
 		// the selection, before host.skip, so the manifest is valid or not
@@ -292,9 +310,9 @@ func (e *Engine) skills() ([]Skill, error) {
 			e.unselected[r.Name] = fmt.Sprintf("skipped on this host (host.%q.skip)", host)
 			continue
 		}
-		s := Skill{Name: r.Name, Vendor: r.Vendor}
+		s := Skill{Name: r.Name, Vendor: r.Vendor, Own: r.Own}
 		if r.Own != nil {
-			s.OwnDir = filepath.Join(e.ownPath(r.Own), filepath.FromSlash(r.Own.SkillsDir), r.Name)
+			s.OwnDir = filepath.Join(e.ownSkillsDir(r.Own), r.Name)
 		}
 		out = append(out, s)
 	}

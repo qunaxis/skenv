@@ -19,6 +19,7 @@ Generated from `skenv --help`. Start with [skenv](skenv.md).
 - [skenv init](skenv_init.md): Start a manifest in a git repository
 - [skenv link](skenv_link.md): Create store and agent links without pulling
 - [skenv lint](skenv_lint.md): Check skills for format, links, size and secrets
+- [skenv list](skenv_list.md): List the skills of the manifest and whether they are installed
 - [skenv new](skenv_new.md): Scaffold a skill
 - [skenv repo](skenv_repo.md): Set up and check the harness of a skills repository
 - [skenv repo apply](skenv_repo_apply.md): Regenerate the managed files of the harness
