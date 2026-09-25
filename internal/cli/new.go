@@ -17,103 +17,93 @@ import (
 	"github.com/qunaxis/skenv/internal/paths"
 )
 
-// cmdNew scaffolds a skill (P3) in the own repository whose skenv.toml has
-// the requested visibility (private by default), or in --dir.
+// newCmd scaffolds a skill (P3) in --dir or in an own repository of the
+// manifest.
 func newCmd(a *app) *cobra.Command {
 	var o engine.Options
-	var repo, dir string
+	var visibility, dir string
 	c := &cobra.Command{
 		Use:   "new <name>",
 		Short: "Scaffold a skill",
-		Long: `Create skills/<name>/ with SKILL.md (frontmatter) and references/ in the own
-repository of the manifest whose skenv.toml has that visibility (default
-private), or in the git repository at --dir.`,
-		Example: `# Scaffold a skill in the private own repository of the manifest
+		Long: `Create skills/<name>/ with SKILL.md (frontmatter) and references/ in the git
+repository at --dir, or in an own repository of the manifest: the only one,
+else the one whose [repo] section has --visibility (default private).
+Neither needs a harness ("skenv repo init").
+
+A skill in an own repository of the manifest reaches your agents with
+"skenv link": own skills are linked from the working copy, nothing to pull.
+
+- Reads: the manifest and the skenv file of the target repository.
+- Changes: creates skills/<name>/ in the target repository; nothing else.
+- Network: none.
+- Conflicts: an existing skills/<name> is an error.
+- Preview: none.
+- Next: fill in SKILL.md, "skenv lint", then "skenv link"; commit the skill.`,
+		Example: `# Scaffold a skill in the git repository of the current directory
+skenv new release-checklist --dir .
+# Scaffold it in the own repository of the manifest
 skenv new release-checklist`,
 		Args: nArgs(1),
 	}
 	c.RunE = a.action(func(ctx context.Context, env engine.Env, pos []string) (int, error) {
-		return runNew(ctx, env, o, pos[0], repo, c.Flags().Changed("repo"), dir)
+		return runNew(ctx, env, o, pos[0], visibility, c.Flags().Changed("visibility"), dir)
 	})
 	manifestFlag(c.Flags(), &o)
-	c.Flags().StringVar(&repo, "repo", "private", "visibility of the target repository: private or public")
-	_ = c.RegisterFlagCompletionFunc("repo", cobra.FixedCompletions([]string{"private", "public"}, cobra.ShellCompDirectiveNoFileComp))
+	c.Flags().StringVar(&visibility, "visibility", "private", "with several own repositories: the visibility in [repo] of the target, private or public")
+	_ = c.RegisterFlagCompletionFunc("visibility", cobra.FixedCompletions([]string{"private", "public"}, cobra.ShellCompDirectiveNoFileComp))
 	c.Flags().StringVar(&dir, "dir", "", "target repository instead of the manifest's own repositories")
 	return c
 }
 
-func runNew(ctx context.Context, env engine.Env, o engine.Options, name, repo string, repoSet bool, dir string) (int, error) {
-	var err error
+func runNew(ctx context.Context, env engine.Env, o engine.Options, name, visibility string, visibilitySet bool, dir string) (int, error) {
 	if err := manifest.ValidName(name); err != nil {
 		return engine.ExitFatal, fmt.Errorf("skill %w", err)
 	}
-	if repo != "private" && repo != "public" {
-		return engine.ExitFatal, usageError{fmt.Sprintf("new: --repo must be private or public, got %q", repo)}
+	if visibility != "private" && visibility != "public" {
+		return engine.ExitFatal, usageError{fmt.Sprintf("new: --visibility must be private or public, got %q", visibility)}
+	}
+	o.ReadOnly = true
+	e, openErr := engine.Open(ctx, env, o)
+	if openErr == nil {
+		defer e.Close()
 	}
 
-	var root, skillsDir, note string
+	// target is the own repository of the manifest the skill goes to, nil
+	// for a repository the manifest does not list.
+	var target *engine.OwnDir
+	var root, skillsDir string
 	if dir != "" {
+		var err error
 		if root, err = gitRoot(ctx, dir); err != nil {
 			return engine.ExitFatal, err
 		}
 		skillsDir = "skills"
-		// The repository's own [repo] section knows its visibility.
-		c, ok, err := harness.ReadRaw(root)
-		if err != nil {
-			return engine.ExitFatal, err
-		}
-		if ok && c.Visibility != "" {
-			if repoSet && c.Visibility != repo {
-				return engine.ExitFatal, fmt.Errorf("--repo %s, but %s is %s according to its skenv file", repo, paths.Collapse(env.Home, root), c.Visibility)
+		if openErr == nil {
+			if target = ownAt(e.OwnDirs(), root); target != nil {
+				skillsDir = target.SkillsDir
 			}
-			repo = c.Visibility
 		}
 	} else {
-		o.ReadOnly = true
-		e, err := engine.Open(ctx, env, o)
+		if openErr != nil {
+			return engine.ExitFatal, openErr
+		}
+		d, err := ownTarget(e.OwnDirs(), visibility)
 		if err != nil {
 			return engine.ExitFatal, err
 		}
-		defer e.Close()
-		var matches []engine.OwnDir
-		var missing []string
-		for _, d := range e.OwnDirs() {
-			if _, err := os.Stat(d.Path); err != nil {
-				missing = append(missing, d.Repo)
-				continue
-			}
-			c, ok, err := harness.ReadRaw(d.Path)
-			if err != nil {
-				return engine.ExitFatal, err
-			}
-			if ok && c.Visibility == repo {
-				matches = append(matches, d)
-			}
+		target = &d
+		root, skillsDir = d.Path, d.SkillsDir
+	}
+	// The repository's own [repo] section knows its visibility.
+	c, ok, err := harness.ReadRaw(root)
+	if err != nil {
+		return engine.ExitFatal, err
+	}
+	if ok && c.Visibility != "" {
+		if visibilitySet && c.Visibility != visibility {
+			return engine.ExitFatal, fmt.Errorf("--visibility %s, but %s is %s according to its skenv file", visibility, paths.Collapse(env.Home, root), c.Visibility)
 		}
-		switch len(matches) {
-		case 0:
-			msg := fmt.Sprintf("no own repository in the manifest has visibility %q in its [repo] section; pass --dir", repo)
-			if len(missing) > 0 {
-				msg += fmt.Sprintf(" (not cloned yet: %s; run `skenv sync`)", strings.Join(missing, ", "))
-			}
-			return engine.ExitFatal, errors.New(msg)
-		case 1:
-			root, skillsDir = matches[0].Path, matches[0].SkillsDir
-			switch o := matches[0].Own; {
-			case o.Excluded(name):
-				note = fmt.Sprintf("note: %s matches exclude of [[environment.own]] %s in the manifest, so it is not installed; "+
-					"change the pattern to install it", name, o.Repo)
-			case !o.Selects(name):
-				note = fmt.Sprintf("note: [[environment.own]] %s lists its skills in skills, without %s; "+
-					"add it there in the manifest to install it", o.Repo, name)
-			}
-		default:
-			var names []string
-			for _, m := range matches {
-				names = append(names, m.Repo)
-			}
-			return engine.ExitFatal, fmt.Errorf("several own repositories are %s (%s); pass --dir", repo, strings.Join(names, ", "))
-		}
+		visibility = c.Visibility
 	}
 
 	skill := filepath.Join(root, filepath.FromSlash(skillsDir), name)
@@ -138,19 +128,101 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, repo st
 		}
 	}
 	fmt.Fprintf(env.Stdout, "created %s (SKILL.md, references/notes.md)\n", paths.Collapse(env.Home, skill))
-	if note != "" {
-		fmt.Fprintln(env.Stderr, note)
-	}
 	if findings := lint.Skill(skill); len(findings) > 0 {
 		for _, f := range findings {
 			fmt.Fprintln(env.Stderr, f)
 		}
 		return engine.ExitProblems, nil
 	}
-	hint := "fill in the description and instructions, then run `skenv lint`"
-	if repo == "public" {
-		hint += "; before publishing add a license (LICENSE or the license field) and run `skenv lint --publish`"
+	fmt.Fprintln(env.Stdout, "next steps:")
+	fmt.Fprintln(env.Stdout, "  - fill in the description and instructions, then run `skenv lint`")
+	if visibility == "public" {
+		fmt.Fprintln(env.Stdout, "  - before publishing, add a license (LICENSE or the license field) and run `skenv lint --publish`")
 	}
-	fmt.Fprintln(env.Stdout, hint)
+	fmt.Fprintln(env.Stdout, "  - "+availability(env, name, root, target, openErr))
 	return engine.ExitOK, nil
+}
+
+// availability is the step that makes the new skill name available to the
+// agents: a link when the manifest installs it from target, otherwise what
+// keeps it out.
+func availability(env engine.Env, name, root string, target *engine.OwnDir, openErr error) string {
+	switch {
+	case errors.Is(openErr, engine.ErrNoManifest):
+		return "no manifest is configured, so no agent sees the skill yet: `skenv init` starts one with this repository"
+	case openErr != nil:
+		return fmt.Sprintf("the manifest could not be read, so it is unknown whether agents will see the skill: %v", openErr)
+	case target == nil:
+		return fmt.Sprintf("%s is not an own repository of the manifest, so no agent sees the skill yet: "+
+			"add it under [[environment.own]] and run `skenv sync`", paths.Collapse(env.Home, root))
+	case target.Own.Excluded(name):
+		return fmt.Sprintf("%s matches exclude of [[environment.own]] %s in the manifest, so it is not installed; "+
+			"change the pattern to install it", name, target.Repo)
+	case !target.Own.Selects(name):
+		return fmt.Sprintf("[[environment.own]] %s lists its skills in skills, without %s; "+
+			"add it there in the manifest to install it", target.Repo, name)
+	}
+	return "run `skenv link` to make it available to your agents"
+}
+
+// ownTarget picks the own repository that `new` writes to without --dir:
+// the only one of the manifest, else the one whose [repo] section has
+// visibility.
+func ownTarget(dirs []engine.OwnDir, visibility string) (engine.OwnDir, error) {
+	var cloned []engine.OwnDir
+	var repos, missing []string
+	for _, d := range dirs {
+		repos = append(repos, d.Repo)
+		if _, err := os.Stat(d.Path); err != nil {
+			missing = append(missing, d.Repo)
+			continue
+		}
+		cloned = append(cloned, d)
+	}
+	notCloned := ""
+	if len(missing) > 0 {
+		notCloned = fmt.Sprintf(" (not cloned yet: %s; run `skenv sync`)", strings.Join(missing, ", "))
+	}
+	switch len(dirs) {
+	case 0:
+		return engine.OwnDir{}, errors.New("the manifest has no own repository; pass --dir")
+	case 1:
+		if len(cloned) == 0 {
+			return engine.OwnDir{}, errors.New("the own repository of the manifest is not cloned yet" + notCloned)
+		}
+		return cloned[0], nil
+	}
+	var matches []engine.OwnDir
+	for _, d := range cloned {
+		c, ok, err := harness.ReadRaw(d.Path)
+		if err != nil {
+			return engine.OwnDir{}, err
+		}
+		if ok && c.Visibility == visibility {
+			matches = append(matches, d)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return engine.OwnDir{}, fmt.Errorf("no own repository of the manifest (%s) has visibility %q in its [repo] section; pass --dir%s",
+			strings.Join(repos, ", "), visibility, notCloned)
+	case 1:
+		return matches[0], nil
+	}
+	var names []string
+	for _, m := range matches {
+		names = append(names, m.Repo)
+	}
+	return engine.OwnDir{}, fmt.Errorf("several own repositories are %s (%s); pass --dir", visibility, strings.Join(names, ", "))
+}
+
+// ownAt returns the own repository whose working copy is root, which git
+// reports with symlinks resolved.
+func ownAt(dirs []engine.OwnDir, root string) *engine.OwnDir {
+	for i, d := range dirs {
+		if p, err := filepath.EvalSymlinks(d.Path); err == nil && p == root {
+			return &dirs[i]
+		}
+	}
+	return nil
 }

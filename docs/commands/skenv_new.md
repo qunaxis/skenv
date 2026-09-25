@@ -6,9 +6,20 @@ Scaffold a skill
 
 ### Synopsis
 
-Create `skills/<name>/` with `SKILL.md` (frontmatter) and `references/` in the own
-repository of the manifest whose `skenv.toml` has that visibility (default
-private), or in the git repository at `--dir`.
+Create `skills/<name>/` with `SKILL.md` (frontmatter) and `references/` in the git
+repository at `--dir`, or in an own repository of the manifest: the only one,
+else the one whose `[repo]` section has `--visibility` (default private).
+Neither needs a harness (`skenv repo init`).
+
+A skill in an own repository of the manifest reaches your agents with
+`skenv link`: own skills are linked from the working copy, nothing to pull.
+
+- Reads: the manifest and the skenv file of the target repository.
+- Changes: creates `skills/<name>/` in the target repository; nothing else.
+- Network: none.
+- Conflicts: an existing `skills/<name>` is an error.
+- Preview: none.
+- Next: fill in `SKILL.md`, `skenv lint`, then `skenv link`; commit the skill.
 
 ```
 skenv new <name> [flags]
@@ -16,21 +27,33 @@ skenv new <name> [flags]
 
 ### Examples
 
-Scaffold a skill in the private own repository of the manifest:
+Scaffold a skill in the git repository of the current directory:
+
+```console
+$ skenv new release-checklist --dir .
+created ~/src/skills/skills/release-checklist (SKILL.md, references/notes.md)
+next steps:
+  - fill in the description and instructions, then run `skenv lint`
+  - run `skenv link` to make it available to your agents
+```
+
+Scaffold it in the own repository of the manifest:
 
 ```console
 $ skenv new release-checklist
 created ~/src/skills/skills/release-checklist (SKILL.md, references/notes.md)
-fill in the description and instructions, then run `skenv lint`
+next steps:
+  - fill in the description and instructions, then run `skenv lint`
+  - run `skenv link` to make it available to your agents
 ```
 
 ### Options
 
 ```
-      --dir string        target repository instead of the manifest's own repositories
-  -h, --help              help for new
-      --manifest string   skenv file with the [environment] section, or its directory
-      --repo string       visibility of the target repository: private or public (default "private")
+      --dir string          target repository instead of the manifest's own repositories
+  -h, --help                help for new
+      --manifest string     skenv file with the [environment] section, or its directory
+      --visibility string   with several own repositories: the visibility in [repo] of the target, private or public (default "private")
 ```
 
 ### SEE ALSO
