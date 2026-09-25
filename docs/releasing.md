@@ -11,11 +11,20 @@
 make hooks     # lefthook: commit-msg check, gofmt
 make check     # go vet, staticcheck, golangci-lint, go test -race, commit check
 make snapshot  # local goreleaser build into dist/
+make demo      # re-record docs/demo/demo.gif with vhs
 ```
 
 `make help` lists every target. Integration tests run skenv against a
 temporary `$HOME` with local bare repositories standing in for GitHub; they
 never touch your real home.
+
+The README demo is recorded with [vhs](https://github.com/charmbracelet/vhs)
+from [`docs/demo/demo.tape`](demo/demo.tape). It runs in a throwaway `$HOME`
+under `/tmp/skenv-demo` that [`docs/demo/setup.sh`](demo/setup.sh) builds:
+skenv compiled from the checkout, and local bare repositories standing in
+for GitHub (`example-org/…`, `example-vendor/…`), so the recording needs no
+network and pins the same commits every time. Re-record it with `make demo`
+when the output of the commands it shows changes.
 
 ## Commits
 
