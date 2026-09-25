@@ -206,8 +206,10 @@ func TestCacheKey(t *testing.T) {
 			t.Errorf("CacheKey(%q) = %q is not a plain directory name", u, k)
 		}
 	}
-	if k := CacheKey("https://user:secret@host/o/r"); strings.Contains(k, "secret") || strings.Contains(k, "user") {
-		t.Errorf("credentials in cache key %q", k)
+	for _, u := range []string{"https://user:secret@host/o/r", "https://user:secret%zz@host/o/r", "ssh://user:secret@host:bad/o/r"} {
+		if k := CacheKey(u); strings.Contains(k, "secret") || strings.Contains(k, "user") {
+			t.Errorf("credentials in cache key %q", k)
+		}
 	}
 	if k := CacheKey("https://host/" + strings.Repeat("a/", 100) + "r"); len(k) > maxSlug+13 {
 		t.Errorf("long key %q", k)

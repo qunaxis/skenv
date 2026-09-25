@@ -177,7 +177,8 @@ The vendor cache is `~/.cache/skenv/repos`, one partial clone
 (`--filter=blob:none`) per repository. The directory name is derived from
 the URL git really fetches from, after
 [`url.<base>.insteadOf`](https://git-scm.com/docs/git-config#Documentation/git-config.txt-urlltbasegtinsteadOf)
-rewrites (`git ls-remote --get-url <repo>`), normalised to the host and the
+rewrites in your global git config (`git ls-remote --get-url <repo>`, run in
+the cache so the repository you start skenv in does not matter), normalised to the host and the
 full path:
 
 - the scheme, credentials, trailing slashes and `.git` are dropped, and the
@@ -196,7 +197,7 @@ its SHA-256:
 | `https://gitlab.com/group/sub/tools.git` | `gitlab.com-group-sub-tools-<hash>`       |
 
 So `github.com/x/skills` and `gitlab.com/x/skills` get separate caches, and
-so do `gitlab.com/a/x/skills` and `github.com/x/skills`. The hash keeps two
+so do the subgroup `gitlab.com/a/x/skills` and `gitlab.com/x/skills`. The hash keeps two
 repositories apart even when their slugs look alike, and the flat layout
 means one repository never sits inside another's directory. Credentials in
 a URL never become part of the name.
@@ -215,7 +216,9 @@ clone never leaves a broken cache.
 
 The cache holds nothing that is not upstream, so it is always safe to
 delete; the next `sync` or `vendor` command clones what it needs again.
-Temporary `.skenv-tmp-*` directories left by an interrupted run can go too:
+This includes `<owner>__<repo>` directories from skenv 0.4 and earlier,
+which are no longer used, and `.skenv-tmp-*` or `.skenv-old-*` directories
+left by an interrupted run:
 
 ```sh
 rm -rf ~/.cache/skenv/repos

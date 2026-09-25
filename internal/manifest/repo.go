@@ -42,7 +42,12 @@ func CacheKey(resolved string) string {
 	sum := sha256.Sum256([]byte(n))
 	slug := strings.Trim(slugRe.ReplaceAllString(n, "-"), "-.")
 	if len(slug) > maxSlug {
-		slug = strings.TrimLeft(slug[len(slug)-maxSlug:], "-.")
+		// Keep the tail, which names the repository, from a segment start.
+		slug = slug[len(slug)-maxSlug:]
+		if _, rest, ok := strings.Cut(slug, "-"); ok {
+			slug = rest
+		}
+		slug = strings.TrimLeft(slug, "-.")
 	}
 	if slug == "" {
 		slug = "repo"
@@ -56,6 +61,28 @@ var slugRe = regexp.MustCompile(`[^A-Za-z0-9._]+`)
 
 var defaultPorts = map[string]string{"https": "443", "http": "80", "ssh": "22", "git": "9418"}
 
+// CloneURL is the URL skenv clones repo from: RepoURL with a relative local
+// path made absolute, so git resolves it the same from any directory.
+func CloneURL(repo string) string {
+	s := RepoURL(repo)
+	if isLocal(s) && !filepath.IsAbs(s) {
+		if abs, err := filepath.Abs(s); err == nil {
+			return abs
+		}
+	}
+	return s
+}
+
+// isLocal reports whether a clone URL is a local path: neither
+// scheme://... nor scp-like [user@]host:path.
+func isLocal(s string) bool {
+	if strings.Contains(s, "://") {
+		return false
+	}
+	i := strings.Index(s, ":")
+	return i <= 0 || strings.Contains(s[:i], "/")
+}
+
 // NormalizeURL reduces a clone URL to what identifies the repository: the
 // host in lower case (with a non-default port) and the full path, without
 // scheme, credentials, surrounding slashes or ".git". So "git@host:o/r",
@@ -64,29 +91,36 @@ var defaultPorts = map[string]string{"https": "443", "http": "80", "ssh": "22", 
 // "owner/repo" shorthands are expanded with RepoURL first.
 func NormalizeURL(raw string) string {
 	s := RepoURL(strings.TrimSpace(raw))
-	if strings.Contains(s, "://") {
-		u, err := url.Parse(s)
-		if err != nil {
-			return s
-		}
-		scheme := strings.ToLower(u.Scheme)
-		if scheme == "file" {
-			return localPath(u.Path)
-		}
-		host := strings.ToLower(u.Hostname())
-		if port := u.Port(); port != "" && port != defaultPorts[scheme] {
-			host += ":" + port
-		}
-		return host + "/" + trimRepoPath(u.Path)
+	if isLocal(s) {
+		return localPath(s)
 	}
-	if i := strings.Index(s, ":"); i > 0 && !strings.Contains(s[:i], "/") {
-		host := s[:i] // scp-like [user@]host:path
+	if !strings.Contains(s, "://") {
+		host, p, _ := strings.Cut(s, ":") // scp-like [user@]host:path
 		if j := strings.LastIndex(host, "@"); j >= 0 {
 			host = host[j+1:]
 		}
-		return strings.ToLower(host) + "/" + trimRepoPath(s[i+1:])
+		return strings.ToLower(host) + "/" + trimRepoPath(p)
 	}
-	return localPath(s)
+	u, err := url.Parse(s)
+	if err != nil {
+		// Unparsable: keep what follows the scheme, minus anything up to
+		// an "@" in the authority, so no credentials reach the key.
+		_, rest, _ := strings.Cut(s, "://")
+		authority, p, _ := strings.Cut(rest, "/")
+		if j := strings.LastIndex(authority, "@"); j >= 0 {
+			authority = authority[j+1:]
+		}
+		return strings.ToLower(authority) + "/" + trimRepoPath(p)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme == "file" {
+		return localPath(u.Path)
+	}
+	host := strings.ToLower(u.Hostname())
+	if port := u.Port(); port != "" && port != defaultPorts[scheme] {
+		host += ":" + port
+	}
+	return host + "/" + trimRepoPath(u.Path)
 }
 
 func trimRepoPath(p string) string {

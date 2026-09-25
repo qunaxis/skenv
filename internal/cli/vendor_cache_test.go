@@ -61,22 +61,25 @@ func TestVendorCacheKeyedByHostAndFullPath(t *testing.T) {
 	revA := w.pushTool("host-a/x/skills", "from-host-a")
 	revB := w.pushTool("host-b/x/skills", "from-host-b")
 	revG := w.pushTool("gitlab/grp/x/skills", "from-gitlab-subgroup")
+	revS := w.pushTool("gitlab/x/skills", "from-gitlab-short")
 	revH := w.pushTool("x/skills", "from-github") // https://github.com/x/skills
 	w.initStandard(vendorEntry("tool-a", "https://host-a.test/x/skills.git", revA) +
 		vendorEntry("tool-b", "https://host-b.test/x/skills.git", revB) +
 		vendorEntry("tool-g", "https://gitlab.test/grp/x/skills.git", revG) +
+		vendorEntry("tool-s", "https://gitlab.test/x/skills.git", revS) +
 		vendorEntry("tool-h", "x/skills", revH))
 	for name, want := range map[string]string{
 		"tool-a": "from-host-a", "tool-b": "from-host-b",
-		"tool-g": "from-gitlab-subgroup", "tool-h": "from-github",
+		"tool-g": "from-gitlab-subgroup", "tool-s": "from-gitlab-short",
+		"tool-h": "from-github",
 	} {
 		if got := w.vendored(name); !strings.Contains(got, want) {
 			t.Errorf("%s vendored from the wrong repository:\n%s", name, got)
 		}
 	}
-	// ext/tools of the standard manifest plus the four above.
-	if dirs := w.cacheDirs(); len(dirs) != 5 {
-		t.Errorf("cache dirs = %v, want 5", dirs)
+	// ext/tools of the standard manifest plus the five above.
+	if dirs := w.cacheDirs(); len(dirs) != 6 {
+		t.Errorf("cache dirs = %v, want 6", dirs)
 	}
 	w.mustRun(0, "doctor")
 }
@@ -161,5 +164,36 @@ func TestVendorCacheHidesCredentials(t *testing.T) {
 	}
 	if strings.Contains(all, secret) {
 		t.Errorf("credentials leaked:\n%s", all)
+	}
+}
+
+// #28: the cache does not depend on the directory skenv runs in: the local
+// config of a repository there (here an insteadOf to a mirror) changes
+// neither the key nor the clone, so the next sync does not clone again.
+func TestVendorCacheIgnoresCurrentRepository(t *testing.T) {
+	w := newWorld(t)
+	w.mapHost("https://host-a.test/", "host-a")
+	revA := w.pushTool("host-a/x/skills", "from-host-a")
+	w.pushTool("mirror/x/skills", "from-mirror")
+	rev := w.initStandard(vendorEntry("tool", "https://host-a.test/x/skills", revA))
+	dirs := w.cacheDirs()
+
+	elsewhere := filepath.Join(w.work, "elsewhere")
+	mustMkdir(t, elsewhere)
+	w.git(elsewhere, "init", "--quiet")
+	w.git(elsewhere, "config", "url.file://"+filepath.Join(w.remotes, "mirror", "x")+"/.insteadOf", "https://host-a.test/x/")
+	t.Chdir(elsewhere)
+
+	revA2 := w.pushTool("host-a/x/skills", "from-host-a-v2")
+	w.push("me/skills", map[string]string{"skenv.toml": manifestText(rev, vendorEntry("tool", "https://host-a.test/x/skills", revA2))}, "chore: bump")
+	out, _ := w.mustRun(0, "sync")
+	if strings.Contains(out, "cloning again") {
+		t.Errorf("sync cloned again:\n%s", out)
+	}
+	if got := w.vendored("tool"); !strings.Contains(got, "from-host-a-v2") {
+		t.Errorf("tool:\n%s", got)
+	}
+	if got := w.cacheDirs(); strings.Join(got, " ") != strings.Join(dirs, " ") {
+		t.Errorf("cache dirs %v, before %v", got, dirs)
 	}
 }
