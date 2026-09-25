@@ -19,10 +19,21 @@ import (
 
 var (
 	headerRe  = regexp.MustCompile(`^\s*\[`)
-	vendorRe  = regexp.MustCompile(`^\s*\[\[\s*environment\s*\.\s*vendor\s*\]\]\s*(#.*)?$`)
 	nameKeyRe = regexp.MustCompile(`^\s*name\s*=\s*"([^"]*)"`)
 	revKeyRe  = regexp.MustCompile(`^(\s*rev\s*=\s*)"[^"]*"(.*)$`)
 )
+
+// arrayRe matches the header of the array of tables <section>.<key>, as in
+// [[environment.vendor]], with optional spaces and a trailing comment.
+func arrayRe(section, key string) *regexp.Regexp {
+	return regexp.MustCompile(`^\s*\[\[\s*` + section + `\s*\.\s*` + key + `\s*\]\]\s*(#.*)?$`)
+}
+
+// sectionRe matches the header of any table of section: [project],
+// [[project.from]], [environment.host."x"].
+func sectionRe(section string) *regexp.Regexp {
+	return regexp.MustCompile(`^\s*\[\[?\s*` + section + `\s*[.\]]`)
+}
 
 type block struct{ start, end int } // line range [start, end)
 
@@ -34,39 +45,56 @@ func splitLines(data []byte) []string {
 	return strings.SplitAfter(s, "\n")
 }
 
-// vendorBlock finds the [[environment.vendor]] table whose name is name.
-func vendorBlock(lines []string, name string) (block, error) {
-	for i := 0; i < len(lines); i++ {
-		if !vendorRe.MatchString(strings.TrimRight(lines[i], "\r\n")) {
-			continue
-		}
-		end := i + 1
-		for end < len(lines) && !headerRe.MatchString(lines[end]) {
-			end++
-		}
-		for j := i + 1; j < end; j++ {
-			if m := nameKeyRe.FindStringSubmatch(lines[j]); m != nil && m[1] == name {
-				return block{i, end}, nil
-			}
-		}
-		i = end - 1
+// tableEnd is the end of the table whose header is at line i: the next
+// header, or the end of the file.
+func tableEnd(lines []string, i int) int {
+	end := i + 1
+	for end < len(lines) && !headerRe.MatchString(lines[end]) {
+		end++
 	}
-	return block{}, fmt.Errorf("vendor %q not found in manifest", name)
+	return end
 }
 
-// AppendVendor returns data with a new vendor entry appended.
-func AppendVendor(data []byte, ext string, v Vendor) ([]byte, error) {
+// arrayBlocks lists the tables of the array <section>.<key> in order.
+func arrayBlocks(lines []string, section, key string) []block {
+	re := arrayRe(section, key)
+	var out []block
+	for i := 0; i < len(lines); i++ {
+		if re.MatchString(strings.TrimRight(lines[i], "\r\n")) {
+			end := tableEnd(lines, i)
+			out = append(out, block{i, end})
+			i = end - 1
+		}
+	}
+	return out
+}
+
+// vendorBlock finds the [[<section>.vendor]] table whose name is name.
+func vendorBlock(lines []string, section, name string) (block, error) {
+	for _, b := range arrayBlocks(lines, section, "vendor") {
+		for j := b.start + 1; j < b.end; j++ {
+			if m := nameKeyRe.FindStringSubmatch(lines[j]); m != nil && m[1] == name {
+				return b, nil
+			}
+		}
+	}
+	return block{}, fmt.Errorf("%s.vendor %q not found", section, name)
+}
+
+// AppendVendor returns data with a new vendor entry in section
+// ("environment" or "project"). In TOML the table goes after the last table
+// of the section, before the comments and blank lines that lead to the next
+// one, or to the end of the file.
+func AppendVendor(data []byte, ext, section string, v Vendor) ([]byte, error) {
 	if ext != ".toml" {
-		return editDoc(data, ext, func(d docedit.Doc) error {
-			return d.Append([]string{skenvfile.Environment, "vendor"},
+		return editDoc(data, ext, section, func(d docedit.Doc) error {
+			return d.Append([]string{section, "vendor"},
 				docedit.Map{{Key: "name", Value: v.Name}, {Key: "repo", Value: v.Repo}, {Key: "path", Value: v.Path}, {Key: "rev", Value: v.Rev}})
 		})
 	}
-	var b bytes.Buffer
-	appendTable(&b, data)
-	fmt.Fprintf(&b, "[[environment.vendor]]\nname = %s\nrepo = %s\npath = %s\nrev  = %s\n",
-		quote(v.Name), quote(v.Repo), quote(v.Path), quote(v.Rev))
-	return checked(b.Bytes(), ext)
+	table := fmt.Sprintf("[[%s.vendor]]\nname = %s\nrepo = %s\npath = %s\nrev  = %s\n",
+		section, quote(v.Name), quote(v.Repo), quote(v.Path), quote(v.Rev))
+	return checked(insertTable(data, section, table), ext, section)
 }
 
 // AppendOwn returns data with a new own entry appended; skills_dir and
@@ -80,12 +108,11 @@ func AppendOwn(data []byte, ext string, o Own) ([]byte, error) {
 		if o.Skills != nil {
 			item = append(item, docedit.Field{Key: "skills", Value: o.Skills})
 		}
-		return editDoc(data, ext, func(d docedit.Doc) error {
+		return editDoc(data, ext, skenvfile.Environment, func(d docedit.Doc) error {
 			return d.Append([]string{skenvfile.Environment, "own"}, item)
 		})
 	}
-	var b bytes.Buffer
-	appendTable(&b, data)
+	var b strings.Builder
 	fmt.Fprintf(&b, "[[environment.own]]\nrepo = %s\npath = %s\n", quote(o.Repo), quote(o.Path))
 	if o.SkillsDir != "" && o.SkillsDir != DefaultSkillsDir {
 		fmt.Fprintf(&b, "skills_dir = %s\n", quote(o.SkillsDir))
@@ -97,69 +124,118 @@ func AppendOwn(data []byte, ext string, o Own) ([]byte, error) {
 		}
 		fmt.Fprintf(&b, "skills = [%s]\n", strings.Join(q, ", "))
 	}
-	return checked(b.Bytes(), ext)
+	return checked(insertTable(data, skenvfile.Environment, b.String()), ext, skenvfile.Environment)
 }
 
-// appendTable writes data to b followed by a blank line, so that a table
-// appended next is separated from the rest.
-func appendTable(b *bytes.Buffer, data []byte) {
-	b.Write(data)
-	if len(data) > 0 && !bytes.HasSuffix(data, []byte("\n")) {
+// insertTable returns TOML data with table (a complete table, header
+// first) after the last table of section, before the comments and blank
+// lines that lead to the next table; at the end of the file when section
+// has no table. A blank line separates it from its neighbours.
+func insertTable(data []byte, section, table string) []byte {
+	lines := splitLines(data)
+	at := len(lines)
+	re := sectionRe(section)
+	for i := len(lines) - 1; i >= 0; i-- {
+		if re.MatchString(lines[i]) {
+			at = tableEnd(lines, i)
+			for at > i+1 && isBlankOrComment(lines[at-1]) {
+				at--
+			}
+			break
+		}
+	}
+	var b bytes.Buffer
+	b.WriteString(strings.Join(lines[:at], ""))
+	if at > 0 && !strings.HasSuffix(lines[at-1], "\n") {
 		b.WriteByte('\n')
 	}
-	if len(bytes.TrimSpace(data)) > 0 {
+	if len(bytes.TrimSpace(b.Bytes())) > 0 {
 		b.WriteByte('\n')
 	}
+	b.WriteString(table)
+	if at < len(lines) {
+		if strings.TrimSpace(lines[at]) != "" {
+			b.WriteByte('\n')
+		}
+		b.WriteString(strings.Join(lines[at:], ""))
+	}
+	return b.Bytes()
 }
 
-// SetVendorRev returns data with the rev of vendor name replaced.
-func SetVendorRev(data []byte, ext, name, rev string) ([]byte, error) {
+func isBlankOrComment(line string) bool {
+	t := strings.TrimSpace(line)
+	return t == "" || strings.HasPrefix(t, "#")
+}
+
+// SetVendorRev returns data with the rev of vendor name in section
+// replaced.
+func SetVendorRev(data []byte, ext, section, name, rev string) ([]byte, error) {
 	if ext != ".toml" {
-		i, err := vendorIndex(data, ext, name)
+		i, err := vendorIndex(data, ext, section, name)
 		if err != nil {
 			return nil, err
 		}
-		return editDoc(data, ext, func(d docedit.Doc) error {
-			return d.SetString([]any{skenvfile.Environment, "vendor", i, "rev"}, rev)
+		return editDoc(data, ext, section, func(d docedit.Doc) error {
+			return d.SetString([]any{section, "vendor", i, "rev"}, rev)
 		})
 	}
 	lines := splitLines(data)
-	blk, err := vendorBlock(lines, name)
+	blk, err := vendorBlock(lines, section, name)
 	if err != nil {
 		return nil, err
 	}
+	return setRev(lines, blk, ext, section, fmt.Sprintf("vendor %q", name), rev)
+}
+
+// SetFromRev returns data with the rev of the i-th [[project.from]] entry
+// replaced.
+func SetFromRev(data []byte, ext string, i int, rev string) ([]byte, error) {
+	if ext != ".toml" {
+		return editDoc(data, ext, skenvfile.Project, func(d docedit.Doc) error {
+			return d.SetString([]any{skenvfile.Project, "from", i, "rev"}, rev)
+		})
+	}
+	lines := splitLines(data)
+	blocks := arrayBlocks(lines, skenvfile.Project, "from")
+	if i < 0 || i >= len(blocks) {
+		return nil, fmt.Errorf("project.from[%d] not found (write [[project.from]] tables in the multi-line form)", i)
+	}
+	return setRev(lines, blocks[i], ext, skenvfile.Project, fmt.Sprintf("project.from[%d]", i), rev)
+}
+
+// setRev replaces the value of the rev line of blk.
+func setRev(lines []string, blk block, ext, section, what, rev string) ([]byte, error) {
 	for j := blk.start + 1; j < blk.end; j++ {
 		if m := revKeyRe.FindStringSubmatch(strings.TrimRight(lines[j], "\r\n")); m != nil {
 			nl := lines[j][len(strings.TrimRight(lines[j], "\r\n")):]
 			lines[j] = m[1] + quote(rev) + m[2] + nl
-			return checked([]byte(strings.Join(lines, "")), ext)
+			return checked([]byte(strings.Join(lines, "")), ext, section)
 		}
 	}
-	return nil, fmt.Errorf("vendor %q has no rev line", name)
+	return nil, fmt.Errorf("%s has no rev line", what)
 }
 
-// RemoveVendor returns data without the vendor entry for name. In TOML,
-// comment and blank lines that trail the table (they usually belong to the
-// next table) are kept.
-func RemoveVendor(data []byte, ext, name string) ([]byte, error) {
+// RemoveVendor returns data without the vendor entry for name in section.
+// In TOML, comment and blank lines that trail the table (they usually
+// belong to the next table) are kept.
+func RemoveVendor(data []byte, ext, section, name string) ([]byte, error) {
 	if ext != ".toml" {
-		i, err := vendorIndex(data, ext, name)
+		i, err := vendorIndex(data, ext, section, name)
 		if err != nil {
 			return nil, err
 		}
-		return editDoc(data, ext, func(d docedit.Doc) error {
-			return d.Remove([]any{skenvfile.Environment, "vendor", i})
+		return editDoc(data, ext, section, func(d docedit.Doc) error {
+			return d.Remove([]any{section, "vendor", i})
 		})
 	}
 	lines := splitLines(data)
-	blk, err := vendorBlock(lines, name)
+	blk, err := vendorBlock(lines, section, name)
 	if err != nil {
 		return nil, err
 	}
 	last := blk.start
 	for j := blk.start + 1; j < blk.end; j++ {
-		t := strings.TrimSpace(lines[j])
-		if t != "" && !strings.HasPrefix(t, "#") {
+		if !isBlankOrComment(lines[j]) {
 			last = j
 		}
 	}
@@ -169,11 +245,11 @@ func RemoveVendor(data []byte, ext, name string) ([]byte, error) {
 		start--
 	}
 	out := append(append([]string{}, lines[:start]...), lines[last+1:]...)
-	return checked([]byte(strings.Join(out, "")), ext)
+	return checked([]byte(strings.Join(out, "")), ext, section)
 }
 
 // editDoc edits a YAML or JSON skenv file in place.
-func editDoc(data []byte, ext string, edit func(docedit.Doc) error) ([]byte, error) {
+func editDoc(data []byte, ext, section string, edit func(docedit.Doc) error) ([]byte, error) {
 	d, err := docedit.Open(data, ext)
 	if err != nil {
 		return nil, err
@@ -181,26 +257,44 @@ func editDoc(data []byte, ext string, edit func(docedit.Doc) error) ([]byte, err
 	if err := edit(d); err != nil {
 		return nil, err
 	}
-	return checked(d.Bytes(), ext)
+	return checked(d.Bytes(), ext, section)
 }
 
-// vendorIndex is the position of vendor name in environment.vendor.
-func vendorIndex(data []byte, ext, name string) (int, error) {
-	m, err := Parse(data, ext)
+// vendorIndex is the position of vendor name in <section>.vendor.
+func vendorIndex(data []byte, ext, section, name string) (int, error) {
+	vendors, err := sectionVendors(data, ext, section)
 	if err != nil {
 		return 0, err
 	}
-	for i, v := range m.Vendor {
+	for i, v := range vendors {
 		if v.Name == name {
 			return i, nil
 		}
 	}
-	return 0, fmt.Errorf("vendor %q not found in manifest", name)
+	return 0, fmt.Errorf("%s.vendor %q not found", section, name)
 }
 
-func checked(data []byte, ext string) ([]byte, error) {
-	if _, err := Parse(data, ext); err != nil {
-		return nil, fmt.Errorf("edited manifest is invalid: %w", err)
+// sectionVendors parses section and returns its vendor entries.
+func sectionVendors(data []byte, ext, section string) ([]Vendor, error) {
+	if section == skenvfile.Project {
+		p, err := ParseProject(data, ext)
+		if err != nil {
+			return nil, err
+		}
+		return p.Vendor, nil
+	}
+	m, err := Parse(data, ext)
+	if err != nil {
+		return nil, err
+	}
+	return m.Vendor, nil
+}
+
+// checked parses section of the edited file, so an edit that breaks it
+// never lands.
+func checked(data []byte, ext, section string) ([]byte, error) {
+	if _, err := sectionVendors(data, ext, section); err != nil {
+		return nil, fmt.Errorf("edited skenv file is invalid: %w", err)
 	}
 	return data, nil
 }

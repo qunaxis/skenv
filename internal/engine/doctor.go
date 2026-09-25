@@ -28,6 +28,10 @@ const (
 	ClassUnpushed      = "unpushed"
 	ClassBehind        = "behind"
 	ClassAgentMismatch = "agent-mismatch"
+	// In a project.
+	ClassModified     = "modified"
+	ClassBrokenMirror = "broken-mirror"
+	ClassMirrorDrift  = "mirror-drift"
 )
 
 // Issue is one discrepancy between the machine and the manifest.
@@ -124,12 +128,7 @@ func (e *Engine) Doctor(asJSON bool) (int, error) {
 		}
 	}
 
-	sort.SliceStable(r.Issues, func(a, b int) bool {
-		if r.Issues[a].Class != r.Issues[b].Class {
-			return r.Issues[a].Class < r.Issues[b].Class
-		}
-		return r.Issues[a].Path < r.Issues[b].Path
-	})
+	sortIssues(r.Issues)
 	r.OK = len(r.Issues) == 0
 	if err := e.printDoctor(r, asJSON); err != nil {
 		return ExitFatal, err
@@ -216,7 +215,7 @@ func (e *Engine) doctorStore(s Skill, add func(class, skill, p, detail string)) 
 	}
 	v := s.Vendor
 	remote, _ := e.m.Hosts.Resolve(v.Repo)
-	if !mk.matches(remote, v) {
+	if !mk.matches(remote, v.Path, v.Rev) {
 		add(ClassWrongRev, s.Name, p, fmt.Sprintf("store has %s@%.12s (%s), manifest wants %s@%.12s (%s); run `skenv sync`",
 			gitx.Mask(mk.Repo), mk.Rev, mk.Path, gitx.Mask(remote.URL), v.Rev, v.Path))
 	}
@@ -247,22 +246,29 @@ func (e *Engine) checkLink(p, dest, skill string, add func(class, skill, p, deta
 }
 
 func (e *Engine) printDoctor(r *DoctorReport, asJSON bool) error {
+	ok := fmt.Sprintf("ok: %d skills match %s (store %s, targets %s)", r.Skills, r.Manifest, r.Store, strings.Join(r.Targets, ", "))
+	return e.printReport(r, asJSON, r.Warnings, r.Issues, ok)
+}
+
+// printReport prints a doctor report: as JSON, or the warnings on stderr
+// and okLine or a table of the issues on stdout.
+func (e *base) printReport(report any, asJSON bool, warnings []string, issues []Issue, okLine string) error {
 	out := e.env.Stdout
 	if asJSON {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
-		return enc.Encode(r)
+		return enc.Encode(report)
 	}
-	for _, w := range r.Warnings {
+	for _, w := range warnings {
 		fmt.Fprintf(e.env.Stderr, "warning: %s\n", w)
 	}
-	if r.OK {
-		fmt.Fprintf(out, "ok: %d skills match %s (store %s, targets %s)\n", r.Skills, r.Manifest, r.Store, strings.Join(r.Targets, ", "))
+	if len(issues) == 0 {
+		fmt.Fprintln(out, okLine)
 		return nil
 	}
 	tw := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "CLASS\tSKILL\tPATH\tDETAIL")
-	for _, is := range r.Issues {
+	for _, is := range issues {
 		skill := is.Skill
 		if skill == "" {
 			skill = "-"
@@ -272,6 +278,16 @@ func (e *Engine) printDoctor(r *DoctorReport, asJSON bool) error {
 	if err := tw.Flush(); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "%d discrepancies\n", len(r.Issues))
+	fmt.Fprintf(out, "%d discrepancies\n", len(issues))
 	return nil
+}
+
+// sortIssues orders issues by class, then path.
+func sortIssues(issues []Issue) {
+	sort.SliceStable(issues, func(a, b int) bool {
+		if issues[a].Class != issues[b].Class {
+			return issues[a].Class < issues[b].Class
+		}
+		return issues[a].Path < issues[b].Path
+	})
 }

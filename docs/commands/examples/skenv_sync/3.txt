@@ -1,0 +1,10 @@
+exit 0
+copy .agents/skills/code-review from example-org/skills@b9b36033a60d (skills/code-review)
+copy .agents/skills/diagrams from example-vendor/tools@27f221f8f2a4 (tools/diagrams)
+link .claude/skills/code-review → ../../.agents/skills/code-review
+link .claude/skills/deploy → ../../.agents/skills/deploy
+link .claude/skills/diagrams → ../../.agents/skills/diagrams
+the project skills changed; to commit them:
+  git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
+  git -C ~/src/web-app commit -m "chore(skills): sync project skills"
+project sync: 5 changes, 0 warnings, 0 errors

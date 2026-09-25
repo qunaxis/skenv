@@ -81,8 +81,10 @@ $SKENV_MANIFEST override. "skenv init" records it.
 
 The manifest is the [environment] section of a skenv file: skenv.toml (or
 skenv.yaml, skenv.yml, skenv.json) in the root of a repository. The same
-file holds the harness of a skills repository in its [repo] section.
-"manifest" names that file or the directory that holds it.
+file holds the harness of a skills repository in its [repo] section, and
+the skills a project repository carries in its [project] section.
+"manifest" names that file or the directory that holds it. Inside a
+project, sync and doctor work on its [project] section.
 
 Exit codes: 0 success, 1 problems found, 2 error.`,
 		Example: `# Set up a machine from the manifest repository
@@ -226,6 +228,43 @@ func formatFlag(c *cobra.Command, p *string, usage string) {
 	_ = c.RegisterFlagCompletionFunc("format", cobra.FixedCompletions(fileformat.Names, cobra.ShellCompDirectiveNoFileComp))
 }
 
+// projectFlag adds --project, the scope of a command: the [project]
+// section of the current repository instead of the manifest.
+func projectFlag(fs *pflag.FlagSet, p *bool, usage string) {
+	fs.BoolVar(p, "project", false, usage)
+}
+
+// projectScope returns the skenv file whose [project] section the command
+// works on, "" for the manifest. --project requires one; --manifest rules
+// one out; auto (sync and doctor) picks the project when the git root of
+// the current directory has a skenv file with [project].
+func projectScope(ctx context.Context, env engine.Env, cmd string, project, auto bool, manifestFlag string) (string, error) {
+	if project && manifestFlag != "" {
+		return "", usageError{cmd + ": --project and --manifest exclude each other"}
+	}
+	if manifestFlag != "" || (!project && !auto) {
+		return "", nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	file, err := engine.FindProject(ctx, env, cwd)
+	if err != nil {
+		if project {
+			return "", err
+		}
+		// A broken skenv file in some repository must not stop the
+		// machine's sync; say why the project was not used.
+		fmt.Fprintf(env.Stderr, "warning: not a project, using the manifest: %s\n", gitx.Mask(err.Error()))
+		return "", nil
+	}
+	if project && file == "" {
+		return "", fmt.Errorf("--project: no skenv file with a [project] section at the root of the git repository of %s", paths.Collapse(env.Home, cwd))
+	}
+	return file, nil
+}
+
 func manifestFlag(fs *pflag.FlagSet, o *engine.Options) {
 	fs.StringVar(&o.Manifest, "manifest", "", "skenv file with the [environment] section, or its directory")
 }
@@ -359,17 +398,42 @@ skenv import`,
 
 func syncCmd(a *app, name string) *cobra.Command {
 	var o engine.Options
+	var project bool
 	c := &cobra.Command{
 		Use:   name,
-		Short: "Pull, vendor and link every skill of the manifest",
+		Short: "Pull, vendor and link every skill of the manifest, or sync a project",
 		Long: `Pull own repositories, vendor pinned skills, link everything into the store
-and agent directories, and remove managed paths that left the manifest.`,
+and agent directories, and remove managed paths that left the manifest.
+
+In a project, a git repository whose skenv file has a [project] section
+(checked at the root of the repository of the current directory), sync
+works on the project instead: it copies every pinned skill of [project]
+into its dir at its rev, removes copies whose entry is gone, and gives
+every skill of dir to each mirror. It changes a skill authored in dir only
+with --adopt, after a backup.
+--manifest syncs the machine from there; --project requires a project.`,
 		Example: `# Show what a sync would change
 skenv sync --dry-run
 # Pull, vendor and link
-skenv sync`,
+skenv sync
+# In a project: copy its pinned skills and update the mirrors
+skenv sync --project`,
 		Args: nArgs(0),
 		RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
+			if name == "sync" {
+				file, err := projectScope(ctx, env, name, project, true, o.Manifest)
+				if err != nil {
+					return engine.ExitFatal, err
+				}
+				if file != "" {
+					e, err := engine.OpenProject(ctx, env, o, file)
+					if err != nil {
+						return engine.ExitFatal, err
+					}
+					defer e.Close()
+					return e.Sync()
+				}
+			}
 			e, err := engine.Open(ctx, env, o)
 			if err != nil {
 				return engine.ExitFatal, err
@@ -383,7 +447,8 @@ skenv sync`,
 	}
 	if name == "link" {
 		c.Short = "Create store and agent links without pulling"
-		c.Long = "Create store links for own skills and agent links for every skill."
+		c.Long = "Create store links for own skills and agent links for every skill of the manifest.\n" +
+			"Projects have no links to create: `skenv sync` updates their mirrors."
 		c.Example = "# Recreate a link removed by hand, without pulling\nskenv link"
 	}
 	manifestFlag(c.Flags(), &o)
@@ -391,26 +456,49 @@ skenv sync`,
 	c.Flags().BoolVar(&o.Adopt, "adopt", false, "move conflicting unmanaged paths to ~/.local/state/skenv/backup/<ts>/ and replace them")
 	if name == "sync" {
 		c.Flags().BoolVar(&o.Quiet, "quiet", false, "print only warnings and errors")
+		projectFlag(c.Flags(), &project, "sync the [project] section of the current repository (the default there)")
 	}
 	return c
 }
 
 func doctorCmd(a *app) *cobra.Command {
 	o := engine.Options{ReadOnly: true}
-	var asJSON bool
+	var asJSON, project bool
 	c := &cobra.Command{
 		Use:   "doctor",
-		Short: "Compare the machine with the manifest",
+		Short: "Compare the machine with the manifest, or a project with its [project]",
 		Long: `Compare the machine with the manifest without changing it.
 Classes: missing, extra-managed, unmanaged, wrong-rev, broken-link, conflict,
 dirty, unpushed, behind, agent-mismatch.
+
+In a project (a git repository whose skenv file has [project]), doctor
+compares the project with its [project] section instead, offline, so it can
+run in CI. Classes: missing, wrong-rev, modified (a copy edited locally),
+extra-managed, conflict, broken-mirror, mirror-drift, unmanaged (a skill
+only in a mirror). --manifest checks the machine from there; --project
+requires a project.
+
 Exit code: 0 in sync, 1 discrepancies, 2 error.`,
 		Example: `# The machine matches the manifest
 skenv doctor
 # A skill link was removed by hand
-skenv doctor`,
+skenv doctor
+# In a project: a copy was edited and a mirror link removed by hand
+skenv doctor --project`,
 		Args: nArgs(0),
 		RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
+			file, err := projectScope(ctx, env, "doctor", project, true, o.Manifest)
+			if err != nil {
+				return engine.ExitFatal, err
+			}
+			if file != "" {
+				e, err := engine.OpenProject(ctx, env, o, file)
+				if err != nil {
+					return engine.ExitFatal, err
+				}
+				defer e.Close()
+				return e.Doctor(asJSON)
+			}
 			e, err := engine.Open(ctx, env, o)
 			if err != nil {
 				return engine.ExitFatal, err
@@ -421,58 +509,91 @@ skenv doctor`,
 	}
 	manifestFlag(c.Flags(), &o)
 	c.Flags().BoolVar(&asJSON, "json", false, "print the report as JSON")
+	projectFlag(c.Flags(), &project, "check the [project] section of the current repository (the default there)")
 	return c
 }
 
+// vendorer is the manifest or a project, for the vendor commands.
+type vendorer interface {
+	VendorAdd(engine.VendorAddOptions) (int, error)
+	VendorUpdate(names []string, rev string) (int, error)
+	VendorRemove(name string) (int, error)
+	Close()
+}
+
 func vendorCmd(a *app) *cobra.Command {
-	// open wires the flags every vendor subcommand shares.
-	shared := func(c *cobra.Command, o *engine.Options) {
-		manifestFlag(c.Flags(), o)
-		dryRunFlag(c.Flags(), &o.DryRun)
-		c.Flags().BoolVar(&o.Adopt, "adopt", false, "move conflicting unmanaged paths to the backup directory and replace them")
+	type flags struct {
+		o       engine.Options
+		project bool
 	}
-	withEngine := func(o *engine.Options, fn func(e *engine.Engine, args []string) (int, error)) func(*cobra.Command, []string) error {
-		return a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
-			e, err := engine.Open(ctx, env, *o)
-			if err != nil {
-				return engine.ExitFatal, err
-			}
-			defer e.Close()
-			return fn(e, args)
-		})
+	// shared wires the flags every vendor subcommand shares.
+	shared := func(c *cobra.Command, f *flags) {
+		manifestFlag(c.Flags(), &f.o)
+		dryRunFlag(c.Flags(), &f.o.DryRun)
+		c.Flags().BoolVar(&f.o.Adopt, "adopt", false, "move conflicting unmanaged paths to the backup directory and replace them")
+		projectFlag(c.Flags(), &f.project, "edit [project] of the current repository instead of the manifest, and sync the project")
+	}
+	withEngine := func(f *flags, fn func(v vendorer, args []string) (int, error)) func(*cobra.Command, []string) error {
+		return func(cmd *cobra.Command, args []string) error {
+			name := cmdName(cmd)
+			return a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
+				file, err := projectScope(ctx, env, name, f.project, false, f.o.Manifest)
+				if err != nil {
+					return engine.ExitFatal, err
+				}
+				var v vendorer
+				if file != "" {
+					v, err = engine.OpenProject(ctx, env, f.o, file)
+				} else {
+					v, err = engine.Open(ctx, env, f.o)
+				}
+				if err != nil {
+					return engine.ExitFatal, err
+				}
+				defer v.Close()
+				return fn(v, args)
+			})(cmd, args)
+		}
 	}
 	revUsage := "commit to pin (default: HEAD of the default branch)"
 
-	var addO engine.Options
+	var addF flags
 	var va engine.VendorAddOptions
 	add := &cobra.Command{
 		Use:   "add <repo>",
-		Short: "Pin a third-party skill in the manifest and sync it",
+		Short: "Pin a third-party skill in the manifest or a project and sync it",
 		Long: `Pin a third-party skill in the manifest (HEAD of the default branch unless
 --rev) and sync it. The manifest change is not committed.
 
 <repo> is written to the manifest as given: owner/repo on github.com,
 gitlab:group/sub/repo, codeberg:owner/repo, <alias>:path of a host declared
 under [environment.hosts.<alias>], or a full git URL. An unknown prefix is
-an error. See https://qunaxis.github.io/skenv/git-hosts`,
+an error. See https://qunaxis.github.io/skenv/git-hosts
+
+With --project: add a [[project.vendor]] entry to the skenv file of the
+current repository and sync the project, which copies the skill into its
+dir and mirrors. Its hosts are the ones declared under
+[project.hosts.<alias>]. Commit the file and the copies with the project.`,
 		Example: `# Pin the skill in tools/release-notes/ at HEAD of the default branch
 skenv vendor add example-vendor/tools --path tools/release-notes
 # A skill from a GitLab subgroup
 skenv vendor add gitlab:example-org/team/tools --path release-notes
 # A skill from a self-hosted host declared as "work" in the manifest
-skenv vendor add work:platform/skills --path deploy`,
+skenv vendor add work:platform/skills --path deploy
+# Pin it in the current project instead
+skenv vendor add example-vendor/tools --path tools/release-notes --project`,
 		Args: nArgs(1),
-		RunE: withEngine(&addO, func(e *engine.Engine, args []string) (int, error) {
+		RunE: withEngine(&addF, func(v vendorer, args []string) (int, error) {
 			va.Repo = args[0]
-			return e.VendorAdd(va)
+			return v.VendorAdd(va)
 		}),
 	}
-	shared(add, &addO)
+	shared(add, &addF)
 	add.Flags().StringVar(&va.Path, "path", "", `directory with SKILL.md inside the repository ("." for the root)`)
 	add.Flags().StringVar(&va.Name, "name", "", "skill name (default: last element of --path)")
 	add.Flags().StringVar(&va.Rev, "rev", "", revUsage)
 
-	var updateO engine.Options
+	var updateF flags
 	var rev string
 	update := &cobra.Command{
 		Use:     "update [name...]",
@@ -480,36 +601,47 @@ skenv vendor add work:platform/skills --path deploy`,
 		Short:   "Move vendored skills to a new commit",
 		Long: `Move vendored skills to a new commit and sync them: the named ones, or every
 vendored skill without names. Each goes to HEAD of its default branch;
---rev pins a single named skill. Shows the log of the skill's path.`,
+--rev pins a single named skill. Shows the log of the skill's path.
+
+With --project: move entries of [project] and sync the project. A skill of
+a [[project.from]] entry moves the whole entry, whose skills share one rev.`,
 		Example: `# Move diagrams to HEAD of the default branch of its repository
 skenv vendor update diagrams
 # Update every vendored skill
-skenv vendor update`,
+skenv vendor update
+# Update every pinned skill of the current project
+skenv vendor update --project`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if rev != "" && len(args) != 1 {
 				return usageError{fmt.Sprintf("%s: --rev needs exactly 1 name, got %d (see `%s --help`)", cmdName(cmd), len(args), cmd.CommandPath())}
 			}
 			return nil
 		},
-		RunE: withEngine(&updateO, func(e *engine.Engine, args []string) (int, error) {
-			return e.VendorUpdate(args, rev)
+		RunE: withEngine(&updateF, func(v vendorer, args []string) (int, error) {
+			return v.VendorUpdate(args, rev)
 		}),
 	}
-	shared(update, &updateO)
+	shared(update, &updateF)
 	update.Flags().StringVar(&rev, "rev", "", revUsage)
 
-	var rmO engine.Options
+	var rmF flags
 	remove := &cobra.Command{
-		Use:     "remove <name>",
-		Short:   "Remove a vendored skill and its managed paths",
-		Long:    "Remove a vendored skill from the manifest and its managed paths.",
-		Example: "skenv vendor remove diagrams",
-		Args:    nArgs(1),
-		RunE: withEngine(&rmO, func(e *engine.Engine, args []string) (int, error) {
-			return e.VendorRemove(args[0])
+		Use:   "remove <name>",
+		Short: "Remove a vendored skill and its managed paths",
+		Long: `Remove a vendored skill from the manifest and its managed paths.
+
+With --project: remove its [[project.vendor]] entry and sync the project,
+which removes the copy and its mirrors. A skill of a [[project.from]] entry
+is removed by editing the skills of that entry.`,
+		Example: "skenv vendor remove diagrams\n" +
+			"# Remove a skill pinned in the current project\n" +
+			"skenv vendor remove diagrams --project",
+		Args: nArgs(1),
+		RunE: withEngine(&rmF, func(v vendorer, args []string) (int, error) {
+			return v.VendorRemove(args[0])
 		}),
 	}
-	shared(remove, &rmO)
+	shared(remove, &rmF)
 
 	c := group("vendor", "Pin, update and remove third-party skills", add, update, remove)
 	c.Example = "skenv vendor add example-vendor/tools --path tools/release-notes\n" +
@@ -524,8 +656,8 @@ func schemaCmd(a *app) *cobra.Command {
 		Use:   "schema [skenv|config]",
 		Short: "Print the JSON Schema of the skenv file or the tool config",
 		Long: `Print the JSON Schema of this skenv version to stdout: "skenv" (default) for
-the skenv file (skenv.toml, .yaml, .yml or .json with [repo] and
-[environment]), "config" for the tool config ~/.config/skenv/config.*.
+the skenv file (skenv.toml, .yaml, .yml or .json with [repo], [environment]
+and [project]), "config" for the tool config ~/.config/skenv/config.*.
 
 Files that skenv writes name their schema in a directive, so most editors
 need no setup. Use this for offline work or a custom mapping, for example a

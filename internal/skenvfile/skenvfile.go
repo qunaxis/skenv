@@ -1,12 +1,15 @@
 // Package skenvfile reads the skenv file of a repository:
 // skenv.toml (or skenv.yaml, skenv.yml, skenv.json) in its root.
 //
-// The file has two optional top-level sections:
+// The file has three optional top-level sections, independent of each
+// other:
 //
 //   - [repo]: the harness of a skills repository (harness, visibility,
 //     runner), written by `skenv repo init|apply`;
 //   - [environment]: the manifest of a user's machines (layout, own,
-//     vendor, host), edited by `skenv vendor add|update|remove`.
+//     vendor, host), edited by `skenv vendor add|update|remove`;
+//   - [project]: the skills a project repository carries (dir, mirrors,
+//     mirrors_mode, vendor, from), edited by `skenv vendor ... --project`.
 //
 // Nothing else may appear at the top level, except "$schema" (a string,
 // ignored) for editors. Each section is decoded strictly: unknown keys are
@@ -26,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -44,7 +48,11 @@ var Names = []string{"skenv.toml", "skenv.yaml", "skenv.yml", "skenv.json"}
 const (
 	Repo        = "repo"
 	Environment = "environment"
+	Project     = "project"
 )
+
+// Sections lists the sections in the order the docs present them.
+var Sections = []string{Repo, Environment, Project}
 
 // oldManifest is the manifest file of skenv before 0.4.
 const oldManifest = "env.toml"
@@ -139,7 +147,7 @@ func Parse(data []byte, ext string) (*Doc, error) {
 	}
 	var unknown []string
 	for k := range d.raw {
-		if k != Repo && k != Environment && k != docedit.SchemaKey {
+		if !slices.Contains(Sections, k) && k != docedit.SchemaKey {
 			unknown = append(unknown, k)
 		}
 	}
@@ -150,9 +158,9 @@ func Parse(data []byte, ext string) (*Doc, error) {
 				return nil, fmt.Errorf("unknown top-level keys: %s; this is the skenv.toml of skenv before 0.4: move harness, visibility and runner under [repo] (see docs/skenv-file.md)", strings.Join(unknown, ", "))
 			}
 		}
-		return nil, fmt.Errorf("unknown top-level keys: %s (settings live under [repo] and [environment])", strings.Join(unknown, ", "))
+		return nil, fmt.Errorf("unknown top-level keys: %s (settings live under [repo], [environment] and [project])", strings.Join(unknown, ", "))
 	}
-	for _, s := range []string{Repo, Environment} {
+	for _, s := range Sections {
 		if v, ok := d.raw[s]; ok {
 			if _, isMap := v.(map[string]any); !isMap {
 				return nil, fmt.Errorf("%s must be a table", s)

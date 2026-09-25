@@ -10,6 +10,9 @@ Move vendored skills to a new commit and sync them: the named ones, or every
 vendored skill without names. Each goes to HEAD of its default branch;
 `--rev` pins a single named skill. Shows the log of the skill's path.
 
+With `--project`: move entries of `[project]` and sync the project. A skill of
+a [[project.from]] entry moves the whole entry, whose skills share one rev.
+
 ```
 skenv vendor update [name...] [flags]
 ```
@@ -48,6 +51,22 @@ manifest changed but not committed; to commit:
 vendor: 4 changes, 0 warnings, 0 errors
 ```
 
+Update every pinned skill of the current project:
+
+```console
+$ skenv vendor update --project
+diagrams 27f221f8f2a4..2571138a038f:
+2571138 docs(diagrams): list the shapes
+ebb66f9 feat(diagrams): prefer SVG
+update vendor diagrams 27f221f8f2a4 → 2571138a038f in [project] of ~/src/web-app/skenv.toml
+from example-org/skills (code-review) is already at b9b36033a60d
+update .agents/skills/diagrams 27f221f8f2a4 → 2571138a038f (example-vendor/tools, tools/diagrams)
+the project skills changed; to commit them:
+  git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
+  git -C ~/src/web-app commit -m "chore(skills): update diagrams to 2571138a038f"
+vendor: 2 changes, 0 warnings, 0 errors
+```
+
 ### Options
 
 ```
@@ -55,6 +74,7 @@ vendor: 4 changes, 0 warnings, 0 errors
       --dry-run           print the plan, change nothing
   -h, --help              help for update
       --manifest string   skenv file with the [environment] section, or its directory
+      --project           edit [project] of the current repository instead of the manifest, and sync the project
       --rev string        commit to pin (default: HEAD of the default branch)
 ```
 

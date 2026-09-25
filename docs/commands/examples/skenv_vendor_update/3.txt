@@ -1,0 +1,11 @@
+exit 0
+diagrams 27f221f8f2a4..2571138a038f:
+2571138 docs(diagrams): list the shapes
+ebb66f9 feat(diagrams): prefer SVG
+update vendor diagrams 27f221f8f2a4 → 2571138a038f in [project] of ~/src/web-app/skenv.toml
+from example-org/skills (code-review) is already at b9b36033a60d
+update .agents/skills/diagrams 27f221f8f2a4 → 2571138a038f (example-vendor/tools, tools/diagrams)
+the project skills changed; to commit them:
+  git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
+  git -C ~/src/web-app commit -m "chore(skills): update diagrams to 2571138a038f"
+vendor: 2 changes, 0 warnings, 0 errors

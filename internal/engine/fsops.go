@@ -73,7 +73,7 @@ func (e *Engine) claim(p, skill string) bool {
 }
 
 // backup moves p to its backupPath.
-func (e *Engine) backup(p string) error {
+func (e *base) backup(p string) error {
 	dst := e.backupPath(p)
 	e.changef("adopt %s (old content → %s)", e.show(p), e.show(dst))
 	if e.opts.DryRun {
@@ -102,6 +102,16 @@ func (e *Engine) placeSymlink(p, dest, skill string) error {
 	if e.opts.DryRun {
 		return nil
 	}
+	if err := symlinkAtomic(p, dest); err != nil {
+		return err
+	}
+	e.manage(p, state.Entry{Kind: state.Link, Skill: skill})
+	return nil
+}
+
+// symlinkAtomic makes p a symlink to dest: a temporary name, then a rename
+// over whatever is at p (a directory is swapped out and removed).
+func symlinkAtomic(p, dest string) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
@@ -114,7 +124,6 @@ func (e *Engine) placeSymlink(p, dest, skill string) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	e.manage(p, state.Entry{Kind: state.Link, Skill: skill})
 	return nil
 }
 

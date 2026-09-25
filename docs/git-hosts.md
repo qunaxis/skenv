@@ -156,6 +156,10 @@ skenv init https://git.example.com/platform/skills.git
 `work:...` entries exactly as on the first machine: the same clone URLs, the
 same `.skenv` markers, the same links.
 
+A project declares its own hosts under `[project.hosts.<alias>]`, with the
+same keys, for the `repo` values of `[project]`; it never uses the hosts of
+a manifest. See [Project skills](project-skills.md#the-project-section).
+
 ## Authentication
 
 skenv clones every short form over https. It never stores or asks for

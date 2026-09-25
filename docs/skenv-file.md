@@ -13,7 +13,8 @@ those formats. More than one of them in the same directory is an error.
 
 ## Sections
 
-The file has two optional top-level sections. Nothing else is allowed at
+The file has three optional top-level sections, independent of each
+other. Nothing else is allowed at
 the top level (except `$schema`, the schema URL for editors, which skenv
 ignores), and unknown keys inside a section are errors.
 
@@ -21,6 +22,7 @@ ignores), and unknown keys inside a section are errors.
 | --------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------ | ----------------------------- |
 | `[repo]`        | The harness of a skills repository: `harness`, `visibility`, `runner`.                                | [`skenv repo init`](harness.md#skenv-repo-init), [`skenv repo apply`](harness.md#skenv-repo-apply) | [harness](harness.md)         |
 | `[environment]` | The manifest of your machines: `layout`, `hosts`, `own`, `vendor`, `host`.                            | you, [`skenv init`](#creating-the-file) (starts it), [`skenv vendor add`](commands.md#skenv-vendor-add), [`update`](commands.md#skenv-vendor-update), [`remove`](commands.md#skenv-vendor-remove) | [manifest](manifest.md)       |
+| `[project]`     | The skills a project repository carries: `dir`, `mirrors`, `mirrors_mode`, `hosts`, `vendor`, `from`.| you, [`skenv vendor add`, `update`, `remove`](project-skills.md#commands) with `--project` | [project skills](project-skills.md) |
 
 - A skills repository has `[repo]`.
 - The repository that holds your manifest has `[environment]`, and usually
@@ -28,6 +30,9 @@ ignores), and unknown keys inside a section are errors.
 - `repo` in `[environment]` takes `owner/repo` on GitHub, `gitlab:` and
   `codeberg:` short forms, aliases of self-hosted servers declared under
   `[environment.hosts.<alias>]`, and any git URL; see [Git hosts](git-hosts.md).
+- A project repository has `[project]`; a skills repository whose own
+  development uses project skills has `[repo]` and `[project]`. The
+  user-level `skenv sync` never reads `[project]`.
 - A **public** repository must not have `[environment]`. The manifest is
   personal: it names paths in your home directory, your host names and the
   skills you use. `skenv repo init --visibility public` refuses such a file
@@ -84,9 +89,10 @@ environment:
 ## Formats and editing
 
 TOML, YAML and JSON are read the same way; keys are lowercase and
-case-sensitive in every format. skenv edits the file in four places:
+case-sensitive in every format. skenv edits the file in these places:
 
-- `skenv vendor add|update|remove` change `environment.vendor`;
+- `skenv vendor add|update|remove` change `environment.vendor`, and with
+  `--project` `project.vendor` (and the `rev` of `project.from`);
 - `skenv repo init` adds `[repo]` (it creates the file when the repository
   has none, see [Creating the file](#creating-the-file));
 - `skenv init` without `<owner/repo>` adds `[environment]` (it creates the
@@ -165,6 +171,8 @@ Editors then complete keys, describe them on hover and mark mistakes. See
   names the skenv file or the directory that holds it.
 - The harness: the skenv file at the root of the repository (`--dir`,
   default: the current repository).
+- Project skills: the skenv file at the root of the git repository of the
+  current directory, when it has `[project]`.
 
 The tool config is separate on purpose: it belongs to the machine, not to a
 repository, and lives in `~/.config/skenv/config.{toml,yaml,yml,json}`.

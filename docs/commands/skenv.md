@@ -16,8 +16,10 @@ one of them); its one key today is `manifest`, which `--manifest` and
 
 The manifest is the `[environment]` section of a skenv file: `skenv.toml` (or
 `skenv.yaml`, `skenv.yml`, `skenv.json`) in the root of a repository. The same
-file holds the harness of a skills repository in its `[repo]` section.
-`manifest` names that file or the directory that holds it.
+file holds the harness of a skills repository in its `[repo]` section, and
+the skills a project repository carries in its `[project]` section.
+`manifest` names that file or the directory that holds it. Inside a
+project, sync and doctor work on its `[project]` section.
 
 Exit codes: 0 success, 1 problems found, 2 error.
 
@@ -50,7 +52,7 @@ $ skenv sync
 
 * [skenv autostart](skenv_autostart.md)	 - Run `skenv sync --quiet` at login and every hour
 * [skenv completion](skenv_completion.md)	 - Generate the autocompletion script for bash, zsh or fish
-* [skenv doctor](skenv_doctor.md)	 - Compare the machine with the manifest
+* [skenv doctor](skenv_doctor.md)	 - Compare the machine with the manifest, or a project with its `[project]`
 * [skenv import](skenv_import.md)	 - Add the skills already installed on this machine to the manifest
 * [skenv init](skenv_init.md)	 - Clone the manifest repository and sync, or start a manifest
 * [skenv link](skenv_link.md)	 - Create store and agent links without pulling
@@ -58,7 +60,7 @@ $ skenv sync
 * [skenv new](skenv_new.md)	 - Scaffold a skill
 * [skenv repo](skenv_repo.md)	 - Set up and check the harness of a skills repository
 * [skenv schema](skenv_schema.md)	 - Print the JSON Schema of the skenv file or the tool config
-* [skenv sync](skenv_sync.md)	 - Pull, vendor and link every skill of the manifest
+* [skenv sync](skenv_sync.md)	 - Pull, vendor and link every skill of the manifest, or sync a project
 * [skenv vendor](skenv_vendor.md)	 - Pin, update and remove third-party skills
 * [skenv version](skenv_version.md)	 - Print the skenv version
 

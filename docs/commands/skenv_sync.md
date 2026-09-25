@@ -2,12 +2,20 @@
 
 ## skenv sync
 
-Pull, vendor and link every skill of the manifest
+Pull, vendor and link every skill of the manifest, or sync a project
 
 ### Synopsis
 
 Pull own repositories, vendor pinned skills, link everything into the store
 and agent directories, and remove managed paths that left the manifest.
+
+In a project, a git repository whose skenv file has a `[project]` section
+(checked at the root of the repository of the current directory), sync
+works on the project instead: it copies every pinned skill of `[project]`
+into its dir at its rev, removes copies whose entry is gone, and gives
+every skill of dir to each mirror. It changes a skill authored in dir only
+with `--adopt`, after a backup.
+`--manifest` syncs the machine from there; `--project` requires a project.
 
 ```
 skenv sync [flags]
@@ -41,6 +49,21 @@ link ~/.pi/agent/skills/write-tests → ../../../.agents/skills/write-tests
 sync: 5 changes, 0 warnings, 0 errors
 ```
 
+In a project: copy its pinned skills and update the mirrors:
+
+```console
+$ skenv sync --project
+copy .agents/skills/code-review from example-org/skills@b9b36033a60d (skills/code-review)
+copy .agents/skills/diagrams from example-vendor/tools@27f221f8f2a4 (tools/diagrams)
+link .claude/skills/code-review → ../../.agents/skills/code-review
+link .claude/skills/deploy → ../../.agents/skills/deploy
+link .claude/skills/diagrams → ../../.agents/skills/diagrams
+the project skills changed; to commit them:
+  git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
+  git -C ~/src/web-app commit -m "chore(skills): sync project skills"
+project sync: 5 changes, 0 warnings, 0 errors
+```
+
 ### Options
 
 ```
@@ -48,6 +71,7 @@ sync: 5 changes, 0 warnings, 0 errors
       --dry-run           print the plan, change nothing
   -h, --help              help for sync
       --manifest string   skenv file with the [environment] section, or its directory
+      --project           sync the [project] section of the current repository (the default there)
       --quiet             print only warnings and errors
 ```
 

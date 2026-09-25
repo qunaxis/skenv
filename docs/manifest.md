@@ -2,7 +2,9 @@
 
 The manifest describes which skills a machine should have. It lives in your
 skills repository, next to your own skills, so every machine that runs
-`skenv sync` converges on the same set.
+`skenv sync` converges on the same set. Skills that belong to one project
+and should reach everyone who clones it are
+[project skills](project-skills.md) instead.
 
 - [Where the manifest is found](#where-the-manifest-is-found)
 - [Format](#format)

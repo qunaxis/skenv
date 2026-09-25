@@ -2,13 +2,21 @@
 
 ## skenv doctor
 
-Compare the machine with the manifest
+Compare the machine with the manifest, or a project with its `[project]`
 
 ### Synopsis
 
 Compare the machine with the manifest without changing it.
 Classes: missing, extra-managed, unmanaged, wrong-rev, broken-link, conflict,
 dirty, unpushed, behind, agent-mismatch.
+
+In a project (a git repository whose skenv file has `[project]`), doctor
+compares the project with its `[project]` section instead, offline, so it can
+run in CI. Classes: missing, wrong-rev, modified (a copy edited locally),
+extra-managed, conflict, broken-mirror, mirror-drift, unmanaged (a skill
+only in a mirror). `--manifest` checks the machine from there; `--project`
+requires a project.
+
 Exit code: 0 in sync, 1 discrepancies, 2 error.
 
 ```
@@ -35,12 +43,25 @@ agent-mismatch  code-review  ~/.claude/skills/code-review  linked for some agent
 
 Exit code 1.
 
+In a project: a copy was edited and a mirror link removed by hand:
+
+```console
+$ skenv doctor --project
+CLASS          SKILL     PATH                     DETAIL
+broken-mirror  deploy    .claude/skills/deploy    missing; run `skenv sync` to link .agents/skills/deploy
+modified       diagrams  .agents/skills/diagrams  edited locally: the content differs from https://github.com/example-vendor/tools.git@27f221f8f2a4; move the change upstream or into a project-own skill, or run `skenv sync --adopt` to back it up and restore the copy
+2 discrepancies
+```
+
+Exit code 1.
+
 ### Options
 
 ```
   -h, --help              help for doctor
       --json              print the report as JSON
       --manifest string   skenv file with the [environment] section, or its directory
+      --project           check the [project] section of the current repository (the default there)
 ```
 
 ### SEE ALSO

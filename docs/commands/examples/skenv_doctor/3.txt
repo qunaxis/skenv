@@ -1,0 +1,5 @@
+exit 1
+CLASS          SKILL     PATH                     DETAIL
+broken-mirror  deploy    .claude/skills/deploy    missing; run `skenv sync` to link .agents/skills/deploy
+modified       diagrams  .agents/skills/diagrams  edited locally: the content differs from https://github.com/example-vendor/tools.git@27f221f8f2a4; move the change upstream or into a project-own skill, or run `skenv sync --adopt` to back it up and restore the copy
+2 discrepancies

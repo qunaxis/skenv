@@ -6,7 +6,8 @@ Create store and agent links without pulling
 
 ### Synopsis
 
-Create store links for own skills and agent links for every skill.
+Create store links for own skills and agent links for every skill of the manifest.
+Projects have no links to create: `skenv sync` updates their mirrors.
 
 ```
 skenv link [flags]

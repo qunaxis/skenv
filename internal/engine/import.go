@@ -305,7 +305,7 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 	}
 	for _, v := range vend {
 		var err error
-		if out, err = manifest.AppendVendor(out, ext, v); err != nil {
+		if out, err = manifest.AppendVendor(out, ext, skenvfile.Environment, v); err != nil {
 			return nil, err
 		}
 		r.entries++
@@ -556,7 +556,7 @@ func (e *Engine) cleanLock(r *imported) error {
 
 // backupPath is where p goes in the backup directory of this run:
 // backup/<ts>/<path relative to home>.
-func (e *Engine) backupPath(p string) string {
+func (e *base) backupPath(p string) string {
 	if e.backupDir == "" {
 		e.backupDir = filepath.Join(e.layout.Backup(), e.env.Now().UTC().Format("20060102T150405Z"))
 	}
