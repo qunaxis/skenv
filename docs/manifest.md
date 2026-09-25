@@ -12,8 +12,11 @@ skills repository, next to your own skills, so every machine that runs
 
 ## Where the manifest is found
 
-Found via `--manifest`, then `$SKENV_MANIFEST`, then `manifest` in
-`~/.config/skenv/config.toml` (written by `skenv init`). There is no default
+Found via `--manifest`, then `$SKENV_MANIFEST`, then `manifest` in the skenv
+config file (written by `skenv init`). The config file is
+`~/.config/skenv/config.toml`, or `config.yaml`, `config.yml` or `config.json`
+if you prefer; only one of them may exist. Every setting follows the same
+order: flag, `SKENV_<KEY>` environment variable, config file, default. There is no default
 location: when none of them is set, commands that need the manifest stop
 with an error that suggests `skenv init <owner/repo>` or `--manifest`.
 

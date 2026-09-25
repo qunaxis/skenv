@@ -196,6 +196,8 @@ or pass `--dir` to target any git repository.
 
 - [Commands](docs/commands.md): every command and flag, `--dry-run` and
   `--adopt`, `doctor` classes, lint rules and the publication check.
+- [Command reference](docs/commands/README.md): one page per command,
+  generated from the command definitions by `make docs`.
 - [Manifest](docs/manifest.md): the `env.toml` format, where it is found,
   the layout on disk, and the mapping to `skills-lock.json`.
 - [Harness](docs/harness.md): `skenv repo init|apply|check`, `skenv.toml`,
@@ -207,7 +209,8 @@ or pass `--dir` to target any git repository.
 - [Changelog](CHANGELOG.md).
 
 `skenv --help` and `skenv <command> --help` print the same reference in the
-terminal.
+terminal. `skenv completion bash|zsh|fish` prints a shell completion
+script (for example `skenv completion zsh > "${fpath[1]}/_skenv"`).
 
 ## Roadmap
 
