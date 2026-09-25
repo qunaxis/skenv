@@ -33,6 +33,7 @@ func Generate(dir string) error {
 		}
 	}
 	root := cli.Command()
+	formatHelp(root)
 	prepend := func(string) string { return header }
 	link := func(name string) string { return name }
 	if err := doc.GenMarkdownTreeCustom(root, dir, prepend, link); err != nil {
@@ -59,4 +60,14 @@ func index(root *cobra.Command) string {
 	}
 	walk(root)
 	return b.String()
+}
+
+// formatHelp code-formats the Short and Long text of every command in the
+// tree (a copy built for the reference, not the one `skenv` runs).
+func formatHelp(c *cobra.Command) {
+	c.Short = codeFormat(c.Short)
+	c.Long = codeFormat(c.Long)
+	for _, s := range c.Commands() {
+		formatHelp(s)
+	}
 }

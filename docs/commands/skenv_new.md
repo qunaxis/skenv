@@ -6,9 +6,9 @@ Scaffold a skill
 
 ### Synopsis
 
-Create skills/<name>/ with SKILL.md (frontmatter) and references/ in the own
-repository of the manifest whose skenv.toml has that visibility (default
-private), or in the git repository at --dir.
+Create `skills/<name>/` with `SKILL.md` (frontmatter) and `references/` in the own
+repository of the manifest whose `skenv.toml` has that visibility (default
+private), or in the git repository at `--dir`.
 
 ```
 skenv new <name> [flags]
