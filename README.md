@@ -186,6 +186,10 @@ cd ~/src/<skills-repo>
 skenv init                 # or: skenv init --format yaml (json)
 ```
 
+Skills already installed on the machine (with `npx skills add -g` or by
+hand)? `skenv init --import` also writes them into the new manifest and
+takes them over; see [Adopting an existing setup](docs/adopting.md).
+
 A minimal manifest lists the repository itself, so skenv keeps its working
 copy up to date (`skenv init` adds this entry when the repository's `origin`
 is on GitHub):
@@ -209,6 +213,7 @@ session on a machine:
 skenv init <owner>/<skills-repo>
 
 # 2. The machine already had skills? Back up the conflicting ones and take over.
+#    (Skills the manifest lacks: `skenv import` adds them first.)
 skenv sync --dry-run
 skenv sync --adopt
 
@@ -243,6 +248,9 @@ The same pages, with search, are published at
   `--adopt`, `doctor` classes, lint rules and the publication check.
 - [Command reference](docs/commands/README.md): one page per command,
   generated from the command definitions by `make docs`.
+- [Adopting an existing setup](docs/adopting.md): `skenv import` and
+  `skenv init --import` for a machine with skills installed by `npx skills`
+  or by hand.
 - [The skenv file](docs/skenv-file.md): `skenv.toml` with its `[repo]` and
   `[environment]` sections, formats, and moving from `env.toml`.
 - [Editor support](docs/editor-support.md): JSON Schemas of the skenv file

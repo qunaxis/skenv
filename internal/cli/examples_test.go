@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -53,6 +54,18 @@ var exampleScenarios = map[string]func(f *exampleWorld){
 		f.git(repo, "remote", "add", "origin", "https://github.com/example-org/my-skills.git")
 		f.t.Chdir(repo)
 	},
+	"skenv init/3": func(f *exampleWorld) {
+		f.pushRemotes()
+		f.push("example-org/my-skills", map[string]string{
+			"skills/code-review/SKILL.md": exampleSkill("code-review", "Review a diff for bugs before it is merged.", "Read the whole diff first."),
+		}, "feat: code-review")
+		mustMkdir(f.t, f.path("src"))
+		f.git(f.path("src"), "clone", "--quiet", "https://github.com/example-org/my-skills.git")
+		f.npxInstalled()
+		f.t.Chdir(f.path("src/my-skills"))
+	},
+	"skenv import/1": func(f *exampleWorld) { f.initialized(); f.npxInstalled() },
+	"skenv import/2": func(f *exampleWorld) { f.initialized(); f.npxInstalled() },
 	"skenv sync/1": func(f *exampleWorld) {
 		// Committed, not pushed yet: a new skill and a second vendor skill.
 		f.initialized()
@@ -265,6 +278,20 @@ rev = "` + rev + `"
 	}, "feat: first skills")
 }
 
+// npxInstalled installs release-notes of example-vendor/tools the way
+// `npx skills add -g` does (a copy in the store, a link for Claude Code and
+// an entry in its lock), and a skill by hand.
+func (f *exampleWorld) npxInstalled() {
+	tools := filepath.Join(f.work, "example-vendor__tools")
+	f.installed("release-notes", map[string]string{
+		"SKILL.md": readFile(f.t, filepath.Join(tools, "tools/release-notes/SKILL.md")),
+	})
+	entry := githubEntry("example-vendor/tools", "tools/release-notes/SKILL.md", f.git(tools, "rev-parse", "HEAD:tools/release-notes"))
+	entry["installedAt"], entry["updatedAt"] = "2026-09-01T12:00:00.000Z", "2026-09-01T12:00:00.000Z"
+	f.writeLock(map[string]lockEntry{"release-notes": entry})
+	writeFile(f.t, f.path(".claude/skills/notes/SKILL.md"), exampleSkill("notes", "Take meeting notes.", "One line per decision."))
+}
+
 // initialized is the machine after `skenv init example-org/skills`.
 func (f *exampleWorld) initialized() {
 	f.pushRemotes()
@@ -322,6 +349,8 @@ func (f *exampleWorld) remove(p string) {
 	}
 }
 
+var backupTS = regexp.MustCompile(`backup/[0-9]{8}T[0-9]{6}Z/`)
+
 // record runs skenv with stdout and stderr in one stream, as a terminal
 // shows them, and replaces the temporary directories: $HOME by ~, the
 // remotes by https://github.com.
@@ -338,5 +367,6 @@ func (f *exampleWorld) record(args []string) cliexample.Output {
 	} {
 		text = strings.ReplaceAll(text, r[0], r[1])
 	}
+	text = backupTS.ReplaceAllString(text, "backup/<timestamp>/")
 	return cliexample.Output{Code: code, Text: text}
 }

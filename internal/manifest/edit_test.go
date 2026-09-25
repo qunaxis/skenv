@@ -139,3 +139,34 @@ func TestVendorHeaderWithComment(t *testing.T) {
 		t.Errorf("not removed:\n%s", out)
 	}
 }
+
+func TestAppendOwn(t *testing.T) {
+	out, err := AppendOwn([]byte(base), ".toml", Own{Repo: "me/more", Path: "~/src/more", SkillsDir: "agent/skills", Skills: []string{"a2", "b2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+	if !strings.HasPrefix(s, base) || !strings.HasSuffix(s, "\n[[environment.own]]\nrepo = \"me/more\"\npath = \"~/src/more\"\nskills_dir = \"agent/skills\"\nskills = [\"a2\", \"b2\"]\n") {
+		t.Errorf("appended:\n%s", s)
+	}
+	m, _ := Parse(out, ".toml")
+	if len(m.Own) != 2 || len(m.Vendor) != 1 || len(m.Host) != 1 || m.Own[1].SkillsDir != "agent/skills" {
+		t.Errorf("appended table breaks the structure: %+v", m)
+	}
+	// The default skills_dir and no selection write only repo and path.
+	for _, ext := range []string{".toml", ".yaml", ".json"} {
+		data := map[string]string{".toml": base, ".yaml": "# c\nenvironment:\n  own: []\n", ".json": `{"environment": {}}`}[ext]
+		out, err := AppendOwn([]byte(data), ext, Own{Repo: "me/x", Path: "~/x", SkillsDir: DefaultSkillsDir})
+		if err != nil {
+			t.Fatalf("%s: %v", ext, err)
+		}
+		m, err := Parse(out, ext)
+		if err != nil {
+			t.Fatalf("%s: %v", ext, err)
+		}
+		last := m.Own[len(m.Own)-1]
+		if last.Repo != "me/x" || last.Skills != nil || strings.Contains(string(out), "skills_dir") {
+			t.Errorf("%s:\n%s", ext, out)
+		}
+	}
+}
