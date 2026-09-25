@@ -112,6 +112,7 @@ remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no 
 +# rev  = "<full 40-character commit SHA>"
 import: 2 manifest entries (1 exact, 1 own), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
 manifest changed but not committed; to commit:
+  git -C ~/src/my-skills add -- skenv.toml
   git -C ~/src/my-skills commit -m "chore(manifest): import installed skills" -- skenv.toml
 warning: ~/src/my-skills has uncommitted changes; not pulling (commit or stash, then rerun sync)
 adopt ~/.agents/skills/release-notes (old content → ~/.local/state/skenv/backup/<timestamp>/.agents/skills/release-notes)

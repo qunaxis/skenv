@@ -41,6 +41,10 @@ const Latest = "0.5.0"
 // Docker runner): the runs-on labels on GitHub, the tags on GitLab.
 var DefaultRunner = []string{"self-hosted", "linux", "docker"}
 
+// runnerRe is a runner label or tag that the CI templates can write
+// unquoted into a YAML flow list.
+var runnerRe = regexp.MustCompile(`^[A-Za-z0-9._:/-]+$`)
+
 // CI systems, the values of repo.ci.
 const (
 	CIGitHub = "github"
@@ -194,6 +198,11 @@ func (c *Config) validate() error {
 	case "private":
 		if len(c.Runner) == 0 {
 			c.Runner = DefaultRunner
+		}
+		for _, r := range c.Runner {
+			if !runnerRe.MatchString(r) {
+				return fmt.Errorf("%s: repo.runner %q is not a runner label: use letters, digits and . _ : / -", name, r)
+			}
 		}
 	case "public":
 	default:

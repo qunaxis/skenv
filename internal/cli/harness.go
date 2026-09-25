@@ -201,10 +201,10 @@ func repoCmd(a *app) *cobra.Command {
 			Long:    long,
 			Example: example,
 			Args:    nArgs(0),
-			RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
-				return runRepo(ctx, env, name, dir, visibility, ci, format, runner, dryRun, force)
-			}),
 		}
+		c.RunE = a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
+			return runRepo(ctx, env, name, dir, visibility, ci, format, runner, c.Flags().Changed("runner"), dryRun, force)
+		})
 		if name != "check" {
 			dryRunFlag(c.Flags(), &dryRun, dryRunPlain)
 			c.Flags().BoolVar(&force, "force", false, "replace existing files that skenv does not manage yet")
@@ -253,7 +253,7 @@ func repoCmd(a *app) *cobra.Command {
 	return c
 }
 
-func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, format string, runner []string, dryRun, force bool) (int, error) {
+func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, format string, runner []string, runnerSet, dryRun, force bool) (int, error) {
 	root, err := gitRoot(ctx, dir)
 	if err != nil {
 		return engine.ExitFatal, err
@@ -273,6 +273,9 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, form
 		case !slices.Contains(harness.CIs, ci):
 			return engine.ExitFatal, usageError{fmt.Sprintf("repo init: --ci must be github or gitlab, got %q", ci)}
 		}
+		if len(runner) == 0 && runnerSet {
+			return engine.ExitFatal, usageError{"repo init: --runner needs at least one label"}
+		}
 		c, changes, err := harness.Init(root, visibility, ci, format, runner, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
@@ -281,9 +284,13 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, form
 		if detected != "" {
 			fmt.Fprintf(env.Stdout, "ci %s: %s; --ci overrides it\n", c.CI, detected)
 		}
-		fmt.Fprintf(env.Stdout, "harness %s (%s, ci %s) set up in %s\n", c.Harness, c.Visibility, c.CI, root)
+		setUp, run := "set up", "run"
+		if dryRun {
+			setUp, run = "would be set up", "would run"
+		}
+		fmt.Fprintf(env.Stdout, "harness %s (%s, ci %s) %s in %s\n", c.Harness, c.Visibility, c.CI, setUp, root)
 		if c.Visibility == "private" {
-			fmt.Fprintf(env.Stdout, "CI jobs run on runners %s (repo.runner); to change them, edit repo.runner and run `skenv repo apply`\n", strings.Join(c.Runner, ", "))
+			fmt.Fprintf(env.Stdout, "CI jobs %s on runners %s (repo.runner); to change them, edit repo.runner and run `skenv repo apply`\n", run, strings.Join(c.Runner, ", "))
 		}
 		printHookTools(env)
 		return lefthookInstall(ctx, env, root, dryRun), nil

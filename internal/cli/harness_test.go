@@ -328,6 +328,15 @@ func TestRepoInitRunner(t *testing.T) {
 	if !strings.Contains(errOut, "run on the GitLab shared runners") {
 		t.Errorf("public --runner on GitLab: %s", errOut)
 	}
+	for _, bad := range []string{"--runner=a,,b", "--runner=x]", "--runner="} {
+		if _, errOut := w.mustRun(2, "repo", "init", "--visibility", "private", bad, "--dir", repo); !strings.Contains(errOut, "runner") {
+			t.Errorf("%s: %s", bad, errOut)
+		}
+	}
+	if out, _ := w.mustRun(0, "repo", "init", "--visibility", "private", "--runner", "ubuntu-latest", "--dir", repo, "--dry-run"); !strings.Contains(out, "would be set up in") ||
+		!strings.Contains(out, "CI jobs would run on runners ubuntu-latest") {
+		t.Errorf("init --dry-run:\n%s", out)
+	}
 	out, errOut := w.mustRun(0, "repo", "init", "--visibility", "private", "--runner", "ubuntu-latest", "--dir", repo)
 	if !strings.Contains(out, "CI jobs run on runners ubuntu-latest (repo.runner)") {
 		t.Errorf("init output:\n%s", out)
