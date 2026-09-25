@@ -58,7 +58,7 @@ func TestGroupsPrintHelp(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	for args, want := range map[string][]string{
 		"":           {"First steps", "Get started:", "Everyday:", "Write skills:", "Machine:"},
-		"vendor":     {"add ", "update ", "remove "},
+		"vendor":     {"pinned", "add ", "update ", "remove "},
 		"repo":       {"init ", "apply ", "check "},
 		"autostart":  {"enable ", "disable ", "status "},
 		"completion": {"bash ", "zsh ", "fish "},
@@ -76,6 +76,22 @@ func TestGroupsPrintHelp(t *testing.T) {
 	// Configuration details live in the documentation, not the root help.
 	if _, out, _ := runMain(); strings.Contains(out, "config.yml") {
 		t.Errorf("root help explains the config file:\n%s", out)
+	}
+}
+
+// Every command that changes something ends its help with the same
+// contract.
+func TestMutatingCommandsHaveAContract(t *testing.T) {
+	for _, path := range []string{"init", "import", "sync", "link", "vendor add", "vendor update", "vendor remove", "new", "repo init", "repo apply", "autostart enable"} {
+		_, out, _ := runMain(append(strings.Fields(path), "--help")...)
+		last := ""
+		for _, field := range []string{"- Reads: ", "- Changes: ", "- Network: ", "- Next: "} {
+			i := strings.Index(out, "\n"+field)
+			if i < 0 || i < strings.Index(out, last) {
+				t.Errorf("skenv %s --help: %q missing or out of order:\n%s", path, field, out)
+			}
+			last = "\n" + field
+		}
 	}
 }
 

@@ -2,7 +2,7 @@
 
 ## skenv lint
 
-Check skills (L1-L6, P1)
+Check skills for format, links, size and secrets
 
 ### Synopsis
 

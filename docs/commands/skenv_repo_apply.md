@@ -15,6 +15,15 @@ The CI pipeline follows `repo.ci` of the skenv file. To switch CI systems, edit
 `repo.ci` and run apply: it writes the pipeline of the new one and removes the
 managed file of the other (.github/workflows/check.yml or `.gitlab-ci.yml`).
 
+- Reads: the skenv file (`[repo]`) and the managed files.
+- Changes: the managed files and blocks, `repo.harness` and the schema
+  directive of the skenv file, and the git hooks (lefthook install).
+- Network: none.
+- Conflicts: a file that exists and that skenv does not manage yet is an
+  error; `--force` replaces it.
+- Preview: `--dry-run` writes nothing and does not run lefthook install.
+- Next: commit the changed files.
+
 ```
 skenv repo apply [flags]
 ```

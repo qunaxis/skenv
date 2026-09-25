@@ -2,7 +2,7 @@
 
 ## skenv vendor update
 
-Move vendored skills to a new commit
+Move third-party skills to a new commit
 
 ### Synopsis
 
@@ -12,6 +12,15 @@ vendored skill without names. Each goes to HEAD of its default branch;
 
 With `--project`: move entries of `[project]` and sync the project. A skill of
 a [[project.from]] entry moves the whole entry, whose skills share one rev.
+
+- Reads: the manifest (or `[project]`) and the repositories of the skills.
+- Changes: the rev of each moved skill in the manifest (or `[project]`), its
+  copy, its links (or mirrors) and the state file.
+- Network: fetches each repository into the clone cache `~/.cache/skenv/repos`.
+- Conflicts: as vendor add: `--adopt` replaces an unmanaged path, after a
+  backup.
+- Preview: `--dry-run` writes nothing except the clone cache.
+- Next: commit the skenv file; `skenv doctor`.
 
 ```
 skenv vendor update [name...] [flags]
@@ -80,5 +89,5 @@ vendor: 2 changes, 0 warnings, 0 errors
 
 ### SEE ALSO
 
-* [skenv vendor](skenv_vendor.md)	 - Pin, update and remove third-party skills
+* [skenv vendor](skenv_vendor.md)	 - Install, update and remove third-party skills, pinned to a commit
 

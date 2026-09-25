@@ -2,12 +2,14 @@
 
 ## skenv sync
 
-Pull, vendor and link every skill of the manifest, or sync a project
+Apply the manifest to this machine, or sync a project
 
 ### Synopsis
 
-Pull own repositories, vendor pinned skills, link everything into the store
-and agent directories, and remove managed paths that left the manifest.
+Apply the manifest: pull the own repositories (editable git working copies
+of your skills), copy each pinned third-party skill at its commit, link
+everything into the store and the agent directories, and remove managed
+paths that left the manifest.
 
 In a project, a git repository whose skenv file has a `[project]` section
 (checked at the root of the repository of the current directory), sync
@@ -22,6 +24,18 @@ or a diverged branch is left as it is, with a warning, and the rest is
 synced. `skenv doctor` exits 0 only when the machine matches the manifest.
 With `--dry-run` nothing is pulled, so the plan uses the own repositories (and
 a manifest inside one) as they are now.
+
+- Reads: the manifest, the own working copies, the store (`~/.agents/skills`),
+  the agent directories and the state file `~/.local/state/skenv/state.json`.
+- Changes: the own working copies (clone, pull `--ff-only`), the store, the
+  agent links and the state file; in a project, its dir and mirrors.
+- Network: git clone and pull of own repositories, fetches of pinned skills
+  into the clone cache `~/.cache/skenv/repos`.
+- Conflicts: an unmanaged path in the way is an error and stays; `--adopt`
+  moves it to `~/.local/state/skenv/backup/<ts>/` and replaces it.
+- Preview: `--dry-run` writes and pulls nothing, so upstream changes are not
+  in the plan.
+- Next: `skenv doctor`.
 
 ```
 skenv sync [flags]

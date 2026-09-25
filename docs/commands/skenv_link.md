@@ -6,8 +6,18 @@ Create store and agent links without pulling
 
 ### Synopsis
 
-Create store links for own skills and agent links for every skill of the manifest.
-Projects have no links to create: `skenv sync` updates their mirrors.
+Create store links for own skills and agent links for every skill of the
+manifest. Projects have no links to create: `skenv sync` updates their mirrors.
+
+- Reads: the manifest, the own working copies, the store, the agent
+  directories and the state file.
+- Changes: the store links of own skills, the agent links and the state
+  file; it pulls, vendors and removes nothing.
+- Network: none.
+- Conflicts: an unmanaged path in the way is an error and stays; `--adopt`
+  moves it to `~/.local/state/skenv/backup/<ts>/` and replaces it.
+- Preview: `--dry-run` writes nothing.
+- Next: `skenv doctor`.
 
 ```
 skenv link [flags]

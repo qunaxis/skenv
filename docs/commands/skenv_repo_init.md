@@ -21,6 +21,17 @@ Without a skenv file it creates `skenv.toml`, or `skenv.yaml` or `skenv.json` wi
 `--format`. An existing skenv file gets `[repo]` added in its own format;
 `--format` that disagrees with it is an error, and nothing is written.
 
+- Reads: the repository, its origin and skenv file, and the hosts declared
+  in the manifest (to detect the CI system).
+- Changes: the skenv file (`[repo]`, created if absent), the managed files
+  and blocks, and the git hooks (lefthook install).
+- Network: none.
+- Conflicts: a file that exists and that skenv does not manage yet is an
+  error; `--force` replaces it.
+- Preview: `--dry-run` writes nothing and does not run lefthook install.
+- Next: commit the generated files; `skenv repo check` compares them
+  with the templates later.
+
 ```
 skenv repo init --visibility private|public [--ci github|gitlab] [flags]
 ```
