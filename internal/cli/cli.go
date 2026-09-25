@@ -24,12 +24,9 @@ import (
 // Main runs skenv with args (without the program name) and returns the
 // exit code.
 func Main(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	return execute(ctx, &app{stdout: stdout, stderr: stderr}, args)
-}
-
-func execute(ctx context.Context, a *app, args []string) int {
+	a := &app{stdout: stdout, stderr: stderr}
 	root := newRoot(a)
-	root.SetArgs(legacyDashes(root, args))
+	root.SetArgs(args)
 	err := root.ExecuteContext(ctx)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "skenv: %s\n", gitx.Mask(err.Error()))
@@ -47,19 +44,12 @@ type app struct {
 	stdout, stderr io.Writer
 	code           int
 	ran            bool
-	// probe, when set, replaces every command action: the compatibility
-	// test uses it to see what an invocation parses to without running it.
-	probe func(cmd *cobra.Command, args []string)
 }
 
 // action adapts a skenv command to cobra's RunE.
 func (a *app) action(fn func(ctx context.Context, env engine.Env, args []string) (int, error)) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		a.ran = true
-		if a.probe != nil {
-			a.probe(cmd, args)
-			return nil
-		}
 		env, err := newEnv(a.stdout, a.stderr)
 		if err != nil {
 			a.code = engine.ExitFatal
@@ -95,7 +85,7 @@ Exit codes: 0 success, 1 problems found, 2 error.`,
 		SilenceUsage:      true,
 		DisableAutoGenTag: true,
 		Args:              cobra.NoArgs,
-		// Without a command: usage on stderr and exit 2, as before.
+		// Without a command: usage on stderr and exit 2.
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			a.ran = true
 			a.code = engine.ExitFatal
@@ -124,38 +114,6 @@ Exit codes: 0 success, 1 problems found, 2 error.`,
 		},
 	)
 	return root
-}
-
-// legacyDashes rewrites single-dash long flags (-quiet, -path=x), which
-// Go's flag package accepted, into the double-dash form pflag expects.
-// Only names of real flags are rewritten; everything after "--" is left
-// alone.
-func legacyDashes(root *cobra.Command, args []string) []string {
-	long := map[string]bool{"help": true, "version": true}
-	var walk func(c *cobra.Command)
-	walk = func(c *cobra.Command) {
-		visit := func(f *pflag.Flag) { long[f.Name] = true }
-		c.LocalFlags().VisitAll(visit)
-		c.PersistentFlags().VisitAll(visit)
-		for _, s := range c.Commands() {
-			walk(s)
-		}
-	}
-	walk(root)
-	out := make([]string, 0, len(args))
-	for i, arg := range args {
-		if arg == "--" {
-			return append(out, args[i:]...)
-		}
-		if len(arg) > 2 && arg[0] == '-' && arg[1] != '-' {
-			name, _, _ := strings.Cut(arg[1:], "=")
-			if long[name] {
-				arg = "-" + arg
-			}
-		}
-		out = append(out, arg)
-	}
-	return out
 }
 
 func newEnv(stdout, stderr io.Writer) (engine.Env, error) {
