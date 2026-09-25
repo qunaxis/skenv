@@ -77,7 +77,7 @@ not imported: 1
   ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
 create ~/src/my-skills/skenv.toml with [environment]
 manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
-remove release-notes from ~/.agents/.skill-lock.json, so that skenv manages these skills and the skills CLI no longer updates them (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
+remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/my-skills/skenv.toml
 +++ ~/src/my-skills/skenv.toml
 +#:schema https://qunaxis.github.io/skenv/schemas/skenv.schema.json

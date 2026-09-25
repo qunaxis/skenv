@@ -88,7 +88,7 @@ would become managed: 1 entry in ~/src/skills/skenv.toml
     release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
 not imported: 1
   ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
-would remove release-notes from ~/.agents/.skill-lock.json, so that skenv manages these skills and the skills CLI no longer updates them (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
+would remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/skills/skenv.toml
 +++ ~/src/skills/skenv.toml
  path = "tools/diagrams"
@@ -111,7 +111,7 @@ becomes managed: 1 entry in ~/src/skills/skenv.toml
     release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
 not imported: 1
   ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
-remove release-notes from ~/.agents/.skill-lock.json, so that skenv manages these skills and the skills CLI no longer updates them (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
+remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/skills/skenv.toml
 +++ ~/src/skills/skenv.toml
  path = "tools/diagrams"
@@ -135,10 +135,9 @@ $ skenv import --sync
 becomes managed: 1 entry in ~/src/skills/skenv.toml
   unmatched: no commit matched, pinned to the tip of the branch; the installed copy may differ
     release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4: skillFolderHash 000000000000 is not in the history of the default branch, and no commit has the files of the installed copy; HEAD of the default branch
-warning: release-notes: pinned without a matching commit, the installed copy may differ from it; compare the two before taking the copy over
 not imported: 1
   ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
-remove release-notes from ~/.agents/.skill-lock.json, so that skenv manages these skills and the skills CLI no longer updates them (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
+remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/skills/skenv.toml
 +++ ~/src/skills/skenv.toml
  path = "tools/diagrams"
@@ -149,7 +148,7 @@ remove release-notes from ~/.agents/.skill-lock.json, so that skenv manages thes
 +repo = "example-vendor/tools"
 +path = "tools/release-notes"
 +rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
-import: 1 manifest entry (1 unmatched), 1 removed from the skills lock, 1 unmanaged, 1 warnings, 0 errors
+import: 1 manifest entry (1 unmatched), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
 manifest changed but not committed; to commit:
   git -C ~/src/skills commit -m "chore(manifest): import installed skills" -- skenv.toml
 warning: ~/src/skills has uncommitted changes; not pulling (commit or stash, then rerun sync)
@@ -158,7 +157,7 @@ sync: 0 changes, 1 warnings, 0 errors
 recorded in ~/src/skills/skenv.toml: release-notes
 taken over: none
 left as installed (unmatched): release-notes; decide for each:
-  release-notes: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to ~/.local/state/skenv/backup), or `skenv vendor remove release-notes` drops the entry and leaves the copy unmanaged
+  release-notes: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to ~/.local/state/skenv/backup), or `skenv vendor remove release-notes` drops the entry and leaves the copy to neither skenv nor the skills CLI (its lock entry is in the backup of the lock)
 ```
 
 In a project: pin the skills of its `skills-lock.json` in `[project]`:
@@ -170,7 +169,7 @@ becomes managed: 1 entry in ~/src/web-app/skenv.toml
     release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
 project-own skill .agents/skills/deploy: kept as it is; sync mirrors it
 add [project] to ~/src/web-app/skenv.toml
-remove release-notes from skills-lock.json, so that skenv manages these skills and the skills CLI no longer updates them (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/src/web-app/skills-lock.json)
+remove release-notes from skills-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/src/web-app/skills-lock.json)
 --- ~/src/web-app/skenv.toml
 +++ ~/src/web-app/skenv.toml
 +#:schema https://qunaxis.github.io/skenv/schemas/skenv.schema.json

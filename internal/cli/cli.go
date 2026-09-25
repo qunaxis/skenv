@@ -87,7 +87,7 @@ skills are copies pinned to a commit ("vendor" entries).
 First steps, by situation:
 - No manifest yet: ` + "`skenv init`" + ` in a git repository starts one.
 - Skills already installed (npx skills, copies): ` + "`skenv init --import`" + `
-  starts one and takes them over.
+  starts one, records them and takes over those it can match to a commit.
 - Another machine: ` + "`skenv clone <repo>`" + ` clones your manifest repository
   and uses it; ` + "`skenv use .`" + ` in a checkout you already have.
 

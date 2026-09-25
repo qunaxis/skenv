@@ -187,8 +187,8 @@ func TestImport(t *testing.T) {
 	if !strings.Contains(text, "[[environment.own]]\nrepo = \"me/mine\"\npath = \"~/src/mine\"\nskills = [\"a\", \"b\"]\n") {
 		t.Errorf("own me/mine with a selection is missing:\n%s", text)
 	}
-	if want := "warning: drifted: pinned without a matching commit, the installed copy may differ"; !strings.Contains(errOut, want) {
-		t.Errorf("missing warning %q:\n%s", want, errOut)
+	if strings.Contains(errOut, "pinned without a matching commit") {
+		t.Errorf("the unmatched group is repeated as a warning:\n%s", errOut)
 	}
 	for _, want := range []string{
 		"becomes managed: 5 entries in ~/src/skills/skenv.toml\n" +
@@ -207,8 +207,8 @@ func TestImport(t *testing.T) {
 		`add "handmade" to layout.ignore`,
 		`  ~/.agents/skills/local-one: in ~/.agents/.skill-lock.json, but installed from a "local" source`,
 		"  removed, in ~/.agents/.skill-lock.json: not installed",
-		"remove alpha, archify, drifted, lost, other from ~/.agents/.skill-lock.json, so that skenv manages these skills",
-		"import: 5 manifest entries (2 exact, 1 same files, 1 unmatched, 1 own), 5 removed from the skills lock, 2 unmanaged, 1 warnings, 0 errors\n",
+		"remove alpha, archify, drifted, lost, other from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over",
+		"import: 5 manifest entries (2 exact, 1 same files, 1 unmatched, 1 own), 5 removed from the skills lock, 2 unmanaged, 0 warnings, 0 errors\n",
 		"next: `skenv sync --adopt` replaces the installed copies with managed ones, the unmatched drifted included",
 	} {
 		if !strings.Contains(out, want) {
@@ -287,7 +287,7 @@ func TestInitImport(t *testing.T) {
 		"    archify from ext/tools (tools/archify) at " + rev[:12],
 		"would run skenv sync --adopt, leaving the unmatched as installed: drifted; then decide for each:\n" +
 			"  drifted: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to ~/.local/state/skenv/backup), " +
-			"or `skenv vendor remove drifted` drops the entry and leaves the copy unmanaged\n",
+			"or `skenv vendor remove drifted` drops the entry and leaves the copy to neither skenv nor the skills CLI (its lock entry is in the backup of the lock)\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dry run lacks %q:\n%s", want, out)
@@ -361,7 +361,7 @@ func TestImportSyncKeepsUnmatched(t *testing.T) {
 			"taken over: a, archify, b, lost, other\n" +
 			"left as installed (unmatched): drifted; decide for each:\n" +
 			"  drifted: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to ~/.local/state/skenv/backup), " +
-			"or `skenv vendor remove drifted` drops the entry and leaves the copy unmanaged\n",
+			"or `skenv vendor remove drifted` drops the entry and leaves the copy to neither skenv nor the skills CLI (its lock entry is in the backup of the lock)\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("import --sync lacks %q:\n%s", want, out)

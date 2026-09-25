@@ -115,15 +115,14 @@ becomes managed: 4 entries in ~/src/<skills-repo>/skenv.toml
     drifted from <owner>/<repo> (skills/drifted) at 5d0e1f2a3b4c: skillFolderHash 111111111111 is not in the history of the default branch, and no commit has the files of the installed copy; HEAD of the default branch
   own: repositories kept as git working copies
     <owner>/<skills-repo> at ~/src/<skills-repo> (skills alpha, beta)
-warning: drifted: pinned without a matching commit, the installed copy may differ from it; compare the two before taking the copy over
 not imported: 2
   ~/.claude/skills/handmade: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "handmade" to layout.ignore
   removed, in ~/.agents/.skill-lock.json: not installed in ~/.agents/skills or an agent directory; it stays in the lock
-remove archify, drifted, lost from ~/.agents/.skill-lock.json, so that skenv manages these skills and the skills CLI no longer updates them (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
+remove archify, drifted, lost from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/<skills-repo>/skenv.toml
 +++ ~/src/<skills-repo>/skenv.toml
 ...
-import: 4 manifest entries (1 exact, 1 same files, 1 unmatched, 1 own), 3 removed from the skills lock, 1 unmanaged, 1 warnings, 0 errors
+import: 4 manifest entries (1 exact, 1 same files, 1 unmatched, 1 own), 3 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
 ```
 
 - **`exact`**: the vendored skill will be what the `skills` CLI installed
@@ -161,7 +160,7 @@ sync: 12 changes, 1 warnings, 0 errors
 recorded in ~/src/<skills-repo>/skenv.toml: alpha, archify, beta, drifted, lost
 taken over: alpha, archify, beta, lost
 left as installed (unmatched): drifted; decide for each:
-  drifted: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to ~/.local/state/skenv/backup), or `skenv vendor remove drifted` drops the entry and leaves the copy unmanaged
+  drifted: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to ~/.local/state/skenv/backup), or `skenv vendor remove drifted` drops the entry and leaves the copy to neither skenv nor the skills CLI (its lock entry is in the backup of the lock)
 ```
 
 Compare the installed copy with the skill at the pinned commit first (the
@@ -172,8 +171,11 @@ Compare the installed copy with the skill at the pinned commit first (the
   `skenv vendor update <name> --rev <sha>`.
 - **Keep your copy, unmanaged**: `skenv vendor remove <name>` drops the
   entry; the copy stays where it is and `doctor` reports it as unmanaged.
-  Move it into an own repository to manage it with skenv, or add its name
-  to `layout.ignore`.
+  Import already removed it from the lock of the skills CLI, so neither
+  tool updates it now: move it into an own repository to manage it with
+  skenv, add its name to `layout.ignore`, or give it back to the skills CLI
+  by restoring its entry from the backup of the lock in
+  `~/.local/state/skenv/backup/<timestamp>/`.
 
 `--dry-run --sync` says which skills the sync would leave as installed.
 
@@ -384,7 +386,7 @@ becomes managed: 2 entries in ~/src/<project>/skenv.toml
 not imported: 1
   local-one, in skills-lock.json: installed from a "local" source, not a git repository; `skenv vendor add` needs one; it stays in the lock
 project-own skill .agents/skills/deploy: kept as it is; sync mirrors it
-remove lost, release-notes from skills-lock.json, so that skenv manages these skills and the skills CLI no longer updates them (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/src/<project>/skills-lock.json)
+remove lost, release-notes from skills-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/src/<project>/skills-lock.json)
 ...
 import: 2 [project] entries (1 exact, 1 same files), 2 removed from skills-lock.json, 1 project-own skills, 0 differing duplicates, 0 warnings, 0 errors
 ```

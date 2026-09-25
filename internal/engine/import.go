@@ -567,10 +567,6 @@ func (e *base) report(r *imported, file string) {
 			}
 		}
 	}
-	if len(r.unmatched) > 0 {
-		e.warnf("%s: pinned without a matching commit, the installed copy may differ from it; compare the two before taking the copy over",
-			strings.Join(r.unmatched, ", "))
-	}
 	if n := len(r.skipped) + len(r.failed); n > 0 {
 		e.infof("not imported: %d", n)
 		for _, line := range r.skipped {
@@ -587,7 +583,8 @@ func (e *base) report(r *imported, file string) {
 func (e *base) decide(names []string, flag string) {
 	for _, name := range names {
 		e.infof("  %s: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to %s), "+
-			"or `skenv vendor remove%s %s` drops the entry and leaves the copy unmanaged", name, e.show(e.layout.Backup()), flag, name)
+			"or `skenv vendor remove%s %s` drops the entry and leaves the copy to neither skenv nor the skills CLI "+
+			"(its lock entry is in the backup of the lock)", name, e.show(e.layout.Backup()), flag, name)
 	}
 }
 
@@ -689,7 +686,7 @@ func (e *base) nextAfterImport(r *imported, sync bool, flag string) {
 // after a copy to the backup directory. show shows the lock path.
 func (e *base) cleanLock(lock *skillsLock, names []string, show func(string) string) error {
 	backup := e.backupPath(lock.path)
-	e.changef("remove %s from %s, so that skenv manages these skills and the skills CLI no longer updates them (a copy of the lock goes to %s)",
+	e.changef("remove %s from %s, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to %s)",
 		strings.Join(names, ", "), show(lock.path), e.show(backup))
 	if e.opts.DryRun {
 		return nil

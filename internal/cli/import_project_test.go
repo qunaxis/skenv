@@ -194,7 +194,6 @@ func TestImportProject(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"drifted: pinned without a matching commit, the installed copy may differ",
 		"project-own skill solo is only in .claude/skills/solo: move it to .agents/skills/solo",
 		"project-own skill dup is in .agents/skills/dup, .claude/skills/dup, and the copies differ (.agents/skills/dup and .claude/skills/dup differ: " +
 			"1 file (SKILL.md) changed, 1 file (notes.md) only in .agents/skills/dup)",
@@ -268,7 +267,7 @@ func TestImportProjectSyncKeepsUnmatched(t *testing.T) {
 		"recorded in ~/src/app/skenv.toml: archify, drifted, lost, notes\ntaken over: archify, lost, notes\n" +
 			"left as installed (unmatched): drifted; decide for each:\n" +
 			"  drifted: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to ~/.local/state/skenv/backup), " +
-			"or `skenv vendor remove --project drifted` drops the entry and leaves the copy unmanaged\n",
+			"or `skenv vendor remove --project drifted` drops the entry and leaves the copy to neither skenv nor the skills CLI (its lock entry is in the backup of the lock)\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("import --project --sync lacks %q:\n%s", want, out)
