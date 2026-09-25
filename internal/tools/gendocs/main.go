@@ -34,7 +34,8 @@ func main() {
 
 func run(man bool, version, date, dir string) error {
 	if !man {
-		return clidocs.Generate(dir)
+		// The reference directory also holds the recorded example output.
+		return clidocs.Generate(dir, dir)
 	}
 	var d time.Time
 	if date != "" {

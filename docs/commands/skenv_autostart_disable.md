@@ -8,6 +8,12 @@ Unload and remove the autostart job
 skenv autostart disable [flags]
 ```
 
+### Examples
+
+```console
+$ skenv autostart disable
+```
+
 ### Options
 
 ```

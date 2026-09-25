@@ -12,6 +12,19 @@ Remove a vendored skill from the manifest and its managed paths.
 skenv vendor remove <name> [flags]
 ```
 
+### Examples
+
+```console
+$ skenv vendor remove diagrams
+remove vendor diagrams from ~/src/skills/skenv.toml
+remove ~/.agents/skills/diagrams (skill "diagrams" is no longer in the manifest)
+remove ~/.claude/skills/diagrams (skill "diagrams" is no longer in the manifest)
+remove ~/.pi/agent/skills/diagrams (skill "diagrams" is no longer in the manifest)
+manifest changed but not committed; to commit:
+  git -C ~/src/skills commit -m "chore(manifest): remove vendor skill diagrams" -- skenv.toml
+vendor remove: 4 changes, 0 warnings, 0 errors
+```
+
 ### Options
 
 ```

@@ -19,6 +19,26 @@ Without a skenv file it creates `skenv.toml`, or `skenv.yaml` or `skenv.json` wi
 skenv repo init --visibility private|public [flags]
 ```
 
+### Examples
+
+Set up the harness of a public skills repository in the current directory:
+
+```console
+$ skenv repo init --visibility public
+create skenv.toml
+create lefthook.yml
+create .github/workflows/check.yml
+create ruff.toml
+create pyrightconfig.json
+create .editorconfig
+create .markdownlint.yaml
+create AGENTS.md
+create .gitignore
+create .claude/settings.json
+harness 0.4.0 (public) set up in ~/src/public-skills
+lefthook install: hooks active
+```
+
 ### Options
 
 ```

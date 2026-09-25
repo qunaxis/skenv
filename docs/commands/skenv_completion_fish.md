@@ -23,6 +23,12 @@ You will need to start a new shell for this setup to take effect.
 skenv completion fish [flags]
 ```
 
+### Examples
+
+```console
+$ skenv completion fish > ~/.config/fish/completions/skenv.fish
+```
+
 ### Options
 
 ```

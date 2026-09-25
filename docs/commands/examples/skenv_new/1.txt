@@ -1,0 +1,3 @@
+exit 0
+created ~/src/skills/skills/release-checklist (SKILL.md, references/notes.md)
+fill in the description and instructions, then run `skenv lint`

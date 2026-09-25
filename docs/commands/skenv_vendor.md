@@ -8,6 +8,14 @@ Pin, update and remove third-party skills
 skenv vendor [flags]
 ```
 
+### Examples
+
+```console
+$ skenv vendor add example-vendor/tools --path tools/release-notes
+$ skenv vendor update
+$ skenv vendor remove diagrams
+```
+
 ### Options
 
 ```

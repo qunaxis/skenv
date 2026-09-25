@@ -28,6 +28,8 @@ func newCmd(a *app) *cobra.Command {
 		Long: `Create skills/<name>/ with SKILL.md (frontmatter) and references/ in the own
 repository of the manifest whose skenv.toml has that visibility (default
 private), or in the git repository at --dir.`,
+		Example: `# Scaffold a skill in the private own repository of the manifest
+skenv new release-checklist`,
 		Args: nArgs(1),
 	}
 	c.RunE = a.action(func(ctx context.Context, env engine.Env, pos []string) (int, error) {

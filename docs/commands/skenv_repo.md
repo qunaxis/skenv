@@ -8,6 +8,14 @@ Set up and check the harness of a skills repository
 skenv repo [flags]
 ```
 
+### Examples
+
+```console
+$ skenv repo init --visibility private
+$ skenv repo check
+$ skenv repo apply
+```
+
 ### Options
 
 ```

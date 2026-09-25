@@ -19,6 +19,35 @@ so Claude Code shows them to the agent).
 skenv lint [path...] [flags]
 ```
 
+### Examples
+
+Check every skill under the current directory:
+
+```console
+$ skenv lint
+lint: 2 skills, 0 problems
+```
+
+A skill with problems:
+
+```console
+$ skenv lint skills/draft
+skills/draft/SKILL.md: L1: frontmatter has no description
+skills/draft/SKILL.md: L2: name "Draft" must equal the directory name "draft"
+skills/draft/SKILL.md: L2: name "Draft" must be lowercase letters, digits and single hyphens, with no hyphen at the start or end
+skills/draft/SKILL.md: L4: line 4: link "references/notes.md": file does not exist
+lint: 1 skills, 4 problems
+```
+
+Exit code 1.
+
+Before the repository goes public:
+
+```console
+$ skenv lint --publish
+lint: 1 skills, 0 problems
+```
+
 ### Options
 
 ```

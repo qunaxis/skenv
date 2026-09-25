@@ -13,6 +13,14 @@ See each sub-command's help for details on how to use the generated script.
 skenv completion [flags]
 ```
 
+### Examples
+
+```console
+$ source <(skenv completion bash)
+$ skenv completion fish > ~/.config/fish/completions/skenv.fish
+$ skenv completion zsh > "${fpath[1]}/_skenv"
+```
+
 ### Options
 
 ```

@@ -15,6 +15,26 @@ Exit code: 0 in sync, 1 discrepancies, 2 error.
 skenv doctor [flags]
 ```
 
+### Examples
+
+The machine matches the manifest:
+
+```console
+$ skenv doctor
+ok: 3 skills match ~/src/skills/skenv.toml (store ~/.agents/skills, targets ~/.claude/skills, ~/.pi/agent/skills)
+```
+
+A skill link was removed by hand:
+
+```console
+$ skenv doctor
+CLASS           SKILL        PATH                          DETAIL
+agent-mismatch  code-review  ~/.claude/skills/code-review  linked for some agents but not this one; run `skenv link`
+1 discrepancies
+```
+
+Exit code 1.
+
 ### Options
 
 ```

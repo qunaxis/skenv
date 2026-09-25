@@ -1,0 +1,4 @@
+exit 1
+CLASS           SKILL        PATH                          DETAIL
+agent-mismatch  code-review  ~/.claude/skills/code-review  linked for some agents but not this one; run `skenv link`
+1 discrepancies

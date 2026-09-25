@@ -8,6 +8,15 @@ Print the skenv version
 skenv version [flags]
 ```
 
+### Examples
+
+```console
+$ skenv version
+skenv 0.4.0
+commit: 0123456789abcdef0123456789abcdef01234567
+built:  2026-09-01T12:00:00Z
+```
+
 ### Options
 
 ```

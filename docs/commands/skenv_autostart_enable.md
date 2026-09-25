@@ -8,6 +8,12 @@ Install and load the autostart job
 skenv autostart enable [flags]
 ```
 
+### Examples
+
+```console
+$ skenv autostart enable
+```
+
 ### Options
 
 ```

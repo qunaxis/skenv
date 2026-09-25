@@ -48,6 +48,10 @@ func TestGenerateMan(t *testing.T) {
 			}
 		}
 	}
+	// Examples without the recorded output, as in --help.
+	if b, err := os.ReadFile(filepath.Join(dir, "skenv-doctor.1")); err != nil || !strings.Contains(string(b), ".SH EXAMPLE") || strings.Contains(string(b), "ok: 3 skills") {
+		t.Errorf("skenv-doctor.1: examples missing or with output (%v)", err)
+	}
 	if _, err := os.Stat(filepath.Join(dir, "skenv-completion-powershell.1")); !os.IsNotExist(err) {
 		t.Error("man page for completion powershell")
 	}

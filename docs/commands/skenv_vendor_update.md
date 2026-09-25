@@ -14,6 +14,40 @@ vendored skill without names. Each goes to HEAD of its default branch;
 skenv vendor update [name...] [flags]
 ```
 
+### Examples
+
+Move diagrams to HEAD of the default branch of its repository:
+
+```console
+$ skenv vendor update diagrams
+diagrams 27f221f8f2a4..2571138a038f:
+2571138 docs(diagrams): list the shapes
+ebb66f9 feat(diagrams): prefer SVG
+update vendor diagrams 27f221f8f2a4 → 2571138a038f in ~/src/skills/skenv.toml
+vendor diagrams from example-vendor/tools@2571138a038f (tools/diagrams)
+manifest changed but not committed; to commit:
+  git -C ~/src/skills commit -m "chore(manifest): update vendor skill diagrams to 2571138a038f" -- skenv.toml
+vendor: 2 changes, 0 warnings, 0 errors
+```
+
+Update every vendored skill:
+
+```console
+$ skenv vendor update
+diagrams 27f221f8f2a4..26bdef93ad9b:
+2571138 docs(diagrams): list the shapes
+ebb66f9 feat(diagrams): prefer SVG
+update vendor diagrams 27f221f8f2a4 → 26bdef93ad9b in ~/src/skills/skenv.toml
+release-notes 27f221f8f2a4..26bdef93ad9b:
+26bdef9 feat(release-notes): breaking changes first
+update vendor release-notes 27f221f8f2a4 → 26bdef93ad9b in ~/src/skills/skenv.toml
+vendor diagrams from example-vendor/tools@26bdef93ad9b (tools/diagrams)
+vendor release-notes from example-vendor/tools@26bdef93ad9b (tools/release-notes)
+manifest changed but not committed; to commit:
+  git -C ~/src/skills commit -m "chore(manifest): update vendor skills diagrams to 26bdef93ad9b, release-notes to 26bdef93ad9b" -- skenv.toml
+vendor: 4 changes, 0 warnings, 0 errors
+```
+
 ### Options
 
 ```

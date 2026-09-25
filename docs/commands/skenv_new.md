@@ -14,6 +14,16 @@ private), or in the git repository at `--dir`.
 skenv new <name> [flags]
 ```
 
+### Examples
+
+Scaffold a skill in the private own repository of the manifest:
+
+```console
+$ skenv new release-checklist
+created ~/src/skills/skills/release-checklist (SKILL.md, references/notes.md)
+fill in the description and instructions, then run `skenv lint`
+```
+
 ### Options
 
 ```

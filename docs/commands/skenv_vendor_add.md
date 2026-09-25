@@ -13,6 +13,21 @@ Pin a third-party skill in the manifest (HEAD of the default branch unless
 skenv vendor add <owner/repo> [flags]
 ```
 
+### Examples
+
+Pin the skill in `tools/release-notes/` at HEAD of the default branch:
+
+```console
+$ skenv vendor add example-vendor/tools --path tools/release-notes
+add vendor release-notes (example-vendor/tools@27f221f8f2a4, tools/release-notes) to ~/src/skills/skenv.toml
+vendor release-notes from example-vendor/tools@27f221f8f2a4 (tools/release-notes)
+link ~/.claude/skills/release-notes → ../../.agents/skills/release-notes
+link ~/.pi/agent/skills/release-notes → ../../../.agents/skills/release-notes
+manifest changed but not committed; to commit:
+  git -C ~/src/skills commit -m "chore(manifest): add vendor skill release-notes" -- skenv.toml
+vendor: 4 changes, 0 warnings, 0 errors
+```
+
 ### Options
 
 ```
