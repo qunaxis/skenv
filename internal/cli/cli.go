@@ -83,8 +83,12 @@ func newRoot(a *app) *cobra.Command {
 		Short: "Keep agent skills (Claude Code, Codex, pi) in sync with a manifest",
 		Long: `skenv keeps agent skills (Claude Code, Codex, pi) in sync with a manifest.
 
-Every command that reads the manifest accepts --manifest FILE (also
-$SKENV_MANIFEST or "manifest" in ~/.config/skenv/config.toml).
+Configuration: a setting comes from, highest first, its flag, the SKENV_<KEY>
+environment variable, the config file, the default. The config file is
+~/.config/skenv/config.toml, config.yaml, config.yml or config.json (only
+one of them); its one key today is "manifest", the path to env.toml, which
+--manifest and $SKENV_MANIFEST override. "skenv init" records it.
+
 Exit codes: 0 success, 1 problems found, 2 error.`,
 		Version:           buildinfo.Get().String(),
 		SilenceErrors:     true,
@@ -212,8 +216,9 @@ func initCmd(a *app) *cobra.Command {
 		Use:   "init <owner/repo>",
 		Short: "Clone the manifest repository and sync",
 		Long: `Clone the manifest repository into --path (default ./<repo> in the current
-directory, like git clone), record its env.toml in ~/.config/skenv/config.toml
-and run sync. If the repository is already cloned, only the path is recorded.`,
+directory, like git clone), record its env.toml as "manifest" in the config
+file (~/.config/skenv/config.toml unless a YAML or JSON one exists) and run
+sync. If the repository is already cloned, only the path is recorded.`,
 		Args: nArgs(1),
 		RunE: a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
 			return engine.Init(ctx, env, args[0], dir, o)

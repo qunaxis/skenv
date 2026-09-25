@@ -8,8 +8,12 @@ Keep agent skills (Claude Code, Codex, pi) in sync with a manifest
 
 skenv keeps agent skills (Claude Code, Codex, pi) in sync with a manifest.
 
-Every command that reads the manifest accepts --manifest FILE (also
-$SKENV_MANIFEST or "manifest" in ~/.config/skenv/config.toml).
+Configuration: a setting comes from, highest first, its flag, the SKENV_<KEY>
+environment variable, the config file, the default. The config file is
+~/.config/skenv/config.toml, config.yaml, config.yml or config.json (only
+one of them); its one key today is "manifest", the path to env.toml, which
+--manifest and $SKENV_MANIFEST override. "skenv init" records it.
+
 Exit codes: 0 success, 1 problems found, 2 error.
 
 ```

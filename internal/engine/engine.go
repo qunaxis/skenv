@@ -7,15 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/BurntSushi/toml"
-
 	"github.com/qunaxis/skenv/internal/agents"
+	"github.com/qunaxis/skenv/internal/config"
 	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/manifest"
 	"github.com/qunaxis/skenv/internal/paths"
@@ -78,57 +76,17 @@ var ErrNoManifest = errors.New("no manifest configured: run `skenv init <owner/r
 	"and record its env.toml, or pass --manifest FILE (or set $SKENV_MANIFEST)")
 
 // ResolveManifest picks the manifest path: --manifest, $SKENV_MANIFEST,
-// then `manifest` in ~/.config/skenv/config.toml. Without any of them it
-// returns ErrNoManifest.
+// then `manifest` in the config file (~/.config/skenv/config.{toml,yaml,yml,json}).
+// Without any of them it returns ErrNoManifest.
 func ResolveManifest(env Env, flag string) (string, error) {
-	if flag != "" {
-		return paths.Expand(env.Home, flag), nil
-	}
-	if v := env.Getenv("SKENV_MANIFEST"); v != "" {
-		return paths.Expand(env.Home, v), nil
-	}
-	layout := paths.Layout{Home: env.Home}
-	cfg, err := readConfig(layout.ConfigFile())
+	m, _, err := config.Resolve(env.Home, env.Getenv, "manifest", flag, "")
 	if err != nil {
 		return "", err
 	}
-	if m, ok := cfg["manifest"].(string); ok && m != "" {
-		return paths.Expand(env.Home, m), nil
+	if m == "" {
+		return "", ErrNoManifest
 	}
-	return "", ErrNoManifest
-}
-
-func readConfig(file string) (map[string]any, error) {
-	cfg := map[string]any{}
-	data, err := os.ReadFile(file)
-	if errors.Is(err, fs.ErrNotExist) {
-		return cfg, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if _, err := toml.Decode(string(data), &cfg); err != nil {
-		return nil, fmt.Errorf("config %s: %w", file, err)
-	}
-	return cfg, nil
-}
-
-// writeConfig sets the manifest key in config.toml, keeping other keys.
-func writeConfig(file, manifestPath string) error {
-	cfg, err := readConfig(file)
-	if err != nil {
-		return err
-	}
-	cfg["manifest"] = manifestPath
-	var b strings.Builder
-	b.WriteString("# skenv configuration, written by `skenv init`\n")
-	if err := toml.NewEncoder(&b).Encode(cfg); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		return err
-	}
-	return manifest.WriteFile(file, []byte(b.String()))
+	return paths.Expand(env.Home, m), nil
 }
 
 // Open loads the manifest and state.
