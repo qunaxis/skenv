@@ -197,11 +197,20 @@ rev  = "` + rev + `" # keep this comment
 ` + extra
 }
 
-// initStandard runs `skenv init` on the standard remotes.
+// cloneSync connects the machine to the manifest repository repo, cloned
+// into dir, and applies it: `skenv clone`, then `skenv sync`. It returns
+// the output of sync.
+func (w *world) cloneSync(repo, dir string) (string, string) {
+	w.t.Helper()
+	w.mustRun(0, "clone", repo, dir)
+	return w.mustRun(0, "sync")
+}
+
+// initStandard connects the machine to the standard remotes.
 func (w *world) initStandard(extraManifest string) string {
 	w.t.Helper()
 	rev := w.standard(extraManifest)
-	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+	w.cloneSync("me/skills", "~/"+ownPath)
 	return rev
 }
 

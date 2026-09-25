@@ -6,7 +6,7 @@ it would stop Claude Code from loading this file.
 - Go CLI, module `github.com/qunaxis/skenv`, binary `cmd/skenv`. Runtime
   dependency: `git` only. No network services, no other executables.
 - Layout: `internal/cli` (flags, integration tests), `internal/engine`
-  (sync, link, doctor, vendor, init, import; `project*.go`: `[project]` in a
+  (sync, link, doctor, vendor, init, clone, use, import; `project*.go`: `[project]` in a
   project repository), `internal/cli/new.go` (`skenv new`), `internal/skenvfile` (the skenv file: `[repo]`, `[environment]` and `[project]`,
   TOML/YAML/JSON), `internal/manifest` (`[environment]` and `[project]`
   parsing and in-place editing), `internal/config` (tool config), `internal/fileformat` (`--format`
@@ -31,8 +31,8 @@ it would stop Claude Code from loading this file.
   `state.json` unless the user passed `--adopt`; never touch
   `~/.claude/skills/synced`; mask credentials in any URL that reaches output.
 - Tests must use a temporary `$HOME` and local bare repositories (see
-  `internal/cli/world_test.go`). Never run `sync`, `link`, `init` or
-  `autostart` against a real home directory from tests or scripts.
+  `internal/cli/world_test.go`). Never run `sync`, `link`, `init`, `clone`,
+  `use` or `autostart` against a real home directory from tests or scripts.
 - Before committing: `make check` (go vet, staticcheck, golangci-lint,
   `go test -race`, commit messages).
 - Commits: Conventional Commits, English, the body explains why. The

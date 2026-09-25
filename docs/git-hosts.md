@@ -11,7 +11,7 @@ the command line: `skenv vendor add gitlab:example-org/team/tools`.
 - [Authentication](#authentication)
 - [The canonical URL](#the-canonical-url)
 - [Errors and fixes](#errors-and-fixes)
-- [`skenv init` without a repository](#skenv-init-without-a-repository)
+- [Starting a manifest with `skenv init`](#starting-a-manifest-with-skenv-init)
 
 ## Forms of `repo`
 
@@ -151,12 +151,14 @@ it is cloned:
 
 ```sh
 cd ~/src
-skenv init https://git.example.com/platform/skills.git
+skenv clone https://git.example.com/platform/skills.git
+skenv sync
 ```
 
-`skenv init` clones it, reads `[environment.hosts]` and syncs the
-`work:...` entries exactly as on the first machine: the same clone URLs, the
-same `.skenv` markers, the same links.
+`skenv clone` clones it and records its manifest; `skenv sync` reads
+`[environment.hosts]` and syncs the `work:...` entries exactly as on the
+first machine: the same clone URLs, the same `.skenv` markers, the same
+links.
 
 A project declares its own hosts under `[project.hosts.<alias>]`, with the
 same keys, for the `repo` values of `[project]`; it never uses the hosts of
@@ -252,13 +254,13 @@ without a dot needs `ssh://` (see [Forms of `repo`](#forms-of-repo)). A
 manifest with this error is rejected as a whole, so `sync` and `doctor`
 stop before changing anything.
 
-**An alias passed to `skenv init`.**
+**An alias passed to `skenv clone`.**
 
 ```text
 repo "work:platform/skills": unknown host prefix "work:" (known: gitlab:, codeberg:); ...; a host declared in the manifest is not known before it is cloned, so pass the full URL
 ```
 
-Pass the URL of the manifest repository: `skenv init
+Pass the URL of the manifest repository: `skenv clone
 https://git.example.com/platform/skills.git`.
 
 **A path the host does not accept.**
@@ -291,9 +293,9 @@ to ssh with the command in the message. A certificate error means the
 server uses a private CA: set `http.sslCAInfo` (see
 [Authentication](#authentication)).
 
-## `skenv init` without a repository
+## Starting a manifest with `skenv init`
 
-`skenv init` without an argument starts a manifest in the current
+`skenv init` starts a manifest in the current
 repository and adds the repository as its first `[[environment.own]]`
 entry, written in the short form of its `origin`:
 

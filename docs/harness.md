@@ -110,12 +110,12 @@ and print a warning.
 
 ### `skenv init` and the harness
 
-`skenv init` without `<owner/repo>` starts a manifest (`[environment]`) and
+`skenv init` starts a manifest (`[environment]`) and
 does not set up `[repo]`, so it has no `--ci`: run `skenv repo init`
 afterwards, which detects the CI system as above. In a repository without
 an `origin` yet, `skenv init --remote <repo>` names the future remote for
 the manifest's own entry (see
-[Git hosts](git-hosts.md#skenv-init-without-a-repository)); `skenv repo init`
+[Git hosts](git-hosts.md#starting-a-manifest-with-skenv-init)); `skenv repo init`
 then has no origin to detect from, so pass `--ci gitlab` for GitLab.
 
 ## Managed files

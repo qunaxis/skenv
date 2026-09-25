@@ -31,7 +31,12 @@ Show
 Type "# One skenv.toml in your skills repository. Bootstrap a machine:"
 Enter
 Sleep 500ms
-Type "skenv init example-org/agent-skills"
+Type "skenv clone example-org/agent-skills"
+Sleep 300ms
+Enter
+Wait /\$$/
+Sleep 3s
+Type "skenv sync"
 Sleep 300ms
 Enter
 Wait /\$$/

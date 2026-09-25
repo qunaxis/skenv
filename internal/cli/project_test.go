@@ -394,7 +394,7 @@ repo   = "me/skills"
 skills = ["beta"]
 rev    = "` + strings.Repeat("0", 40) + `"
 `)
-	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+	w.cloneSync("me/skills", "~/"+ownPath)
 	if w.exists(ownPath+"/.agents") || w.exists(ownPath+"/.claude") {
 		t.Error("the user-level sync read [project] of an own repository")
 	}

@@ -110,7 +110,7 @@ path = "~/src/skills"
 `,
 		"skills/alpha/SKILL.md": skillMD("alpha", ""),
 	}, "feat: manifest")
-	w.mustRun(0, "init", "me/skills", "--path", "~/src/skills")
+	w.cloneSync("me/skills", "~/src/skills")
 
 	// An own repository of which only a and b are linked.
 	w.push("me/mine", map[string]string{
@@ -289,7 +289,7 @@ func TestInitImport(t *testing.T) {
 	w.mustRun(0, "doctor")
 
 	for args, want := range map[string]string{
-		"init --import me/skills":                           "--import starts a new manifest",
+		"init --import me/skills":                           "init: takes no <repo>",
 		"import --manifest " + w.path("nowhere/skenv.toml"): "nowhere/skenv.toml",
 	} {
 		if _, errOut := w.mustRun(2, strings.Fields(args)...); !strings.Contains(errOut, want) {
@@ -361,7 +361,7 @@ func TestImportLockVariants(t *testing.T) {
 	w.git(tools, "checkout", "--quiet", "main")
 
 	w.push("me/skills", map[string]string{"skenv.toml": "[environment]\n"}, "feat: manifest")
-	w.mustRun(0, "init", "me/skills", "--path", "~/src/skills")
+	w.cloneSync("me/skills", "~/src/skills")
 
 	w.installed("rooty", map[string]string{"SKILL.md": skillMD("rooty", "v1")})
 	w.installed("tagged", map[string]string{"SKILL.md": skillMD("tagged", "side")})
@@ -423,7 +423,7 @@ func TestImportSearchesFromUpdatedAt(t *testing.T) {
 	w.push("ext/tools", map[string]string{"tools/x/SKILL.md": skillMD("x", "v1")}, "revert: x v1")
 	tools := filepath.Join(w.work, "ext__tools")
 	w.push("me/skills", map[string]string{"skenv.toml": "[environment]\n"}, "feat: manifest")
-	w.mustRun(0, "init", "me/skills", "--path", "~/src/skills")
+	w.cloneSync("me/skills", "~/src/skills")
 
 	w.installed("x", map[string]string{"SKILL.md": skillMD("x", "v1")})
 	entry := githubEntry("ext/tools", "tools/x/SKILL.md", w.git(tools, "rev-parse", installed+":tools/x"))

@@ -1,5 +1,5 @@
 // Package engine implements the skenv commands: sync, link, doctor, vendor,
-// init and import.
+// init, clone, use and import.
 package engine
 
 import (
@@ -17,6 +17,7 @@ import (
 	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/manifest"
 	"github.com/qunaxis/skenv/internal/paths"
+	"github.com/qunaxis/skenv/internal/skenvfile"
 	"github.com/qunaxis/skenv/internal/state"
 )
 
@@ -119,8 +120,9 @@ type Engine struct {
 
 // ErrNoManifest means no manifest location is configured. skenv does not
 // guess one: the skills repository can live anywhere and have any name.
-var ErrNoManifest = errors.New("no manifest configured: run `skenv init <owner/repo>` to clone your skills repository " +
-	"and record its skenv.toml, or pass --manifest FILE (or set $SKENV_MANIFEST)")
+var ErrNoManifest = errors.New("no manifest configured: start one with `skenv init` in a git repository, " +
+	"connect an existing one with `skenv clone <repo>` or, for a checkout you already have, `skenv use <path>`; " +
+	"or pass --manifest FILE (or set $SKENV_MANIFEST)")
 
 // ResolveManifest picks the manifest, the skenv file with [environment]:
 // --manifest, $SKENV_MANIFEST, then `manifest` in the config file
@@ -132,9 +134,31 @@ func ResolveManifest(env Env, flag string) (string, error) {
 		return "", err
 	}
 	if m == "" {
-		return "", ErrNoManifest
+		return "", noManifest(env)
 	}
 	return manifest.Locate(paths.Expand(env.Home, m))
+}
+
+// noManifest is ErrNoManifest, pointing at `skenv use .` when the git
+// repository of the current directory holds a manifest: the likely case
+// of a checkout that was never recorded.
+func noManifest(env Env) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ErrNoManifest
+	}
+	root, err := env.Git.Run(context.Background(), cwd, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return ErrNoManifest
+	}
+	file, err := skenvfile.Find(root)
+	if err != nil || file == "" {
+		return ErrNoManifest
+	}
+	if doc, err := skenvfile.Read(file); err != nil || !doc.Has(skenvfile.Environment) {
+		return ErrNoManifest
+	}
+	return fmt.Errorf("%w\nthis repository has a manifest (%s): run `skenv use .` to use it on this machine", ErrNoManifest, filepath.Base(file))
 }
 
 // Open loads the manifest and state.

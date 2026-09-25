@@ -25,12 +25,12 @@ skenv init --import
 skenv doctor
 ```
 
-`skenv init --import` does what `skenv init` without `<owner/repo>` does
+`skenv init --import` does what `skenv init` does
 (adds `[environment]` to the skenv file of the repository or creates
 `skenv.toml`, and records it as your manifest), imports the installed skills
 into it, and runs `skenv sync --adopt`. The repository itself becomes an own
 repository, written from its `origin` as with `skenv init` (see
-[Git hosts](git-hosts.md#skenv-init-without-a-repository)). Commit the
+[Git hosts](git-hosts.md#starting-a-manifest-with-skenv-init)). Commit the
 manifest afterwards:
 
 ```sh
@@ -40,8 +40,9 @@ git -C ~/src/<skills-repo> commit -m "chore(manifest): import installed skills"
 
 ## Step by step
 
-With a manifest already configured (`skenv init <owner/repo>`, `--manifest`
-or `$SKENV_MANIFEST`), the same happens in steps you can inspect:
+With a manifest already configured (`skenv clone <repo>`,
+`skenv use <path>`, `--manifest` or `$SKENV_MANIFEST`), the same happens in
+steps you can inspect:
 
 ```sh
 # 1. Preview: the manifest diff and the lock entries that would be removed.

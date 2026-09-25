@@ -79,12 +79,12 @@ func TestDeclaredHost(t *testing.T) {
 		"skills/alpha/SKILL.md": skillMD("alpha", ""),
 	}, "feat: initial")
 
-	// The manifest is not cloned yet, so init takes the full URL.
-	if _, errOut := w.mustRun(2, "init", "work:team/skills"); !strings.Contains(errOut, `unknown host prefix "work:"`) ||
+	// The manifest is not cloned yet, so clone takes the full URL.
+	if _, errOut := w.mustRun(2, "clone", "work:team/skills"); !strings.Contains(errOut, `unknown host prefix "work:"`) ||
 		!strings.Contains(errOut, "pass the full URL") {
-		t.Errorf("init with an alias:\n%s", errOut)
+		t.Errorf("clone with an alias:\n%s", errOut)
 	}
-	w.mustRun(0, "init", "https://git.example.com/team/skills.git", "--path", "~/"+ownPath)
+	w.cloneSync("https://git.example.com/team/skills.git", "~/"+ownPath)
 	first := w.machine()
 	if !strings.Contains(first.vendored, "from-subgroup") {
 		t.Errorf("vendored from the wrong repository:\n%s", first.vendored)
@@ -117,7 +117,7 @@ func TestDeclaredHost(t *testing.T) {
 
 	// A second machine: a fresh $HOME, the same manifest.
 	w2 := w.secondMachine()
-	w2.mustRun(0, "init", "https://git.example.com/team/skills.git", "--path", "~/"+ownPath)
+	w2.cloneSync("https://git.example.com/team/skills.git", "~/"+ownPath)
 	second := w2.machine()
 	if first.marker != second.marker || first.vendored != second.vendored || !slices.Equal(first.cache, second.cache) {
 		t.Errorf("machines differ:\nfirst:  %+v\nsecond: %+v", first, second)
@@ -176,7 +176,7 @@ func TestInitStartsManifestOnOtherHosts(t *testing.T) {
 			}
 			// The hint for the next machine names the same repository.
 			repoValue := strings.Trim(strings.TrimPrefix(want, "repo = "), `"`)
-			if !strings.Contains(out, "on another machine: skenv init "+repoValue+"\n") {
+			if !strings.Contains(out, "on another machine: skenv clone "+repoValue+"\n") {
 				t.Errorf("init hint:\n%s", out)
 			}
 		})
@@ -205,7 +205,7 @@ func TestMarkerIdentity(t *testing.T) {
 		"skenv.toml":            selfHosted(rev),
 		"skills/alpha/SKILL.md": skillMD("alpha", ""),
 	}, "feat: initial")
-	w.mustRun(0, "init", "https://git.example.com/team/skills.git", "--path", "~/"+ownPath)
+	w.cloneSync("https://git.example.com/team/skills.git", "~/"+ownPath)
 	manifest := w.path(ownPath + "/skenv.toml")
 	text := readFile(t, manifest)
 
@@ -263,7 +263,7 @@ func TestInitRemote(t *testing.T) {
 	}{
 		{[]string{"--remote", "./elsewhere"}, "not a local path"},
 		{[]string{"--remote", "work:team/skills"}, `unknown host prefix "work:"`},
-		{[]string{"example-org/skills", "--remote", "example-org/skills"}, "--remote is for starting a manifest without <repo>"},
+		{[]string{"example-org/skills", "--remote", "example-org/skills"}, "init: takes no <repo>"},
 	} {
 		if _, errOut := w.mustRun(2, append([]string{"init", "--dir", repo}, c.args...)...); !strings.Contains(errOut, c.want) {
 			t.Errorf("%v: %s", c.args, errOut)

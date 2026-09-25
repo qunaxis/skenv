@@ -293,7 +293,7 @@ func TestImportGitLabSource(t *testing.T) {
 	rev := w.push("gitlab.com/grp/sub/tools", under("notes", notesV1), "feat: notes")
 	w.push("gitlab.com/grp/sub/tools", map[string]string{"notes/SKILL.md": skillMD("notes", "v2")}, "feat: notes v2")
 	w.push("me/skills", map[string]string{"skenv.toml": "[environment]\n"}, "feat: manifest")
-	w.mustRun(0, "init", "me/skills", "--path", "~/src/skills")
+	w.cloneSync("me/skills", "~/src/skills")
 	w.installed("notes", map[string]string{"SKILL.md": skillMD("notes", "edited")})
 	w.writeLock(map[string]lockEntry{"notes": {
 		"source": "https://gitlab.com/grp/sub/tools.git", "sourceType": "gitlab", "sourceUrl": "https://gitlab.com/grp/sub/tools.git",

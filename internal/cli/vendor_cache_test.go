@@ -136,7 +136,7 @@ func TestVendorCacheHidesCredentials(t *testing.T) {
 	revA := w.pushTool("host-a/x/skills", "from-host-a")
 	w.pushTool("host-b/x/skills", "from-host-b")
 	rev := w.standard(vendorEntry("tool", repo, revA))
-	out, errOut := w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+	out, errOut := w.cloneSync("me/skills", "~/"+ownPath)
 	all := out + errOut
 	setRev := func(r string) {
 		w.push("me/skills", map[string]string{"skenv.toml": manifestText(rev, vendorEntry("tool", repo, r))}, "chore: pin")

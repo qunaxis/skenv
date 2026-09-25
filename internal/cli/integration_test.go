@@ -42,9 +42,9 @@ func assertStandardLayout(t *testing.T, w *world) {
 	}
 }
 
-// T2 / acceptance: `skenv init` on a clean $HOME clones the manifest
-// repository and brings the machine to doctor = 0.
-func TestInitOnCleanHome(t *testing.T) {
+// T2 / acceptance: `skenv clone` and `skenv sync` on a clean $HOME bring
+// the machine to doctor = 0.
+func TestCloneOnCleanHome(t *testing.T) {
 	w := newWorld(t)
 	rev := w.initStandard("")
 	cfg := readFile(t, w.path(".config/skenv/config.toml"))
@@ -64,10 +64,10 @@ func TestInitOnCleanHome(t *testing.T) {
 	if !strings.HasPrefix(out, "ok: 3 skills") {
 		t.Errorf("doctor output = %q", out)
 	}
-	// Already cloned: init only records the path.
-	out, _ = w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
-	if !strings.Contains(out, "already cloned") {
-		t.Errorf("second init output = %q", out)
+	// Already cloned: clone uses the working copy as it is.
+	out, _ = w.mustRun(0, "clone", "me/skills", "~/"+ownPath)
+	if !strings.Contains(out, "~/"+ownPath+" is a working copy of me/skills already; using it") || strings.Contains(out, "cloned") {
+		t.Errorf("second clone output = %q", out)
 	}
 }
 
@@ -187,9 +187,10 @@ func TestConflictWithUnmanagedPath(t *testing.T) {
 	manual := w.path(".claude/skills/alpha/SKILL.md")
 	writeFile(t, manual, "hand-installed\n")
 
-	code, _, errOut := w.run("init", "me/skills", "--path", "~/"+ownPath)
+	w.mustRun(0, "clone", "me/skills", "~/"+ownPath)
+	code, _, errOut := w.run("sync")
 	if code != 1 || !strings.Contains(errOut, "conflict: ~/.claude/skills/alpha") || !strings.Contains(errOut, "--adopt") {
-		t.Fatalf("init with conflict: exit %d, stderr:\n%s", code, errOut)
+		t.Fatalf("sync with conflict: exit %d, stderr:\n%s", code, errOut)
 	}
 	if readFile(t, manual) != "hand-installed\n" {
 		t.Fatal("unmanaged path was modified without --adopt")
@@ -271,7 +272,7 @@ repo = "ext/tools"
 path = "tools/other"
 rev  = "`+rev+`"
 `), "PLACEHOLDER", rev)}, "chore: fix manifest")
-	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+	w.cloneSync("me/skills", "~/"+ownPath)
 	w.mustRun(0, "doctor")
 	own := w.path(ownPath)
 	newRev := w.push("ext/tools", map[string]string{"tools/archify/SKILL.md": skillMD("archify", "v2")}, "fix: v2")
@@ -382,9 +383,9 @@ func TestVendorAddAndRemove(t *testing.T) {
 func TestDryRunChangesNothing(t *testing.T) {
 	w := newWorld(t)
 	w.standard("")
-	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath, "--dry-run")
+	w.mustRun(0, "clone", "me/skills", "~/"+ownPath, "--dry-run")
 	if w.exists(ownPath) || w.exists(".config/skenv/config.toml") {
-		t.Fatal("init --dry-run changed the machine")
+		t.Fatal("clone --dry-run changed the machine")
 	}
 	w.git(w.home, "clone", "--quiet", "https://github.com/me/skills", w.path(ownPath))
 	manifest := "--manifest=~/" + ownPath + "/skenv.toml"
@@ -409,7 +410,7 @@ func TestManifestFromEnvironment(t *testing.T) {
 	w.standard("")
 	w.git(w.home, "clone", "--quiet", "https://github.com/me/skills", w.path(ownPath))
 	_, errOut := w.mustRun(2, "doctor")
-	if !strings.Contains(errOut, "skenv init") {
+	if !strings.Contains(errOut, "skenv use <path>") {
 		t.Errorf("missing manifest error must say how to fix it: %s", errOut)
 	}
 	t.Setenv("SKENV_MANIFEST", "~/"+ownPath+"/skenv.toml")
@@ -422,8 +423,9 @@ func TestNoManifestConfigured(t *testing.T) {
 	w := newWorld(t)
 	for _, args := range [][]string{{"doctor"}, {"sync"}, {"vendor", "update", "archify"}} {
 		_, errOut := w.mustRun(2, args...)
-		if !strings.Contains(errOut, "no manifest configured") || !strings.Contains(errOut, "skenv init <owner/repo>") ||
-			!strings.Contains(errOut, "--manifest") {
+		if !strings.Contains(errOut, "no manifest configured") || !strings.Contains(errOut, "skenv init") ||
+			!strings.Contains(errOut, "skenv clone <repo>") || !strings.Contains(errOut, "skenv use <path>") ||
+			!strings.Contains(errOut, "--manifest") || strings.Contains(errOut, "skenv use .") {
 			t.Errorf("skenv %s: missing manifest error must say how to fix it: %s", strings.Join(args, " "), errOut)
 		}
 	}
@@ -432,17 +434,21 @@ func TestNoManifestConfigured(t *testing.T) {
 	}
 }
 
-// Without --path, init clones into ./<repo> of the current directory, like
-// git clone, and records the absolute manifest path.
-func TestInitClonesIntoCurrentDirectory(t *testing.T) {
+// Without <dir>, clone clones into ./<repo> of the current directory, like
+// git clone, and records the absolute manifest path. It does not sync.
+func TestCloneIntoCurrentDirectory(t *testing.T) {
 	w := newWorld(t)
 	w.standard("")
 	mustMkdir(t, w.path("src"))
 	t.Chdir(w.path("src"))
-	out, _ := w.mustRun(0, "init", "me/skills")
-	if !strings.Contains(out, "cloned me/skills into ~/"+ownPath) {
-		t.Errorf("init output = %q", out)
+	out, _ := w.mustRun(0, "clone", "me/skills")
+	if !strings.Contains(out, "cloned me/skills into ~/"+ownPath) || !strings.Contains(out, "skenv sync --dry-run") {
+		t.Errorf("clone output = %q", out)
 	}
+	if w.exists(".agents/skills/alpha") || w.exists(".local/state/skenv/state.json") {
+		t.Error("clone synced")
+	}
+	w.mustRun(0, "sync")
 	cfg := readFile(t, w.path(".config/skenv/config.toml"))
 	if !strings.Contains(cfg, `manifest = "~/`+ownPath+`/skenv.toml"`) {
 		t.Fatalf("config.toml does not record the manifest:\n%s", cfg)
@@ -453,10 +459,10 @@ func TestInitClonesIntoCurrentDirectory(t *testing.T) {
 	}
 	assertStandardLayout(t, w)
 	w.mustRun(0, "doctor")
-	// Already cloned: a second init from the same directory only records it.
-	out, _ = w.mustRun(0, "init", "me/skills")
-	if !strings.Contains(out, "already cloned") {
-		t.Errorf("second init output = %q", out)
+	// Already cloned: a second clone from the same directory only records it.
+	out, _ = w.mustRun(0, "clone", "me/skills")
+	if !strings.Contains(out, "already; using it") {
+		t.Errorf("second clone output = %q", out)
 	}
 }
 
@@ -479,7 +485,7 @@ rev  = "` + rev + `"
 `,
 		"skills/gamma/SKILL.md": skillMD("gamma", ""),
 	}, "feat: initial")
-	w.mustRun(0, "init", "acme/agent-kit", "--path", "~/"+kit)
+	w.cloneSync("acme/agent-kit", "~/"+kit)
 	if cfg := readFile(t, w.path(".config/skenv/config.toml")); !strings.Contains(cfg, `manifest = "~/`+kit+`/skenv.toml"`) {
 		t.Fatalf("config.toml does not record the manifest:\n%s", cfg)
 	}
@@ -580,7 +586,7 @@ func TestConcurrentRunIsRejected(t *testing.T) {
 func TestDoctorWarnsAboutOldHarness(t *testing.T) {
 	w := newWorld(t)
 	w.standard("\n[repo]\nharness = \"0.1.0\"\nvisibility = \"private\"\n")
-	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+	w.cloneSync("me/skills", "~/"+ownPath)
 	_, errOut := w.mustRun(0, "doctor")
 	if !strings.Contains(errOut, "harness 0.1.0 is older than "+harness.Latest) {
 		t.Errorf("stderr = %q", errOut)
@@ -603,7 +609,7 @@ func TestLayoutIgnore(t *testing.T) {
 	writeFile(t, w.path(".agents/skills/peon-ping-use/SKILL.md"), "brew\n")
 	writeFile(t, w.path(".claude/skills/manual/SKILL.md"), "hand\n")
 
-	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+	w.cloneSync("me/skills", "~/"+ownPath)
 	out, _ := w.mustRun(1, "doctor", "--json")
 	if strings.Contains(out, "peon-ping") || !strings.Contains(out, "manual") {
 		t.Errorf("doctor must hide ignored paths only:\n%s", out)
@@ -640,21 +646,21 @@ func TestConfigFormats(t *testing.T) {
 			}
 			writeFile(t, w.path(".config/skenv/"+name), content)
 			w.mustRun(0, "doctor")
-			w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+			w.mustRun(0, "clone", "me/skills", "~/"+ownPath)
 			if w.exists(".config/skenv/config.toml") {
-				t.Error("init created config.toml next to " + name)
+				t.Error("clone created config.toml next to " + name)
 			}
 			w.mustRun(0, "sync", "--quiet")
 
 			writeFile(t, w.path(".config/skenv/config.toml"), "manifest = \"/elsewhere/skenv.toml\"\n")
-			for _, args := range [][]string{{"doctor"}, {"init", "me/skills", "--path", "~/" + ownPath, "--dry-run"}, {"init", "me/skills", "--path", "~/other"}} {
+			for _, args := range [][]string{{"doctor"}, {"clone", "me/skills", "~/" + ownPath, "--dry-run"}, {"clone", "me/skills", "~/other"}, {"use", "~/" + ownPath}} {
 				_, errOut := w.mustRun(2, args...)
 				if !strings.Contains(errOut, "several config files") {
 					t.Errorf("skenv %s with two config files: %s", strings.Join(args, " "), errOut)
 				}
 			}
 			if w.exists("other") {
-				t.Error("init cloned although the config cannot be updated")
+				t.Error("clone cloned although the config cannot be updated")
 			}
 			// --manifest wins over the config files and does not read them.
 			w.mustRun(0, "doctor", "--manifest", "~/"+ownPath+"/skenv.toml")
@@ -706,7 +712,7 @@ environment:
 			w := newWorld(t)
 			rev := w.standard("")
 			w.push("me/skills", map[string]string{"skenv.toml": "", name: content(rev)}, "chore: "+name)
-			w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+			w.cloneSync("me/skills", "~/"+ownPath)
 			assertStandardLayout(t, w)
 			w.mustRun(0, "doctor", "--manifest", "~/"+ownPath)
 			file := w.path(ownPath + "/" + name)
@@ -733,9 +739,9 @@ func TestOldManifestIsRejected(t *testing.T) {
 	w := newWorld(t)
 	w.standard("")
 	w.push("me/skills", map[string]string{"env.toml": "[[own]]\nrepo = \"me/skills\"\npath = \"~/x\"\n", "skenv.toml": ""}, "chore: old layout")
-	_, errOut := w.mustRun(2, "init", "me/skills", "--path", "~/"+ownPath)
+	_, errOut := w.mustRun(2, "clone", "me/skills", "~/"+ownPath)
 	if !strings.Contains(errOut, "env.toml is no longer read") || !strings.Contains(errOut, "[environment]") {
-		t.Errorf("init: %s", errOut)
+		t.Errorf("clone: %s", errOut)
 	}
 	_, errOut = w.mustRun(2, "doctor", "--manifest", "~/"+ownPath+"/env.toml")
 	if !strings.Contains(errOut, "no longer read") {

@@ -210,7 +210,7 @@ func Locate(path string) (string, error) {
 func Load(file string) (*Manifest, error) {
 	data, err := os.ReadFile(file)
 	if err != nil {
-		return nil, fmt.Errorf("read manifest %s: %w (set --manifest, $SKENV_MANIFEST or run `skenv init`)", file, err)
+		return nil, fmt.Errorf("read manifest %s: %w (set --manifest, $SKENV_MANIFEST or run `skenv use <path>`)", file, err)
 	}
 	m, err := Parse(data, filepath.Ext(file))
 	if err != nil {

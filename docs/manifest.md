@@ -18,20 +18,22 @@ and should reach everyone who clones it are
 ## Where the manifest is found
 
 Found via `--manifest`, then `$SKENV_MANIFEST`, then `manifest` in the skenv
-config file (written by `skenv init`). Each names the skenv file or the
-directory that holds it. The config file is
+config file (written by `skenv init`, `skenv clone` or `skenv use`). Each
+names the skenv file or the directory that holds it. The config file is
 `~/.config/skenv/config.toml`, or `config.yaml`, `config.yml` or `config.json`
 if you prefer; only one of them may exist. Every setting follows the same
 order: flag, `SKENV_<KEY>` environment variable, config file, default. There is no default
 location: when none of them is set, commands that need the manifest stop
-with an error that suggests `skenv init <owner/repo>` or `--manifest`.
+with an error that suggests `skenv init`, `skenv clone <repo>`,
+`skenv use <path>` or `--manifest` (`skenv use .` inside a repository that
+holds a manifest).
 
 ## Format
 
 The manifest is the `[environment]` section of the skenv file at the root
 of your skills repository (`skenv.toml`, or `skenv.yaml`, `skenv.yml`,
-`skenv.json`; see [the skenv file](skenv-file.md)). `skenv init` without
-`<owner/repo>` starts one in the current repository (see
+`skenv.json`; see [the skenv file](skenv-file.md)). `skenv init` starts
+one in the current repository (see
 [Creating the file](skenv-file.md#creating-the-file)). In TOML:
 
 ```toml

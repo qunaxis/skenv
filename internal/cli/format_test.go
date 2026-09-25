@@ -170,11 +170,11 @@ func TestWritesKeepFormat(t *testing.T) {
 				keep  []string
 				parse func([]byte, string) error
 			}{
-				{"init records the manifest", func() {
-					w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+				{"clone records the manifest", func() {
+					w.cloneSync("me/skills", "~/"+ownPath)
 				}, cfgDir, "config", cfgKeep, manifestIs(manifestFile)},
-				{"init --format of the existing config", func() {
-					w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath, "--format", fileformat.Of("x."+format))
+				{"use with --format of the existing config", func() {
+					w.mustRun(0, "use", "~/"+ownPath, "--format", fileformat.Of("x."+format))
 				}, cfgDir, "config", cfgKeep, manifestIs(manifestFile)},
 				{"vendor add", func() {
 					w.mustRun(0, "vendor", "add", "ext/tools", "--path", "tools/other")
@@ -351,13 +351,13 @@ func TestRepoInitFormat(t *testing.T) {
 	}
 }
 
-// Acceptance (#20): init <owner/repo> --format json without a config
-// creates config.json, and later runs keep it; --format that disagrees
-// with the config exits 2 before anything is cloned.
-func TestInitConfigFormat(t *testing.T) {
+// Acceptance (#20): clone <repo> --format json without a config creates
+// config.json, and later runs keep it; --format that disagrees with the
+// config exits 2 before anything is cloned.
+func TestCloneConfigFormat(t *testing.T) {
 	w := newWorld(t)
 	w.standard("")
-	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath, "--format", "json")
+	w.mustRun(0, "clone", "me/skills", "~/"+ownPath, "--format", "json")
 	cfgDir := config.Dir(w.home)
 	manifestIs := func(data []byte, ext string) error {
 		if !strings.Contains(string(data), `"manifest": "~/`+ownPath+`/skenv.toml"`) {
@@ -366,13 +366,14 @@ func TestInitConfigFormat(t *testing.T) {
 		return nil
 	}
 	assertKept(t, cfgDir, "config", "json", nil, manifestIs)
-	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+	w.cloneSync("me/skills", "~/"+ownPath)
 	assertKept(t, cfgDir, "config", "json", nil, manifestIs)
 
 	before := snapshot(t, w.home)
 	for _, args := range [][]string{
-		{"init", "me/skills", "--path", "~/other", "--format", "toml"},
-		{"init", "me/skills", "--path", "~/other", "--format", "yaml", "--dry-run"},
+		{"clone", "me/skills", "~/other", "--format", "toml"},
+		{"clone", "me/skills", "~/other", "--format", "yaml", "--dry-run"},
+		{"use", "~/" + ownPath, "--format", "toml"},
 	} {
 		_, errOut := w.mustRun(2, args...)
 		if !strings.Contains(errOut, "config.json exists and is JSON; --format") {
@@ -382,7 +383,7 @@ func TestInitConfigFormat(t *testing.T) {
 	assertUnchanged(t, before, w.home)
 }
 
-// Acceptance (#21): init without <owner/repo> starts a manifest in the
+// Acceptance (#21): init starts a manifest in the
 // current repository and records it; doctor then passes with nothing to
 // sync.
 func TestInitStartsManifest(t *testing.T) {
@@ -419,7 +420,7 @@ func TestInitStartsManifest(t *testing.T) {
 
 			// A second run refuses: the file has [environment].
 			before = snapshot(t, w.home)
-			if _, errOut := w.mustRun(2, "init", "--dir", repo); !strings.Contains(errOut, "has [environment] already") {
+			if _, errOut := w.mustRun(2, "init", "--dir", repo); !strings.Contains(errOut, "has [environment] already") || !strings.Contains(errOut, "skenv use ") {
 				t.Errorf("second init: %s", errOut)
 			}
 			assertUnchanged(t, before, w.home)
@@ -481,8 +482,8 @@ func TestInitStartsManifestInExistingFile(t *testing.T) {
 		"init --dir " + pub: `visibility = "public"`,
 		"init --dir " + w.path("yaml") + " --format json": "skenv.yaml exists and is YAML; --format json does not convert it",
 		"init --dir " + w.path(".config"):                 "is not inside a git repository",
-		"init --path x":                                   "--path and --adopt need <repo>",
-		"init me/skills --dir " + repo:                    "--dir is for starting a manifest",
+		"init --path x":                                   "unknown flag: --path",
+		"init me/skills --dir " + repo:                    "skenv clone <repo>",
 	} {
 		if _, errOut := w.mustRun(2, strings.Fields(args)...); !strings.Contains(errOut, want) {
 			t.Errorf("skenv %s: %s", args, errOut)

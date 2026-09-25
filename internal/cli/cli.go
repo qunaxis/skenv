@@ -85,11 +85,11 @@ First steps, by situation:
 - No manifest yet: ` + "`skenv init`" + ` in a git repository starts one.
 - Skills already installed (npx skills, copies): ` + "`skenv init --import`" + `
   starts one and takes them over.
-- Another machine: ` + "`skenv init <repo>`" + ` clones your manifest repository
-  and syncs it.
+- Another machine: ` + "`skenv clone <repo>`" + ` clones your manifest repository
+  and uses it; ` + "`skenv use .`" + ` in a checkout you already have.
 
-Then ` + "`skenv vendor add <repo>`" + ` installs a third-party skill, ` + "`skenv sync`" + `
-applies the manifest and ` + "`skenv doctor`" + ` checks the machine.
+Then ` + "`skenv sync`" + ` applies the manifest, ` + "`skenv vendor add <repo>`" + ` installs a
+third-party skill and ` + "`skenv doctor`" + ` checks the machine.
 
 In a project repository whose skenv file has a [project] section, sync and
 doctor work on the skills of the project instead. The manifest location and
@@ -99,10 +99,10 @@ the config file: https://qunaxis.github.io/skenv/configuration and
 Exit codes: 0 success, 1 problems found, 2 error. Warnings do not change
 the exit code; "skenv doctor" exits 0 only when the machine matches.`,
 		Example: `# Set up a machine from the manifest repository
-skenv init example-org/skills
-# Compare the machine with the manifest, then bring it in line
-skenv doctor
-skenv sync`,
+skenv clone example-org/skills
+skenv sync
+# Check the machine
+skenv doctor`,
 		Version:           buildinfo.Get().String(),
 		SilenceErrors:     true,
 		SilenceUsage:      true,
@@ -122,7 +122,7 @@ skenv sync`,
 		&cobra.Group{ID: groupAuthor, Title: "Write skills:"},
 		&cobra.Group{ID: groupMachine, Title: "Machine:"},
 	)
-	addTo(root, groupStart, initCmd(a), importCmd(a))
+	addTo(root, groupStart, initCmd(a), cloneCmd(a), useCmd(a), importCmd(a))
 	addTo(root, groupEveryday, syncCmd(a, "sync"), doctorCmd(a), vendorCmd(a), syncCmd(a, "link"))
 	addTo(root, groupAuthor, newCmd(a), lintCmd(a), repoCmd(a))
 	addTo(root, groupMachine, autostartCmd(a), schemaCmd(a), &cobra.Command{
@@ -331,98 +331,167 @@ func dryRunFlag(fs *pflag.FlagSet, p *bool, usage string) {
 }
 
 func initCmd(a *app) *cobra.Command {
-	var o engine.Options
-	var dir, here, format, remote string
-	var imp bool
+	var dryRun, imp bool
+	var dir, format, remote string
 	c := &cobra.Command{
-		Use:   "init [<repo>]",
-		Short: "Clone the manifest repository and sync, or start a manifest",
-		Long: `With <repo>: clone the manifest repository into --path (default
-./<repo> in the current directory, like git clone), record its skenv file as
-"manifest" in the config file (~/.config/skenv/config.toml unless a YAML or
-JSON one exists; a new one is YAML or JSON with --format) and run sync. If the
-repository is already cloned, only the path is recorded. <repo> is
-owner/repo on github.com, gitlab:group/sub/repo, codeberg:owner/repo or a
-full git URL; hosts declared in the manifest are not known before it is
-cloned, so a self-hosted repository takes its URL.
-
-Without <repo>: start a manifest in the git repository of the current
-directory (or --dir). Its skenv file gets an [environment] section with a
-commented skeleton, or skenv.toml is created with one (skenv.yaml or
-skenv.json with --format); the repository itself becomes its first own
-repository: owner/repo for an origin on github.com, gitlab:... on
-gitlab.com, codeberg:... on codeberg.org, the URL (without credentials) on
-any other host; a local origin is left out. A repository without an origin
-yet names its future remote with --remote (owner/repo, gitlab:group/repo,
-codeberg:owner/repo or a full URL), written the same way; with an origin,
---remote is an error. It does not set up [repo]: "skenv repo init" does, and
-picks the CI system from the host of origin. The file is recorded
-as "manifest" in the config file (a new one in the same format), and nothing
-is synced. It refuses when the file has [environment] already or its [repo]
+		Use:   "init",
+		Short: "Start a manifest in a git repository",
+		Long: `Start a manifest in the git repository of the current directory (or --dir).
+Its skenv file gets an [environment] section with a commented skeleton, or
+skenv.toml is created with one (skenv.yaml or skenv.json with --format); the
+repository itself becomes its first own repository: owner/repo for an
+origin on github.com, gitlab:... on gitlab.com, codeberg:... on
+codeberg.org, the URL (without credentials) on any other host; a local
+origin is left out. A repository without an origin yet names its future
+remote with --remote (owner/repo, gitlab:group/repo, codeberg:owner/repo or
+a full URL), written the same way; with an origin, --remote is an error. It
+does not set up [repo]: "skenv repo init" does, and picks the CI system from
+the host of origin. The file is recorded as "manifest" in the config file
+(~/.config/skenv/config.toml unless a YAML or JSON one exists; a new one in
+the format of the skenv file), and nothing is synced. It refuses when the
+file has [environment] already (` + "`skenv use .`" + ` uses that one) or its [repo]
 is public.
 
-With --import (no <owner/repo>): start the manifest, import the skills
-already installed on this machine into it (see "skenv import") and run
-"skenv sync --adopt": one command to adopt an existing setup.
+To use an existing manifest on this machine: ` + "`skenv clone <repo>`" + `, or
+` + "`skenv use <path>`" + ` for a checkout you already have.
+
+With --import: start the manifest, import the skills already installed on
+this machine into it (see "skenv import") and run ` + "`skenv sync --adopt`" + `: one
+command to adopt an existing setup.
 
 An existing file keeps its format: --format that disagrees with it is an
 error (exit code 2), and nothing is written.
 
-- Reads: with <repo>, the repository; without, the git repository of the
-  current directory (or --dir), its origin and skenv file; with --import,
-  the installed skills and the lock of the skills CLI.
-- Changes: the skenv file and "manifest" in the config file; with <repo>,
-  the new working copy and what sync changes; with --import, the lock of the
-  skills CLI and what ` + "`skenv sync --adopt`" + ` changes.
-- Network: with <repo>, git clone and the fetches of sync; without, none;
-  --import fetches the repositories of the installed skills.
-- Conflicts: sync reports an unmanaged path in the way as an error; --adopt
-  and --import move it to ~/.local/state/skenv/backup/<ts>/ and replace it.
-- Preview: --dry-run clones nothing, so with <repo> it cannot show what sync
-  would change.
-- Next: "skenv doctor"; commit and push the skenv file so that your other
-  machines get it.`,
-		Example: `# Clone the manifest repository into ./skills, record it and sync
-skenv init example-org/skills
-# Start a manifest in the git repository of the current directory
+- Reads: the git repository of the current directory (or --dir), its origin
+  and skenv file; with --import, the installed skills and the lock of the
+  skills CLI.
+- Changes: the skenv file and "manifest" in the config file; with --import,
+  the lock of the skills CLI and what ` + "`skenv sync --adopt`" + ` changes.
+- Network: none; --import fetches the repositories of the installed skills.
+- Conflicts: with --import, installed copies are moved to
+  ~/.local/state/skenv/backup/<ts>/ and replaced.
+- Preview: --dry-run writes nothing except, with --import, the clone cache.
+- Next: commit and push the skenv file, then ` + "`skenv clone <repo>`" + ` on your other
+  machines.`,
+		Example: `# Start a manifest in the git repository of the current directory
 skenv init
 # Start one with the skills already installed here, and take them over
 skenv init --import
 # Start one in a repository without an origin yet, to be pushed to gitlab.com
 skenv init --remote gitlab:example-group/my-skills`,
-		Args: rangeArgs(0, 1),
-		RunE: a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return usageError{"init: takes no <repo>; to connect this machine to an existing manifest: " +
+					"`skenv clone <repo>` (or `skenv use <path>` for a checkout you already have)"}
+			}
+			return nil
+		},
+		RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
 			if err := fileformat.Valid(format); err != nil {
 				return engine.ExitFatal, usageError{"init: " + err.Error()}
 			}
-			if len(args) == 0 {
-				if dir != "" || o.Adopt {
-					return engine.ExitFatal, usageError{"init: --path and --adopt need <repo>; without it, --dir names the repository"}
-				}
-				if imp {
-					return engine.InitImport(ctx, env, here, format, remote, o.DryRun)
-				}
-				return engine.NewManifest(ctx, env, here, format, remote, o.DryRun)
-			}
-			if remote != "" {
-				return engine.ExitFatal, usageError{"init: --remote is for starting a manifest without <repo>; <repo> is the remote"}
-			}
 			if imp {
-				return engine.ExitFatal, usageError{"init: --import starts a new manifest, without <owner/repo>; after cloning one, run `skenv import`"}
+				return engine.InitImport(ctx, env, dir, format, remote, dryRun)
 			}
-			if here != "" {
-				return engine.ExitFatal, usageError{"init: --dir is for starting a manifest without <repo>; use --path"}
-			}
-			return engine.Init(ctx, env, args[0], dir, format, o)
+			return engine.NewManifest(ctx, env, dir, format, remote, dryRun)
 		}),
 	}
-	c.Flags().StringVar(&dir, "path", "", "where to clone the repository (default ./<repo>)")
-	c.Flags().StringVar(&here, "dir", "", "without <repo>: the repository to start the manifest in (default: the current one)")
-	c.Flags().StringVar(&remote, "remote", "", "without <repo>, for a repository without origin: its future remote, recorded as its own entry (owner/repo, gitlab:group/repo, codeberg:owner/repo or a URL)")
+	c.Flags().StringVar(&dir, "dir", "", "the repository to start the manifest in (default: the current one)")
+	c.Flags().StringVar(&remote, "remote", "", "for a repository without origin: its future remote, recorded as its own entry (owner/repo, gitlab:group/repo, codeberg:owner/repo or a URL)")
 	formatFlag(c, &format, "format of a new file: toml, yaml or json (default toml; an existing file keeps its format)")
-	dryRunFlag(c.Flags(), &o.DryRun, dryRunFetch)
-	c.Flags().BoolVar(&o.Adopt, "adopt", false, "back up and replace unmanaged paths that conflict with the manifest")
-	c.Flags().BoolVar(&imp, "import", false, "without <owner/repo>: import the installed skills into the new manifest and run sync --adopt")
+	dryRunFlag(c.Flags(), &dryRun, dryRunFetch)
+	c.Flags().BoolVar(&imp, "import", false, "import the installed skills into the new manifest and run sync --adopt")
+	return c
+}
+
+func cloneCmd(a *app) *cobra.Command {
+	var dryRun bool
+	var format string
+	c := &cobra.Command{
+		Use:   "clone <repo> [<dir>]",
+		Short: "Clone a manifest repository and use its manifest on this machine",
+		Long: `Clone the repository that holds your manifest into <dir> (default ./<repo>
+in the current directory, like git clone) and record its skenv file as
+"manifest" in the config file, as ` + "`skenv use`" + ` does. When <dir> is a working copy of
+<repo> already, it is used as it is; another repository or a directory that
+is not a git working copy is an error. <repo> is owner/repo on github.com,
+gitlab:group/sub/repo, codeberg:owner/repo or a full git URL; hosts declared
+in the manifest are not known before it is cloned, so a self-hosted
+repository takes its URL.
+
+It does not sync, whether it cloned or not: run ` + "`skenv sync --dry-run`" + ` to see what
+the manifest would change on this machine, then ` + "`skenv sync`" + `.
+
+The manifest usually lists its own repository as an own repository; when
+its path is not <dir>, clone warns: sync would clone a second working copy
+there.
+
+- Reads: the repository and its skenv file, and the config file.
+- Changes: the new working copy <dir> and "manifest" in the config file
+  (~/.config/skenv/config.toml unless a YAML or JSON one exists; a new one is
+  YAML or JSON with --format). Nothing is synced.
+- Network: git clone.
+- Conflicts: a <dir> that is not a working copy of <repo> is an error.
+- Preview: --dry-run clones and writes nothing.
+- Next: ` + "`skenv sync --dry-run`" + `, then ` + "`skenv sync`" + ` (with --adopt when skills are installed
+  here another way).`,
+		Example: `# Clone the manifest repository into ./skills and record it
+skenv clone example-org/skills
+# Into a directory of your choice
+skenv clone example-org/skills ~/src/skills`,
+		Args: rangeArgs(1, 2),
+		RunE: a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
+			if err := fileformat.Valid(format); err != nil {
+				return engine.ExitFatal, usageError{"clone: " + err.Error()}
+			}
+			dir := ""
+			if len(args) == 2 {
+				dir = args[1]
+			}
+			return engine.Clone(ctx, env, args[0], dir, format, dryRun)
+		}),
+	}
+	formatFlag(c, &format, "format of a new config file: toml, yaml or json (default toml; an existing one keeps its format)")
+	dryRunFlag(c.Flags(), &dryRun, dryRunPlain)
+	return c
+}
+
+func useCmd(a *app) *cobra.Command {
+	var dryRun bool
+	var format string
+	c := &cobra.Command{
+		Use:   "use <path>",
+		Short: "Use an existing manifest on this machine",
+		Long: `Record the manifest at <path>, a skenv file with an [environment] section or
+a directory that holds one (` + "`skenv use .`" + ` in the root of your skills repository),
+as "manifest" in the config file. A manifest recorded before is replaced,
+and the output names it. skenv never switches manifests by itself: the
+current directory does not select one.
+
+The manifest usually lists its own repository as an own repository; when
+its path is not the checkout of <path>, use warns: sync would clone a second
+working copy there.
+
+- Reads: the skenv file and the config file.
+- Changes: "manifest" in the config file (~/.config/skenv/config.toml unless
+  a YAML or JSON one exists; a new one is YAML or JSON with --format).
+  Nothing is synced.
+- Network: none.
+- Preview: --dry-run writes nothing.
+- Next: ` + "`skenv sync --dry-run`" + `, then ` + "`skenv sync`" + ` (with --adopt when skills are installed
+  here another way).`,
+		Example: `# Use the manifest of the repository in the current directory
+skenv use .`,
+		Args: nArgs(1),
+		RunE: a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
+			if err := fileformat.Valid(format); err != nil {
+				return engine.ExitFatal, usageError{"use: " + err.Error()}
+			}
+			return engine.Use(ctx, env, args[0], format, dryRun)
+		}),
+	}
+	formatFlag(c, &format, "format of a new config file: toml, yaml or json (default toml; an existing one keeps its format)")
+	dryRunFlag(c.Flags(), &dryRun, dryRunPlain)
 	return c
 }
 

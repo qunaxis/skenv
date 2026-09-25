@@ -43,18 +43,13 @@ var exampleSkips = map[string]string{
 // the current directory.
 var exampleScenarios = map[string]func(f *exampleWorld){
 	"skenv init/1": func(f *exampleWorld) {
-		f.pushRemotes()
-		mustMkdir(f.t, f.path("src"))
-		f.t.Chdir(f.path("src"))
-	},
-	"skenv init/2": func(f *exampleWorld) {
 		repo := f.path("src/my-skills")
 		mustMkdir(f.t, repo)
 		f.git(repo, "init", "--quiet", "-b", "main")
 		f.git(repo, "remote", "add", "origin", "https://github.com/example-org/my-skills.git")
 		f.t.Chdir(repo)
 	},
-	"skenv init/3": func(f *exampleWorld) {
+	"skenv init/2": func(f *exampleWorld) {
 		f.pushRemotes()
 		f.push("example-org/my-skills", map[string]string{
 			"skills/code-review/SKILL.md": exampleSkill("code-review", "Review a diff for bugs before it is merged.", "Read the whole diff first."),
@@ -64,11 +59,23 @@ var exampleScenarios = map[string]func(f *exampleWorld){
 		f.npxInstalled()
 		f.t.Chdir(f.path("src/my-skills"))
 	},
-	"skenv init/4": func(f *exampleWorld) {
+	"skenv init/3": func(f *exampleWorld) {
 		repo := f.path("src/my-skills")
 		mustMkdir(f.t, repo)
 		f.git(repo, "init", "--quiet", "-b", "main")
 		f.t.Chdir(repo)
+	},
+	"skenv clone/1": func(f *exampleWorld) {
+		f.pushRemotes()
+		mustMkdir(f.t, f.path("src"))
+		f.t.Chdir(f.path("src"))
+	},
+	"skenv clone/2": func(f *exampleWorld) { f.pushRemotes() },
+	"skenv use/1": func(f *exampleWorld) {
+		f.pushRemotes()
+		mustMkdir(f.t, f.path("src"))
+		f.git(f.path("src"), "clone", "--quiet", "https://github.com/example-org/skills.git")
+		f.t.Chdir(f.path("src/skills"))
 	},
 	"skenv import/1": func(f *exampleWorld) { f.initialized(); f.npxInstalled() },
 	"skenv import/2": func(f *exampleWorld) { f.initialized(); f.npxInstalled() },
@@ -406,10 +413,11 @@ rev    = "`+ownRev+`"
 	return dir
 }
 
-// initialized is the machine after `skenv init example-org/skills`.
+// initialized is the machine after `skenv clone example-org/skills
+// ~/src/skills` and `skenv sync`.
 func (f *exampleWorld) initialized() {
 	f.pushRemotes()
-	f.mustRun(0, "init", "example-org/skills", "--path", "~/src/skills")
+	f.cloneSync("example-org/skills", "~/src/skills")
 }
 
 // newVendorCommits moves example-vendor/tools ahead of the pin of diagrams.

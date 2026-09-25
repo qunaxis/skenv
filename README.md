@@ -12,7 +12,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/qunaxis/skenv/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/qunaxis/skenv/actions/workflows/ci.yml)
 [![Go version](https://img.shields.io/github/go-mod/go-version/qunaxis/skenv?style=flat-square)](go.mod)
 
-![Terminal demo: skenv init clones a skills repository and links the same skills into Claude Code, pi and the Codex store; skenv doctor reports a deleted link, skenv sync restores it, and skenv vendor add pins a third-party skill to a commit](docs/demo/demo.gif)
+![Terminal demo: skenv clone and skenv sync clone a skills repository and link the same skills into Claude Code, pi and the Codex store; skenv doctor reports a deleted link, skenv sync restores it, and skenv vendor add pins a third-party skill to a commit](docs/demo/demo.gif)
 
 </div>
 
@@ -67,7 +67,8 @@ Its design is guided by these mantras:
   repositories.
 - **Your layout, your names.** skenv hardcodes neither the name of your
   skills repository nor where you keep it. There is no default manifest
-  location: you point skenv at yours once with `skenv init`.
+  location: you point skenv at yours once with `skenv init`, `skenv clone`
+  or `skenv use`.
 <!-- #endregion introduction -->
 
 ## Features
@@ -160,14 +161,18 @@ Then bootstrap the machine from your skills repository, the one whose
 
 ```sh
 cd ~/src                        # any directory; the clone lands in ./<skills-repo>
-skenv init <owner>/<skills-repo>
+skenv clone <owner>/<skills-repo>
+skenv sync --dry-run            # what sync would change here
+skenv sync
 skenv autostart enable          # sync at login and hourly
 ```
 
-`skenv init` clones the repository into the current directory (like
-`git clone`) or into `--path`, records the manifest location in
-`~/.config/skenv/config.toml` and runs `sync`. If the repository is already
-cloned, point `--path` at it: `skenv init <owner>/<skills-repo> --path ~/src/my-skills`.
+`skenv clone` clones the repository into the current directory (like
+`git clone`) or into the directory you name
+(`skenv clone <owner>/<skills-repo> ~/src/my-skills`) and records the
+manifest location in `~/.config/skenv/config.toml`; it never syncs.
+Already have a checkout? `skenv use ~/src/my-skills` (or `skenv use .`
+inside it) records it without the repository address.
 `<owner>/<skills-repo>` is on GitHub; for GitLab (`gitlab:group/sub/repo`),
 Codeberg (`codeberg:owner/repo`) or a self-hosted server see
 [Git hosts](docs/git-hosts.md).
@@ -178,8 +183,8 @@ Codeberg (`codeberg:owner/repo`) or a self-hosted server see
 > with `[repo]` and `[environment]` sections, as described in
 > [moving from `env.toml`](docs/skenv-file.md#moving-from-envtoml-and-the-old-skenvtoml).
 > skenv also has no built-in default manifest location: record your
-> checkout once with `skenv init <owner>/<skills-repo> --path <checkout>`;
-> an existing clone is not touched, only its skenv file is recorded.
+> checkout once with `skenv use <checkout>`; the clone is not touched,
+> only its skenv file is recorded.
 <!-- #endregion install -->
 
 ## Getting started
@@ -211,19 +216,21 @@ path = "~/src/<skills-repo>"
 ```
 
 > [!IMPORTANT]
-> Set `path` to where the repository is cloned (`skenv init` from `~/src`
+> Set `path` to where the repository is cloned (`skenv clone` from `~/src`
 > puts it in `~/src/<skills-repo>`). Otherwise `sync` clones a second
-> working copy at `path` and links the skills from there.
+> working copy at `path` and links the skills from there; `skenv clone` and
+> `skenv use` warn when the two differ.
 
 The full format is in [docs/manifest.md](docs/manifest.md). A typical first
 session on a machine:
 
 ```sh
-# 1. Point skenv at the manifest, clone the repository, sync.
-skenv init <owner>/<skills-repo>
+# 1. Clone the repository and point skenv at its manifest.
+skenv clone <owner>/<skills-repo>
 
-# 2. The machine already had skills? Back up the conflicting ones and take over.
-#    (Skills the manifest lacks: `skenv import` adds them first.)
+# 2. Apply it. The machine already had skills? --adopt backs up the
+#    conflicting ones and takes over (skills the manifest lacks: `skenv import`
+#    adds them first).
 skenv sync --dry-run
 skenv sync --adopt
 
@@ -315,8 +322,8 @@ Issues and pull requests are welcome.
 - Run `make check` before pushing: go vet, staticcheck, golangci-lint,
   `go test -race` and the commit check.
 - Tests use a temporary `$HOME` and local bare repositories; never run
-  `sync`, `link`, `init` or `autostart` against a real home directory from
-  tests.
+  `sync`, `link`, `init`, `clone`, `use` or `autostart` against a real home
+  directory from tests.
 - Coding agents: read [AGENTS.md](AGENTS.md).
 - Releases are cut with `make release` only; `CHANGELOG.md` is generated.
   See [docs/releasing.md](docs/releasing.md).

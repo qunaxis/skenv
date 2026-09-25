@@ -19,7 +19,7 @@ import (
 )
 
 // NewManifest starts a manifest in the git repository that contains dir
-// (`skenv init` without a repository): it adds an [environment] section to
+// (`skenv init`): it adds an [environment] section to
 // the skenv file of the repository, or creates skenv.<format> with one,
 // and records the file as "manifest" in the tool config. The repository
 // itself becomes the first [[environment.own]] entry: from its origin, or
@@ -57,7 +57,7 @@ func NewManifest(ctx context.Context, env Env, dir, format, remote string, dryRu
 	if p.own != nil {
 		again = p.own.Repo
 	}
-	fmt.Fprintf(env.Stdout, "  - commit %s; on another machine: skenv init %s\n", filepath.Base(p.file), again)
+	fmt.Fprintf(env.Stdout, "  - commit and push %s; on another machine: skenv clone %s\n", filepath.Base(p.file), again)
 	return ExitOK, nil
 }
 
@@ -112,8 +112,8 @@ func planManifest(ctx context.Context, env Env, dir, format, remote string) (*ma
 			return nil, fmt.Errorf("%s: %w", show(existing), err)
 		}
 		if doc.Has(skenvfile.Environment) {
-			return nil, fmt.Errorf("%s has [environment] already; `skenv init` without <repo> only starts a new manifest "+
-				"(to use this one on a machine: `skenv init <repo>`, or --manifest)", show(existing))
+			return nil, fmt.Errorf("%s has [environment] already; `skenv init` only starts a new manifest "+
+				"(to use this one on this machine: `skenv use %s`)", show(existing), show(root))
 		}
 		if err := refusePublic(p.data, filepath.Ext(existing), show(existing)); err != nil {
 			return nil, err

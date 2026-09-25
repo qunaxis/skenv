@@ -9,13 +9,14 @@ Generated from `skenv --help`. Start with [skenv](skenv.md).
 - [skenv autostart disable](skenv_autostart_disable.md): Unload and remove the autostart job
 - [skenv autostart enable](skenv_autostart_enable.md): Install and load the autostart job
 - [skenv autostart status](skenv_autostart_status.md): Show whether the autostart job is installed and loaded (exit 1 if not)
+- [skenv clone](skenv_clone.md): Clone a manifest repository and use its manifest on this machine
 - [skenv completion](skenv_completion.md): Generate the autocompletion script for bash, zsh or fish
 - [skenv completion bash](skenv_completion_bash.md): Generate the autocompletion script for bash
 - [skenv completion fish](skenv_completion_fish.md): Generate the autocompletion script for fish
 - [skenv completion zsh](skenv_completion_zsh.md): Generate the autocompletion script for zsh
 - [skenv doctor](skenv_doctor.md): Compare the machine with the manifest, or a project with its `[project]`
 - [skenv import](skenv_import.md): Add the skills already installed on this machine, or in a project, to the skenv file
-- [skenv init](skenv_init.md): Clone the manifest repository and sync, or start a manifest
+- [skenv init](skenv_init.md): Start a manifest in a git repository
 - [skenv link](skenv_link.md): Create store and agent links without pulling
 - [skenv lint](skenv_lint.md): Check skills for format, links, size and secrets
 - [skenv new](skenv_new.md): Scaffold a skill
@@ -25,6 +26,7 @@ Generated from `skenv --help`. Start with [skenv](skenv.md).
 - [skenv repo init](skenv_repo_init.md): Set up the harness of a skills repository
 - [skenv schema](skenv_schema.md): Print the JSON Schema of the skenv file or the tool config
 - [skenv sync](skenv_sync.md): Apply the manifest to this machine, or sync a project
+- [skenv use](skenv_use.md): Use an existing manifest on this machine
 - [skenv vendor](skenv_vendor.md): Install, update and remove third-party skills, pinned to a commit
 - [skenv vendor add](skenv_vendor_add.md): Install a third-party skill, pinned to a commit
 - [skenv vendor remove](skenv_vendor_remove.md): Remove a third-party skill and its installed copy
