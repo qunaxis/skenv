@@ -142,9 +142,14 @@ func decode(path string, data []byte) (map[string]any, error) {
 		sort.Strings(unknown)
 		return nil, fmt.Errorf("unknown key %q (known keys: %s)", strings.Join(unknown, `", "`), strings.Join(Keys(), ", "))
 	}
-	if v, ok := values[docedit.SchemaKey]; ok {
-		if _, isString := v.(string); !isString {
-			return nil, fmt.Errorf("%s must be a string", docedit.SchemaKey)
+	for _, k := range append([]string{docedit.SchemaKey}, Keys()...) {
+		if v, ok := values[k]; ok {
+			if v == nil {
+				return nil, fmt.Errorf("%s must be a string, got an empty value (null); give it a value or remove it", k)
+			}
+			if _, isString := v.(string); !isString {
+				return nil, fmt.Errorf("%s must be a string, got %v", k, v)
+			}
 		}
 	}
 	return values, nil
@@ -153,7 +158,7 @@ func decode(path string, data []byte) (map[string]any, error) {
 // String returns key from the file; ok is false when it is not set.
 func (f *File) String(key string) (string, bool, error) {
 	v, ok := f.values[key]
-	if !ok || v == nil { // absent, or null in YAML and JSON
+	if !ok {
 		return "", false, nil
 	}
 	s, isString := v.(string)
@@ -299,10 +304,14 @@ func setKey(data []byte, ext, key, value string) ([]byte, error) {
 	for at > 0 && isBlankOrComment(lines[at-1]) && end < len(lines) {
 		at--
 	}
-	if at > 0 && !strings.HasSuffix(lines[at-1], "\n") {
-		lines[at-1] += "\n"
+	nl := "\n"
+	if bytes.Contains(data, []byte("\r\n")) {
+		nl = "\r\n"
 	}
-	line := key + " = " + tomlString(value) + "\n"
+	if at > 0 && !strings.HasSuffix(lines[at-1], "\n") {
+		lines[at-1] += nl
+	}
+	line := key + " = " + tomlString(value) + nl
 	lines = append(lines[:at], append([]string{line}, lines[at:]...)...)
 	return []byte(strings.Join(lines, "")), nil
 }

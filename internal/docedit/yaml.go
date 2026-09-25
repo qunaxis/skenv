@@ -13,6 +13,7 @@ import (
 // the parser, splices the text at the reported line and column, and parses
 // the result again, so later operations see fresh positions.
 type yamlDoc struct {
+	bom   string   // a UTF-8 byte order mark, kept but not edited
 	lines []string // with their line endings
 	root  *yaml.Node
 	nl    string // line ending for new lines
@@ -24,7 +25,11 @@ func openYAML(data []byte) (*yamlDoc, error) {
 	if strings.Contains(string(data), "\r\n") {
 		d.nl = "\r\n"
 	}
-	return d, d.load(string(data))
+	text := string(data)
+	if rest, ok := strings.CutPrefix(text, "\ufeff"); ok {
+		d.bom, text = "\ufeff", rest
+	}
+	return d, d.load(text)
 }
 
 func (d *yamlDoc) load(text string) error {
@@ -40,6 +45,7 @@ func (d *yamlDoc) load(text string) error {
 		}
 	}
 	d.root = nil
+	d.unit = 2
 	if n.Kind == yaml.DocumentNode && len(n.Content) > 0 {
 		r := n.Content[0]
 		if r.Kind == yaml.ScalarNode && r.Tag == "!!null" {
@@ -50,7 +56,6 @@ func (d *yamlDoc) load(text string) error {
 		}
 		d.root = r
 	}
-	d.unit = 2
 	if d.root != nil {
 		for i := 1; i < len(d.root.Content); i += 2 {
 			v := d.root.Content[i]
@@ -63,7 +68,16 @@ func (d *yamlDoc) load(text string) error {
 	return nil
 }
 
-func (d *yamlDoc) Bytes() []byte { return []byte(strings.Join(d.lines, "")) }
+func (d *yamlDoc) Bytes() []byte { return []byte(d.bom + strings.Join(d.lines, "")) }
+
+// editable refuses nodes whose text skenv cannot splice safely: an anchor
+// or an explicit tag moves the reported column away from the content.
+func editable(n *yaml.Node, path []any) error {
+	if n.Anchor != "" || n.Style&yaml.TaggedStyle != 0 || n.Kind == yaml.AliasNode {
+		return fmt.Errorf("%s has an anchor, alias or tag; remove it so that skenv can edit the value", pathString(path))
+	}
+	return nil
+}
 
 // splice replaces lines [from, to) with repl and parses the result.
 func (d *yamlDoc) splice(from, to int, repl []string) error {
@@ -265,6 +279,9 @@ func (d *yamlDoc) SetString(path []any, value string) error {
 	if v.Kind != yaml.ScalarNode || isNull(v) || v.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0 {
 		return fmt.Errorf("%s must be a string on one line", pathString(path))
 	}
+	if err := editable(v, path); err != nil {
+		return err
+	}
 	i := v.Line - 1
 	line := d.lines[i]
 	start := byteOffset(line, v.Column)
@@ -297,8 +314,11 @@ func (d *yamlDoc) SetString(path []any, value string) error {
 		repl = "'" + strings.ReplaceAll(value, "'", "''") + "'"
 	default:
 		rest := strings.TrimRight(line[start:], "\r\n")
-		if k := strings.Index(rest, " #"); k >= 0 {
-			rest = rest[:k]
+		for k := 1; k < len(rest); k++ {
+			if rest[k] == '#' && (rest[k-1] == ' ' || rest[k-1] == '\t') {
+				rest = rest[:k]
+				break
+			}
 		}
 		rest = strings.TrimRight(rest, " \t")
 		if rest != v.Value {
@@ -323,6 +343,11 @@ func (d *yamlDoc) Append(path []string, item Map) error {
 		return fmt.Errorf("%s must be a mapping", pathString(keysPath(parent)))
 	}
 	k, v := pair(pm, key)
+	if v != nil {
+		if err := editable(v, keysPath(path)); err != nil {
+			return err
+		}
+	}
 	switch {
 	case v == nil:
 		return d.Put(parent, key, []Map{item}, false)
@@ -382,6 +407,9 @@ func (d *yamlDoc) Remove(path []any) error {
 	}
 	if isFlow(seq) {
 		return fmt.Errorf("%s is written in flow style ([...]); write it as a block list so that skenv can edit it", pathString(path[:len(path)-1]))
+	}
+	if err := editable(seq, path[:len(path)-1]); err != nil {
+		return err
 	}
 	item := seq.Content[idx]
 	dashCol := seq.Column - 1
@@ -479,6 +507,9 @@ func (d *yamlDoc) putIn(m *yaml.Node, path []string, key string, value any, firs
 	}
 	if isFlow(m) {
 		return fmt.Errorf("%s is written in flow style ({...}); write it as a block mapping so that skenv can edit it", pathString(keysPath(path)))
+	}
+	if err := editable(m, keysPath(path)); err != nil {
+		return err
 	}
 	if k, _ := pair(m, key); k != nil {
 		return fmt.Errorf("%s exists already", pathString(keysPath(append(append([]string{}, path...), key))))

@@ -115,11 +115,11 @@ func TestBadFiles(t *testing.T) {
 	if _, _, err := Resolve(home, env(nil), "manifest", "", ""); err == nil || !strings.Contains(err.Error(), "$schema must be a string") {
 		t.Errorf("$schema = 1: %v", err)
 	}
-	// null is the same as not set.
+	// null is not a string (the schema says the same).
 	home = t.TempDir()
 	write(t, home, "config.yaml", "manifest: null\n")
-	if got, src, err := Resolve(home, env(nil), "manifest", "", "d"); err != nil || got != "d" || src != FromDefault {
-		t.Errorf("manifest: null: %q from %s (%v)", got, src, err)
+	if _, _, err := Resolve(home, env(nil), "manifest", "", "d"); err == nil || !strings.Contains(err.Error(), "manifest must be a string") {
+		t.Errorf("manifest: null: %v", err)
 	}
 	// Empty files are valid.
 	for _, name := range Names {
@@ -186,7 +186,7 @@ func TestEnvVar(t *testing.T) {
 // latest URL for a test binary).
 func TestSetKeepsTheRest(t *testing.T) {
 	latest := schemas.URL(schemas.Config, "")
-	old := schemas.URL(schemas.Config, "0.3.0")
+	old := schemas.Base + "v0.3.9/" + schemas.Config
 	cases := map[string]struct{ in, want string }{
 		"config.toml": {
 			in:   "#:schema " + old + "\n# my note: keep this\nmanifest = '~/old'   # where\n",
@@ -227,6 +227,13 @@ func TestSetKeepsTheRest(t *testing.T) {
 	want := "#:schema " + latest + "\n# skenv configuration, written by `skenv init`\nmanifest = \"~/a <&> b\"\n"
 	if got := readFile(t, p); got != want {
 		t.Errorf("new file:\n%s\nwant:\n%s", got, want)
+	}
+	// A new line follows the line endings of the file.
+	home = t.TempDir()
+	write(t, home, "config.toml", "# c\r\n")
+	p, _ = Set(home, "manifest", "~/m")
+	if got := readFile(t, p); got != "# c\r\nmanifest = \"~/m\"\r\n" {
+		t.Errorf("CRLF:\n%q", got)
 	}
 	// A key missing from a TOML file goes after the top-level keys.
 	home = t.TempDir()

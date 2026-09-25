@@ -47,7 +47,7 @@ Who writes or updates the directive:
   points at another version; the warning does not change the exit code,
   because the directive does not change what skenv does.
 - `skenv vendor add|bump|remove` keep the directive, like every comment,
-  and move a skenv directive to their own version.
+  and move a skenv directive to the version described below.
 
 A directive with a URL outside `https://qunaxis.github.io/skenv/schemas/`
 (a local copy, a mirror) is your choice: skenv neither changes it nor
@@ -63,8 +63,9 @@ never touches.
 
 The directive skenv writes is pinned to a release: in a repository with a
 harness, the version in `repo.harness`, which is also the skenv its CI
-installs; elsewhere, the version of the skenv that wrote the file.
-Development builds write the latest URL. A pinned schema never shows a key
+installs; elsewhere, the version of the skenv that wrote the file, or the
+latest URL when that is a development build. Versions before 0.4.0, the
+first with schemas, get the latest URL too. A pinned schema never shows a key
 as valid that the skenv reading the file does not know. The unversioned
 URL follows the newest release, not unreleased changes on `main`.
 

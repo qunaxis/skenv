@@ -413,14 +413,15 @@ func TestForeignFilesNeedForce(t *testing.T) {
 // directive, key order and formatting stay; [repo] goes to the top.
 func TestInitAndUpdateKeepYAMLAndJSON(t *testing.T) {
 	url := schemas.URL(schemas.Skenv, Latest)
-	old := schemas.URL(schemas.Skenv, "0.3.0")
+	old := schemas.Base + "v0.3.9/" + schemas.Skenv
 	cases := []struct{ name, in, init, update string }{
 		{
 			name: "skenv.yaml",
 			in:   "# yaml-language-server: $schema=" + old + "\n# my manifest\nenvironment:\n  # where skills live\n  layout:\n    store: ~/.skills\n\n    targets: []\n",
 			init: "# yaml-language-server: $schema=" + url + "\nrepo:\n  harness: " + Latest + "\n  visibility: private\n  runner: [self-hosted, linux, docker]\n" +
 				"# my manifest\nenvironment:\n  # where skills live\n  layout:\n    store: ~/.skills\n\n    targets: []\n",
-			update: "# yaml-language-server: $schema=" + schemas.URL(schemas.Skenv, "0.1.0") + "\nrepo:\n  harness: 0.1.0\n  visibility: private\n  runner: [self-hosted, linux, docker]\n" +
+			// 0.1.0 predates the schemas: the directive names the latest.
+			update: "# yaml-language-server: $schema=" + schemas.URL(schemas.Skenv, "") + "\nrepo:\n  harness: 0.1.0\n  visibility: private\n  runner: [self-hosted, linux, docker]\n" +
 				"# my manifest\nenvironment:\n  # where skills live\n  layout:\n    store: ~/.skills\n\n    targets: []\n",
 		},
 		{

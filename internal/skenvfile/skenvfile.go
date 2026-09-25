@@ -157,6 +157,9 @@ func Parse(data []byte, ext string) (*Doc, error) {
 			if _, isMap := v.(map[string]any); !isMap {
 				return nil, fmt.Errorf("%s must be a table", s)
 			}
+			if err := stringLeaves(s, v); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if v, ok := d.raw[docedit.SchemaKey]; ok {
@@ -165,6 +168,45 @@ func Parse(data []byte, ext string) (*Doc, error) {
 		}
 	}
 	return d, nil
+}
+
+// stringLeaves checks that every value in a section is a table, a list or a
+// string: the file has no other kind of value, and YAML would otherwise
+// turn null, 1 or an all-digit commit SHA into something the schema
+// rejects.
+func stringLeaves(path string, v any) error {
+	switch v := v.(type) {
+	case string:
+		return nil
+	case map[string]any:
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if err := stringLeaves(path+"."+k, v[k]); err != nil {
+				return err
+			}
+		}
+	case []map[string]any: // TOML arrays of tables
+		for i, x := range v {
+			if err := stringLeaves(fmt.Sprintf("%s[%d]", path, i), x); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for i, x := range v {
+			if err := stringLeaves(fmt.Sprintf("%s[%d]", path, i), x); err != nil {
+				return err
+			}
+		}
+	case nil:
+		return fmt.Errorf("%s is empty (null); give it a value or remove it", path)
+	default:
+		return fmt.Errorf("%s must be a string, got %v; quote it", path, v)
+	}
+	return nil
 }
 
 // Has reports whether the document has section.

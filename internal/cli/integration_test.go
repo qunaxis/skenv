@@ -633,7 +633,7 @@ func TestConfigFormats(t *testing.T) {
 // in testdata/; `go test ./internal/cli -run TestManifestFormats -update`
 // rewrites them).
 func TestManifestFormats(t *testing.T) {
-	old := schemas.URL(schemas.Skenv, "0.3.0")
+	old := schemas.Base + "v0.3.9/" + schemas.Skenv
 	for name, content := range map[string]func(rev string) string{
 		"skenv.yaml": func(rev string) string {
 			return "# yaml-language-server: $schema=" + old + `

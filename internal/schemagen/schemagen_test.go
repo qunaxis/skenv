@@ -181,13 +181,18 @@ func examples(t *testing.T) (skenv, cfg []example) {
 	for _, e := range all {
 		e.text = placeholders.Replace(e.text)
 		var top map[string]any
+		var err error
 		switch e.ext {
 		case ".toml":
-			_, _ = toml.Decode(e.text, &top)
+			_, err = toml.Decode(e.text, &top)
 		case ".yaml":
-			_ = yaml.Unmarshal([]byte(e.text), &top)
+			err = yaml.Unmarshal([]byte(e.text), &top)
 		case ".json":
-			_ = json.Unmarshal([]byte(e.text), &top)
+			err = json.Unmarshal([]byte(e.text), &top)
+		}
+		if err != nil {
+			t.Errorf("%s: a %s block does not parse: %v\n%s", e.where, e.ext, err, e.text)
+			continue
 		}
 		_, repo := top["repo"]
 		_, env := top["environment"]
@@ -221,6 +226,9 @@ func TestExamplesValidate(t *testing.T) {
 	for _, e := range cfg {
 		if err := cfgSchema.Validate(instance(t, e.text, e.ext)); err != nil {
 			t.Errorf("%s: schema rejects:\n%s\n%v", e.where, e.text, err)
+		}
+		if err := parseConfig(t, e.text, e.ext); err != nil {
+			t.Errorf("%s: skenv rejects:\n%s\n%v", e.where, e.text, err)
 		}
 	}
 }
@@ -267,6 +275,11 @@ func TestSchemaAndParserAgree(t *testing.T) {
 		{"skills_dir escapes", ".toml", "[[environment.own]]\nrepo = \"a/b\"\npath = \"~/x\"\nskills_dir = \"..\"\n", false, "does not match pattern"},
 		{"ignore with a slash", ".toml", "[environment.layout]\nignore = [\"a/b\"]\n", false, "does not match pattern"},
 		{"repo not a table", ".json", `{"repo": 1}`, false, "want object"},
+		{"null list", ".json", `{"environment": {"vendor": null}}`, false, "want array"},
+		{"null targets", ".yaml", "environment:\n  layout:\n    targets: ~\n", false, "want array"},
+		{"null host", ".json", `{"environment": {"host": {"mac": null}}}`, false, "want object"},
+		{"number in runner", ".yaml", "repo: {harness: 0.4.0, visibility: private, runner: [1]}\n", false, "want string"},
+		{"unquoted numeric rev", ".yaml", "environment:\n  vendor:\n    - {name: a, repo: a/b, rev: " + strings.Repeat("1", 40) + "}\n", false, "want string"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -284,16 +297,21 @@ func TestSchemaAndParserAgree(t *testing.T) {
 	}
 
 	cs := compile(t, schemas.Config)
-	for text, valid := range map[string]bool{
-		"manifest = \"~/src/skills\"\n":             true,
-		"\"$schema\" = \"x\"\nmanifest = \"~/s\"\n": true,
-		"manifests = \"/nonexistent\"\n":            false,
-		"manifest = 1\n":                            false,
+	for _, c := range []struct {
+		ext, text string
+		valid     bool
+	}{
+		{".toml", "manifest = \"~/src/skills\"\n", true},
+		{".toml", "\"$schema\" = \"x\"\nmanifest = \"~/s\"\n", true},
+		{".toml", "manifests = \"/nonexistent\"\n", false},
+		{".toml", "manifest = 1\n", false},
+		{".yaml", "manifest: ~\n", false},
+		{".json", `{"$schema": null}`, false},
 	} {
-		err := cs.Validate(instance(t, text, ".toml"))
-		perr := parseConfig(t, text, ".toml")
-		if (err == nil) != valid || (perr == nil) != valid {
-			t.Errorf("config %q: schema %v, parser %v, want valid=%v", text, err, perr, valid)
+		err := cs.Validate(instance(t, c.text, c.ext))
+		perr := parseConfig(t, c.text, c.ext)
+		if (err == nil) != c.valid || (perr == nil) != c.valid {
+			t.Errorf("config %s %q: schema %v, parser %v, want valid=%v", c.ext, c.text, err, perr, c.valid)
 		}
 	}
 }

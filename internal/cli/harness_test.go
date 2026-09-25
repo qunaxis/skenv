@@ -75,7 +75,7 @@ func TestRepoInitCheckApply(t *testing.T) {
 	}
 	for _, c := range []struct{ content, warning string }{
 		{strings.TrimPrefix(text, directive), "no schema directive"},
-		{strings.Replace(text, harness.Latest+"/", "0.3.0/", 1), "the schema directive points at " + schemas.URL(schemas.Skenv, "0.3.0")},
+		{strings.Replace(text, harness.Latest+"/", "0.3.0/", 1), "the schema directive points at " + schemas.Base + "v0.3.0/" + schemas.Skenv},
 	} {
 		writeFile(t, cfg, c.content)
 		_, errOut := w.mustRun(0, "repo", "check", "--dir", repo)

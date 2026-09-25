@@ -46,6 +46,9 @@ func TestParseErrors(t *testing.T) {
 		{"[[vendor]]\nname = \"x\"\n", ".toml", "unknown top-level keys: vendor"},
 		{"layout:\n  store: x\n", ".yaml", "unknown top-level keys: layout"},
 		{`{"repo": 1}`, ".json", "repo must be a table"},
+		{`{"environment": {"vendor": null}}`, ".json", "environment.vendor is empty (null)"},
+		{"repo:\n  runner: [ubuntu, 1]\n", ".yaml", "repo.runner[1] must be a string, got 1; quote it"},
+		{"environment:\n  vendor:\n    - rev: 1234\n", ".yaml", "environment.vendor[0].rev must be a string"},
 		{"x", ".ini", "unsupported format"},
 	} {
 		if _, err := Parse([]byte(c.text), c.ext); err == nil || !strings.Contains(err.Error(), c.want) {

@@ -278,3 +278,50 @@ func TestDirective(t *testing.T) {
 		t.Error("a #:schema line below a key is not a directive")
 	}
 }
+
+// Anchors, aliases and tags move the positions the parser reports; such
+// nodes are refused instead of being edited at the wrong place.
+func TestYAMLRefusesAnchorsAndTags(t *testing.T) {
+	for _, in := range []string{
+		"environment:\n  vendor: &v\n    - name: a\n      rev: x\n",
+		"environment:\n  vendor: !!seq\n    - name: a\n      rev: x\n",
+		"environment:\n  vendor: !!seq\n  - name: a\n    rev: x\n  - name: b\n",
+	} {
+		for name, op := range map[string]func(Doc) error{
+			"append": appendVendor("b"),
+			"remove": func(d Doc) error { return d.Remove([]any{"environment", "vendor", 0}) },
+		} {
+			d, err := Open([]byte(in), ".yaml")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := op(d); err == nil || !strings.Contains(err.Error(), "anchor, alias or tag") {
+				t.Errorf("%s on %q: %v", name, in, err)
+			}
+		}
+	}
+	d, _ := Open([]byte("repo:\n  harness: &h 0.3.0\n"), ".yaml")
+	if err := d.SetString([]any{"repo", "harness"}, "0.4.0"); err == nil {
+		t.Error("an anchored scalar must be refused")
+	}
+}
+
+func TestYAMLEdgeCases(t *testing.T) {
+	// An empty document still nests new keys.
+	got := edit(t, ".yaml", "---\n", func(d Doc) error { return d.Put(nil, "repo", Map{{"harness", "0.4.0"}}, true) })
+	if got != "---\nrepo:\n  harness: 0.4.0\n" {
+		t.Errorf("empty document:\n%q", got)
+	}
+	// A byte order mark is kept and does not shift the columns.
+	got = edit(t, ".yaml", "\ufeffmanifest: \"a\"\n", func(d Doc) error { return d.SetString([]any{"manifest"}, "b") })
+	if got != "\ufeffmanifest: \"b\"\n" {
+		t.Errorf("BOM:\n%q", got)
+	}
+	// A comment after a tab; a # inside a plain value is not a comment.
+	got = edit(t, ".yaml", "repo:\n  harness: 0.3.0\t# old\n  x: a#b # c\n",
+		func(d Doc) error { return d.SetString([]any{"repo", "harness"}, "0.4.0") },
+		func(d Doc) error { return d.SetString([]any{"repo", "x"}, "y") })
+	if got != "repo:\n  harness: 0.4.0\t# old\n  x: \"y\" # c\n" && got != "repo:\n  harness: 0.4.0\t# old\n  x: y # c\n" {
+		t.Errorf("comments:\n%q", got)
+	}
+}

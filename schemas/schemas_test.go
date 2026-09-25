@@ -13,13 +13,15 @@ func TestURL(t *testing.T) {
 		"0.0.0-dev+abcdef012": Base + "skenv.schema.json",
 		"":                    Base + "skenv.schema.json",
 		"(devel)":             Base + "skenv.schema.json",
+		"0.3.0":               Base + "skenv.schema.json", // before First: none published
+		"v0.10.0":             Base + "v0.10.0/skenv.schema.json",
 	}
 	for v, want := range cases {
 		if got := URL(Skenv, v); got != want {
 			t.Errorf("URL(%q) = %s, want %s", v, got, want)
 		}
 		name, version, ok := ParseURL(want)
-		if !ok || name != Skenv || version != Release(v) {
+		if !ok || name != Skenv || (version != Release(v) && version != "") {
 			t.Errorf("ParseURL(%s) = %q, %q, %v", want, name, version, ok)
 		}
 	}
@@ -31,7 +33,7 @@ func TestURL(t *testing.T) {
 }
 
 func TestStampAndCheck(t *testing.T) {
-	old := URL(Skenv, "0.3.0")
+	old := Base + "v0.3.9/" + Skenv
 	cases := []struct {
 		name, in string
 		add      bool

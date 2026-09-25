@@ -13,6 +13,7 @@ import (
 	"embed"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/buildinfo"
@@ -74,13 +75,36 @@ func Release(version string) string {
 // Running is Release of the running skenv.
 func Running() string { return Release(buildinfo.Get().Version) }
 
+// First is the first skenv release that publishes schemas; older versions
+// have none on the site.
+const First = "0.4.0"
+
 // URL returns the URL of schema name for version: pinned to v<version>
-// for a release, the latest otherwise.
+// for a release since First, the latest otherwise.
 func URL(name, version string) string {
-	if v := Release(version); v != "" {
+	if v := Release(version); v != "" && !older(v, First) {
 		return Base + "v" + v + "/" + name
 	}
 	return Base + name
+}
+
+// older reports whether release a precedes b by major.minor.patch.
+func older(a, b string) bool {
+	num := func(v string) [3]int {
+		var n [3]int
+		core, _, _ := strings.Cut(v, "-")
+		for i, p := range strings.SplitN(core, ".", 3) {
+			n[i], _ = strconv.Atoi(p)
+		}
+		return n
+	}
+	x, y := num(a), num(b)
+	for i := range x {
+		if x[i] != y[i] {
+			return x[i] < y[i]
+		}
+	}
+	return false
 }
 
 // ParseURL reports whether url is a skenv schema URL, and which schema and
