@@ -53,12 +53,12 @@ publish "$work/commit-helper" example-vendor/commit-helper >/dev/null
 
 skill "$work/agent-skills/skills/release-notes" release-notes "Draft release notes from merged pull requests."
 skill "$work/agent-skills/skills/sql-style" sql-style "Review SQL against the team style guide."
-cat >"$work/agent-skills/env.toml" <<TOML
-[[own]]                              # our skills, kept as a git working copy
+cat >"$work/agent-skills/skenv.toml" <<TOML
+[[environment.own]]      # our skills, kept as a git working copy
 repo = "example-org/agent-skills"
 path = "~/src/agent-skills"
 
-[[vendor]]                           # someone else's skill, pinned to a commit
+[[environment.vendor]]   # someone else's skill, pinned to a commit
 name = "pdf-tools"
 repo = "example-vendor/pdf-tools"
 path = "pdf-tools"

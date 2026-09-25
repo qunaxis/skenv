@@ -1,6 +1,6 @@
-# Manifest: `env.toml`
+# Manifest: `[environment]`
 
-`env.toml` describes which skills a machine should have. It lives in your
+The manifest describes which skills a machine should have. It lives in your
 skills repository, next to your own skills, so every machine that runs
 `skenv sync` converges on the same set.
 
@@ -13,7 +13,8 @@ skills repository, next to your own skills, so every machine that runs
 ## Where the manifest is found
 
 Found via `--manifest`, then `$SKENV_MANIFEST`, then `manifest` in the skenv
-config file (written by `skenv init`). The config file is
+config file (written by `skenv init`). Each names the skenv file or the
+directory that holds it. The config file is
 `~/.config/skenv/config.toml`, or `config.yaml`, `config.yml` or `config.json`
 if you prefer; only one of them may exist. Every setting follows the same
 order: flag, `SKENV_<KEY>` environment variable, config file, default. There is no default
@@ -22,24 +23,28 @@ with an error that suggests `skenv init <owner/repo>` or `--manifest`.
 
 ## Format
 
+The manifest is the `[environment]` section of the skenv file at the root
+of your skills repository (`skenv.toml`, or `skenv.yaml`, `skenv.yml`,
+`skenv.json`; see [the skenv file](skenv-file.md)). In TOML:
+
 ```toml
-[layout]
+[environment.layout]
 store   = "~/.agents/skills"                          # optional, this is the default
 targets = ["~/.claude/skills", "~/.pi/agent/skills"]  # optional, replaces the agent table
 ignore  = ["peon-ping-*"]                            # optional, entries owned by other tools
 
-[[own]]                        # your skills repository, kept as a working copy
+[[environment.own]]            # your skills repository, kept as a working copy
 repo = "<owner>/<skills-repo>" # any name
 path = "~/src/my-skills"       # any location
 skills_dir = "skills"          # optional, default "skills"
 
-[[vendor]]                     # someone else's skill, pinned to a commit
+[[environment.vendor]]         # someone else's skill, pinned to a commit
 name = "archify"
 repo = "tt-a1i/archify"         # owner/repo on github.com or a full git URL
 path = "archify"               # directory with SKILL.md; "." for the root
 rev  = "<full 40-character commit SHA>"
 
-[host."my-laptop"]             # optional, per hostname (full or short)
+[environment.host."my-laptop"] # optional, per hostname (full or short)
 skip = ["bpmn-process-modeler"]
 ```
 
@@ -65,8 +70,10 @@ skip = ["bpmn-process-modeler"]
   the `peon-ping` Homebrew package). `doctor` does not report them as
   `unmanaged`, and `sync`/`link` never touch them, not even with
   `--adopt`. A manifest skill whose name matches a pattern is an error.
-- `vendor add|bump|remove` edit the file as text: keep `[[vendor]]` tables in
-  the multi-line form above with double-quoted `name` and `rev`.
+- `vendor add|bump|remove` edit `skenv.toml` as text, keeping comments and
+  order: keep `[[environment.vendor]]` tables in the multi-line form above
+  with double-quoted `name` and `rev`. A YAML or JSON skenv file is
+  rewritten from its data instead, so its comments and key order are lost.
 - A vendored skill is copied as is, symlinks included; vendor only
   repositories you trust.
 
@@ -97,12 +104,12 @@ The vendor fields follow the project lock file of the
 [`skills` CLI](https://github.com/vercel-labs/skills) (checked against 1.7.0),
 so a manifest can be translated if skenv is ever replaced by it:
 
-| `env.toml` `[[vendor]]` | `skills-lock.json` entry             | Notes                                                                         |
-| ----------------------- | ------------------------------------ | ----------------------------------------------------------------------------- |
-| `name`                  | entry key                            | skill name                                                                    |
-| `repo`                  | `source` (+ `sourceType = "github"`) | `owner/repo`; a full URL maps to `source`/`sourceUrl`                         |
-| `path`                  | `skillPath`                          | skills-lock stores the file: `archify` ↔ `archify/SKILL.md`, `.` ↔ `SKILL.md` |
-| `rev`                   | `ref`                                | skenv requires a full SHA; `ref` also accepts branches and tags               |
-| —                       | `computedHash`                       | not recorded by skenv; the SHA pins the content                               |
+| `[[environment.vendor]]` | `skills-lock.json` entry             | Notes                                                                         |
+| ------------------------ | ------------------------------------ | ----------------------------------------------------------------------------- |
+| `name`                   | entry key                            | skill name                                                                    |
+| `repo`                   | `source` (+ `sourceType = "github"`) | `owner/repo`; a full URL maps to `source`/`sourceUrl`                         |
+| `path`                   | `skillPath`                          | skills-lock stores the file: `archify` ↔ `archify/SKILL.md`, `.` ↔ `SKILL.md` |
+| `rev`                    | `ref`                                | skenv requires a full SHA; `ref` also accepts branches and tags               |
+| —                        | `computedHash`                       | not recorded by skenv; the SHA pins the content                               |
 
-`[[own]]` has no equivalent: the `skills` CLI does not manage working copies.
+`[[environment.own]]` has no equivalent: the `skills` CLI does not manage working copies.

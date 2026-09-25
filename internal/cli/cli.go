@@ -76,8 +76,13 @@ func newRoot(a *app) *cobra.Command {
 Configuration: a setting comes from, highest first, its flag, the SKENV_<KEY>
 environment variable, the config file, the default. The config file is
 ~/.config/skenv/config.toml, config.yaml, config.yml or config.json (only
-one of them); its one key today is "manifest", the path to env.toml, which
---manifest and $SKENV_MANIFEST override. "skenv init" records it.
+one of them); its one key today is "manifest", which --manifest and
+$SKENV_MANIFEST override. "skenv init" records it.
+
+The manifest is the [environment] section of a skenv file: skenv.toml (or
+skenv.yaml, skenv.yml, skenv.json) in the root of a repository. The same
+file holds the harness of a skills repository in its [repo] section.
+"manifest" names that file or the directory that holds it.
 
 Exit codes: 0 success, 1 problems found, 2 error.`,
 		Version:           buildinfo.Get().String(),
@@ -165,7 +170,7 @@ func group(use, short string, subs ...*cobra.Command) *cobra.Command {
 }
 
 func manifestFlag(fs *pflag.FlagSet, o *engine.Options) {
-	fs.StringVar(&o.Manifest, "manifest", "", "path to env.toml")
+	fs.StringVar(&o.Manifest, "manifest", "", "skenv file with the [environment] section, or its directory")
 }
 
 func dryRunFlag(fs *pflag.FlagSet, p *bool) {
@@ -179,7 +184,7 @@ func initCmd(a *app) *cobra.Command {
 		Use:   "init <owner/repo>",
 		Short: "Clone the manifest repository and sync",
 		Long: `Clone the manifest repository into --path (default ./<repo> in the current
-directory, like git clone), record its env.toml as "manifest" in the config
+directory, like git clone), record its skenv file as "manifest" in the config
 file (~/.config/skenv/config.toml unless a YAML or JSON one exists) and run
 sync. If the repository is already cloned, only the path is recorded.`,
 		Args: nArgs(1),

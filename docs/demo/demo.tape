@@ -30,7 +30,7 @@ Sleep 300ms
 Enter
 Wait /\$$/
 Sleep 2500ms
-Type "cat agent-skills/env.toml"
+Type "cat agent-skills/skenv.toml"
 Sleep 300ms
 Enter
 Sleep 4s
@@ -97,7 +97,7 @@ Sleep 300ms
 Enter
 Wait /\$$/
 Sleep 2500ms
-Type "tail -5 agent-skills/env.toml"
+Type "tail -5 agent-skills/skenv.toml"
 Sleep 300ms
 Enter
 Sleep 4s

@@ -1,8 +1,8 @@
 // Package harness generates and verifies the tooling of a skills repository
 // ("repository harness"): git hooks, CI workflow, linter configs and the
-// managed blocks of AGENTS.md and .gitignore. Templates are embedded per
-// harness version so a repository can stay on the version it was set up
-// with until it is upgraded explicitly.
+// managed blocks of AGENTS.md and .gitignore. The templates of one harness
+// version (Latest) are embedded; `skenv repo apply` moves a repository to
+// it. Its settings are the [repo] section of the skenv file.
 package harness
 
 import (
@@ -14,21 +14,22 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
 
-	"github.com/BurntSushi/toml"
-
 	"github.com/qunaxis/skenv/internal/atomicfile"
+	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
-// ConfigFile is the harness description in the repository root.
+// ConfigFile is the skenv file that `repo init` creates when the
+// repository has none.
 const ConfigFile = "skenv.toml"
 
-// Latest is the newest harness version this skenv binary ships templates
-// for; `repo init` uses it and `repo apply --upgrade` moves to it.
-const Latest = "0.3.0"
+// Latest is the harness version of the embedded templates; `repo init`
+// and `repo apply` write it. The CI workflow installs this skenv release.
+const Latest = "0.4.0"
 
 // DefaultRunner is the runs-on of private repositories (the self-hosted
 // Docker runner).
@@ -37,28 +38,57 @@ var DefaultRunner = []string{"self-hosted", "linux", "docker"}
 //go:embed templates
 var templates embed.FS
 
-// Config is the content of skenv.toml.
+// Config is the [repo] section of the skenv file.
 type Config struct {
-	Harness    string   `toml:"harness"`
-	Visibility string   `toml:"visibility"`
-	Runner     []string `toml:"runner"`
+	Harness    string   `toml:"harness" yaml:"harness" json:"harness"`
+	Visibility string   `toml:"visibility" yaml:"visibility" json:"visibility"`
+	Runner     []string `toml:"runner" yaml:"runner" json:"runner"`
+
+	// File is the skenv file; HasEnvironment reports whether it also
+	// carries the [environment] section (a manifest).
+	File           string `toml:"-" yaml:"-" json:"-"`
+	HasEnvironment bool   `toml:"-" yaml:"-" json:"-"`
 }
 
-// LoadConfig reads skenv.toml in root.
-func LoadConfig(root string) (*Config, error) {
-	var c Config
-	md, err := toml.DecodeFile(filepath.Join(root, ConfigFile), &c)
+// errNoRepo is returned when the repository has no [repo] section.
+var errNoRepo = errors.New("no [repo] section in the skenv file; run `skenv repo init`")
+
+// ReadRaw decodes the [repo] section of the skenv file in root without
+// validating it; ok is false when there is no skenv file or no [repo].
+func ReadRaw(root string) (*Config, bool, error) {
+	file, err := skenvfile.Find(root)
+	if err != nil || file == "" {
+		return nil, false, err
+	}
+	doc, err := skenvfile.Read(file)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", ConfigFile, err)
+		return nil, true, err
 	}
-	if undecoded := md.Undecoded(); len(undecoded) > 0 {
-		return nil, fmt.Errorf("%s: unknown key %s", ConfigFile, undecoded[0])
+	if !doc.Has(skenvfile.Repo) {
+		return nil, false, nil
 	}
-	return &c, c.validate()
+	c := &Config{File: file, HasEnvironment: doc.Has(skenvfile.Environment)}
+	if err := doc.Decode(skenvfile.Repo, c); err != nil {
+		return nil, true, fmt.Errorf("%s: %w", file, err)
+	}
+	return c, true, nil
 }
 
-// Version returns the harness version recorded in root/skenv.toml without
-// validating the rest; ok is false when there is no skenv.toml.
+// LoadConfig reads and validates the [repo] section of the skenv file in
+// root.
+func LoadConfig(root string) (*Config, error) {
+	c, ok, err := ReadRaw(root)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errNoRepo
+	}
+	return c, c.validate()
+}
+
+// Version returns the harness version recorded in root without validating
+// the rest; ok is false when root has no [repo] section.
 func Version(root string) (version string, ok bool, err error) {
 	c, ok, err := ReadRaw(root)
 	if c == nil {
@@ -67,20 +97,16 @@ func Version(root string) (version string, ok bool, err error) {
 	return c.Harness, ok, err
 }
 
-// ReadRaw decodes root/skenv.toml without validating it; ok is false when
-// there is no skenv.toml.
-func ReadRaw(root string) (*Config, bool, error) {
-	var c Config
-	if _, err := toml.DecodeFile(filepath.Join(root, ConfigFile), &c); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, false, nil
-		}
-		return nil, true, fmt.Errorf("%s: %w", ConfigFile, err)
-	}
-	return &c, true, nil
-}
+// errPublicEnvironment explains why a public repository must not carry the
+// manifest.
+const errPublicEnvironment = "a public repository must not carry [environment]: the manifest is personal " +
+	"(home paths, host names, which skills you use); keep it in a private repository"
 
 func (c *Config) validate() error {
+	name := filepath.Base(c.File)
+	if c.File == "" {
+		name = ConfigFile
+	}
 	switch c.Visibility {
 	case "private":
 		if len(c.Runner) == 0 {
@@ -88,13 +114,13 @@ func (c *Config) validate() error {
 		}
 	case "public":
 	default:
-		return fmt.Errorf("%s: visibility must be \"private\" or \"public\", got %q", ConfigFile, c.Visibility)
+		return fmt.Errorf("%s: repo.visibility must be \"private\" or \"public\", got %q", name, c.Visibility)
 	}
 	if c.Harness == "" {
-		return fmt.Errorf("%s: harness is required", ConfigFile)
+		return fmt.Errorf("%s: repo.harness is required", name)
 	}
-	if _, err := fs.Stat(templates, "templates/"+c.Harness); err != nil {
-		return fmt.Errorf("%s: harness %s is unknown to this skenv (it knows up to %s); upgrade skenv", ConfigFile, c.Harness, Latest)
+	if Compare(c.Harness, Latest) > 0 {
+		return fmt.Errorf("%s: harness %s is newer than %s of this skenv; upgrade skenv", name, c.Harness, Latest)
 	}
 	return nil
 }
@@ -102,6 +128,7 @@ func (c *Config) validate() error {
 func (c *Config) encode() []byte {
 	var b bytes.Buffer
 	b.WriteString("# Repository harness: `skenv repo apply` regenerates the managed files.\n")
+	b.WriteString("[repo]\n")
 	fmt.Fprintf(&b, "harness    = %q\n", c.Harness)
 	fmt.Fprintf(&b, "visibility = %q\n", c.Visibility)
 	if c.Visibility == "private" {
@@ -146,18 +173,6 @@ var items = []item{
 // jsonHeader marks items whose template writes its own header.
 const jsonHeader = "json"
 
-// itemsFor returns the items that exist in the templates of c.Harness:
-// later harness versions add files (0.3.0: .claude/settings.json).
-func itemsFor(c *Config) []item {
-	var out []item
-	for _, it := range items {
-		if _, err := fs.Stat(templates, path.Join("templates", c.Harness, it.Template)); err == nil {
-			out = append(out, it)
-		}
-	}
-	return out
-}
-
 // Header is the first line of a managed file without the comment prefix.
 func Header(version string) string { return "managed by skenv " + version + " — do not edit" }
 
@@ -170,7 +185,7 @@ type tmplData struct {
 // render returns the expected content of it: the whole file for managed
 // files, the block including its markers for managed blocks.
 func render(c *Config, it item) (string, error) {
-	raw, err := templates.ReadFile(path.Join("templates", c.Harness, it.Template))
+	raw, err := templates.ReadFile(path.Join("templates", it.Template))
 	if err != nil {
 		return "", err
 	}
@@ -247,21 +262,29 @@ type Drift struct {
 	Reason string
 }
 
-// Check compares the managed files and blocks in root with the templates of
-// the configured harness version. CLAUDE.md in the root or .claude/ is
-// reported as well: it disables AGENTS.md in Claude Code's default mode.
+// Check compares the managed files and blocks in root with the templates.
+// Also reported: a harness older than Latest (the files are then not
+// compared), CLAUDE.md in the root or .claude/ (it disables AGENTS.md in
+// Claude Code's default mode) and [environment] in a public repository.
 func Check(root string) ([]Drift, error) {
 	c, err := LoadConfig(root)
 	if err != nil {
 		return nil, err
 	}
 	var out []Drift
+	file := filepath.Base(c.File)
+	if c.Visibility == "public" && c.HasEnvironment {
+		out = append(out, Drift{Path: file, Reason: errPublicEnvironment})
+	}
+	if c.Harness != Latest {
+		return append(out, Drift{Path: file, Reason: fmt.Sprintf("harness %s; this skenv generates %s: run `skenv repo apply`", c.Harness, Latest)}), nil
+	}
 	for _, p := range []string{"CLAUDE.md", filepath.Join(".claude", "CLAUDE.md")} {
 		if _, err := os.Lstat(filepath.Join(root, p)); err == nil {
 			out = append(out, Drift{Path: filepath.ToSlash(p), Reason: "must not exist: it disables loading of AGENTS.md in Claude Code; move its content to AGENTS.md"})
 		}
 	}
-	for _, it := range itemsFor(c) {
+	for _, it := range items {
 		want, err := render(c, it)
 		if err != nil {
 			return nil, err
@@ -329,7 +352,7 @@ func Apply(root string, c *Config, dryRun, force bool) ([]Change, error) {
 	}
 	if !force {
 		var foreign []string
-		for _, it := range itemsFor(c) {
+		for _, it := range items {
 			if it.Kind != whole {
 				continue
 			}
@@ -343,7 +366,7 @@ func Apply(root string, c *Config, dryRun, force bool) ([]Change, error) {
 		}
 	}
 	var changes []Change
-	for _, it := range itemsFor(c) {
+	for _, it := range items {
 		want, err := render(c, it)
 		if err != nil {
 			return nil, err
@@ -409,25 +432,54 @@ func mergeBlock(it item, data, want string, exists bool) (string, error) {
 	return strings.Join(lines[:start], "") + want + strings.Join(lines[end+1:], ""), nil
 }
 
-// Init creates skenv.toml and all managed files. It refuses to run when
-// skenv.toml already exists.
+// Init adds the [repo] section and all managed files. Without a skenv file
+// it creates skenv.toml; an existing one (a manifest repository) gets the
+// section added. It refuses when [repo] exists already.
 func Init(root, visibility string, dryRun, force bool) (*Config, []Change, error) {
-	if _, err := os.Stat(filepath.Join(root, ConfigFile)); err == nil {
-		return nil, nil, fmt.Errorf("%s already exists; use `skenv repo apply` to regenerate the managed files", ConfigFile)
+	file, err := skenvfile.Find(root)
+	if err != nil {
+		return nil, nil, err
 	}
-	c := &Config{Harness: Latest, Visibility: visibility}
+	c := &Config{Harness: Latest, Visibility: visibility, File: file}
+	var data []byte
+	if file != "" {
+		doc, err := skenvfile.Read(file)
+		if err != nil {
+			return nil, nil, err
+		}
+		if doc.Has(skenvfile.Repo) {
+			return nil, nil, fmt.Errorf("%s already has [repo]; use `skenv repo apply` to regenerate the managed files", filepath.Base(file))
+		}
+		c.HasEnvironment = doc.Has(skenvfile.Environment)
+		if data, err = os.ReadFile(file); err != nil {
+			return nil, nil, err
+		}
+	} else {
+		c.File = filepath.Join(root, ConfigFile)
+	}
 	if err := c.validate(); err != nil {
 		return nil, nil, err
 	}
+	if c.Visibility == "public" && c.HasEnvironment {
+		return nil, nil, fmt.Errorf("%s: %s", filepath.Base(c.File), errPublicEnvironment)
+	}
 	if !force {
-		// Refuse before writing skenv.toml, so a rerun with --force works.
+		// Refuse before writing the skenv file, so a rerun with --force works.
 		if _, err := Apply(root, c, true, false); err != nil {
 			return nil, nil, err
 		}
 	}
-	changes := []Change{{Path: ConfigFile, Action: "create"}}
+	out, err := addRepo(data, filepath.Ext(c.File), c)
+	if err != nil {
+		return nil, nil, err
+	}
+	action := "create"
+	if file != "" {
+		action = "add [repo] to"
+	}
+	changes := []Change{{Path: filepath.Base(c.File), Action: action}}
 	if !dryRun {
-		if err := atomicfile.Write(filepath.Join(root, ConfigFile), c.encode(), 0o644); err != nil {
+		if err := writeKeepMode(c.File, out); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -435,32 +487,99 @@ func Init(root, visibility string, dryRun, force bool) (*Config, []Change, error
 	return c, append(changes, more...), err
 }
 
-// SetHarness rewrites the harness version in skenv.toml, keeping the rest
-// of the file.
+// addRepo returns data with the [repo] section of c appended.
+func addRepo(data []byte, ext string, c *Config) ([]byte, error) {
+	if ext == ".toml" {
+		var b bytes.Buffer
+		b.Write(data)
+		if len(bytes.TrimSpace(data)) > 0 {
+			if !bytes.HasSuffix(data, []byte("\n")) {
+				b.WriteByte('\n')
+			}
+			b.WriteByte('\n')
+		}
+		b.Write(c.encode())
+		return b.Bytes(), nil
+	}
+	return skenvfile.Rewrite(data, ext, func(doc map[string]any) error {
+		repo := map[string]any{"harness": c.Harness, "visibility": c.Visibility}
+		if c.Visibility == "private" {
+			repo["runner"] = c.Runner
+		}
+		doc[skenvfile.Repo] = repo
+		return nil
+	})
+}
+
+var (
+	repoHeaderRe = regexp.MustCompile(`^\s*\[\s*repo\s*\]\s*(#.*)?$`)
+	tableRe      = regexp.MustCompile(`^\s*\[`)
+	harnessKeyRe = regexp.MustCompile(`^(\s*harness\s*=\s*)"[^"]*"(.*)$`)
+)
+
+// SetHarness sets repo.harness in the skenv file of root. TOML keeps the
+// rest of the file as it is; YAML and JSON are rewritten from their data.
 func SetHarness(root, version string, dryRun bool) error {
-	file := filepath.Join(root, ConfigFile)
+	file, err := skenvfile.Find(root)
+	if err != nil {
+		return err
+	}
+	if file == "" {
+		return errNoRepo
+	}
 	data, err := os.ReadFile(file)
 	if err != nil {
 		return err
 	}
-	lines := strings.SplitAfter(string(data), "\n")
-	done := false
-	for i, l := range lines {
-		key, _, ok := strings.Cut(l, "=")
-		if ok && strings.TrimSpace(key) == "harness" {
-			nl := l[len(strings.TrimRight(l, "\r\n")):]
-			lines[i] = "harness    = " + strconv.Quote(version) + nl
-			done = true
-			break
+	var out []byte
+	if filepath.Ext(file) == ".toml" {
+		lines := strings.SplitAfter(string(data), "\n")
+		inRepo, done := false, false
+		for i, l := range lines {
+			trimmed := strings.TrimRight(l, "\r\n")
+			switch {
+			case repoHeaderRe.MatchString(trimmed):
+				inRepo = true
+				continue
+			case tableRe.MatchString(trimmed):
+				inRepo = false
+				continue
+			}
+			if m := harnessKeyRe.FindStringSubmatch(trimmed); inRepo && m != nil {
+				lines[i] = m[1] + strconv.Quote(version) + m[2] + l[len(trimmed):]
+				done = true
+				break
+			}
 		}
-	}
-	if !done {
-		return fmt.Errorf("%s has no harness key", ConfigFile)
+		if !done {
+			return fmt.Errorf("%s: no harness = \"...\" line under [repo]", filepath.Base(file))
+		}
+		out = []byte(strings.Join(lines, ""))
+	} else {
+		out, err = skenvfile.Rewrite(data, filepath.Ext(file), func(doc map[string]any) error {
+			repo, err := skenvfile.Table(doc, skenvfile.Repo)
+			if err != nil {
+				return err
+			}
+			repo["harness"] = version
+			return nil
+		})
+		if err != nil {
+			return err
+		}
 	}
 	if dryRun {
 		return nil
 	}
-	return atomicfile.Write(file, []byte(strings.Join(lines, "")), 0o644)
+	return writeKeepMode(file, out)
+}
+
+func writeKeepMode(file string, data []byte) error {
+	mode := os.FileMode(0o644)
+	if fi, err := os.Stat(file); err == nil {
+		mode = fi.Mode().Perm()
+	}
+	return atomicfile.Write(file, data, mode)
 }
 
 // Compare compares dotted numeric versions ("0.2.0", "v0.10.1"): -1, 0, 1.

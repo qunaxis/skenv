@@ -1,9 +1,0 @@
-{
-  "include": ["skills"],
-  "exclude": ["**/.venv", "**/node_modules", "**/__pycache__"],
-  "venvPath": ".",
-  "venv": ".venv",
-  "pythonVersion": "3.9",
-  "typeCheckingMode": "standard",
-  "reportMissingModuleSource": false
-}

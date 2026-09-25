@@ -1,10 +1,8 @@
 # Claude Code hook
 
-`.claude/settings.json` (a managed file since harness 0.3.0, see
-[harness](harness.md)) runs `skenv lint --hook` after every `Edit`, `Write`
-or `MultiEdit` (PostToolUse). The command first checks that the installed
-skenv knows `--hook`, so machines with an older skenv or none at all are not
-interrupted.
+`.claude/settings.json` (a managed file, see [harness](harness.md)) runs
+`skenv lint --hook` after every `Edit`, `Write` or `MultiEdit`
+(PostToolUse). Machines without skenv on `PATH` are not interrupted.
 
 The hook reads the event from stdin, lints the skill that contains the
 edited file and, when there are problems, prints them to stderr with exit

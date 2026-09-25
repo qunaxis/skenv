@@ -19,7 +19,7 @@ skenv vendor add <owner/repo> [flags]
       --adopt             move conflicting unmanaged paths to the backup directory and replace them
       --dry-run           print the plan, change nothing
   -h, --help              help for add
-      --manifest string   path to env.toml
+      --manifest string   skenv file with the [environment] section, or its directory
       --name string       skill name (default: last element of --path)
       --path string       directory with SKILL.md inside the repository ("." for the root)
       --rev string        commit to pin (default: HEAD of the default branch)

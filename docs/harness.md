@@ -4,21 +4,29 @@
 skills: git hooks, the CI workflow, linter configs and the rules for coding
 agents. It works in any git repository with skills under `skills/<name>/`.
 
-- [`skenv.toml`](#skenvtoml)
+- [`[repo]` in `skenv.toml`](#repo-in-skenvtoml)
 - [Commands](#commands)
 - [Managed files](#managed-files)
 - [Skill tests](#skill-tests)
 - [Harness versions](#harness-versions)
 
-## `skenv.toml`
+## `[repo]` in `skenv.toml`
 
-A repository describes its harness in `skenv.toml`:
+A repository describes its harness in the `[repo]` section of its skenv file
+(`skenv.toml`, or `skenv.yaml`/`skenv.yml`/`skenv.json`; see
+[the skenv file](skenv-file.md)):
 
 ```toml
-harness    = "0.3.0"                               # version of the templates
+[repo]
+harness    = "0.4.0"                               # version of the templates
 visibility = "private"                             # private | public
 runner     = ["self-hosted", "linux", "docker"]    # runs-on, private only
 ```
+
+The repository that holds your manifest has an `[environment]` section in
+the same file. A public repository must not: `skenv repo init` refuses and
+`skenv repo check` fails, because the manifest is personal (home paths, host
+names, which skills you use).
 
 > [!WARNING]
 > In a private repository the CI jobs run on `runner`, which defaults to a
@@ -32,8 +40,8 @@ runner     = ["self-hosted", "linux", "docker"]    # runs-on, private only
 
 | Command                                        | What it does                                                                                                                                                         |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `skenv repo init --visibility private\|public` | Create `skenv.toml` and every managed file, then `lefthook install`. Refuses if `skenv.toml` exists.                                                                 |
-| `skenv repo apply [--upgrade]`                 | Regenerate the managed files and blocks for the `harness` version; `--upgrade` first moves `harness` to the newest templates of this skenv. Then `lefthook install`. |
+| `skenv repo init --visibility private\|public` | Add `[repo]` (creating `skenv.toml` if there is no skenv file) and every managed file, then `lefthook install`. Refuses if `[repo]` exists. |
+| `skenv repo apply`                             | Regenerate the managed files and blocks from the templates of this skenv, moving an older `harness` to it. Then `lefthook install`. |
 | `skenv repo check`                             | Compare with the templates; any drift, and a `CLAUDE.md` or `.claude/CLAUDE.md` (it disables `AGENTS.md` in Claude Code), is listed with exit code 1.                |
 
 All commands take `--dir` (default: the current repository); `init` and
@@ -66,7 +74,7 @@ Managed files start with `managed by skenv <harness> — do not edit`:
   from the `SKENV_DENYLIST` Actions secret (written to a temporary file,
   never echoed; the job fails when the secret is missing).
 - `ruff.toml`, `pyrightconfig.json`, `.editorconfig`, `.markdownlint.yaml`.
-- `.claude/settings.json` (harness 0.3.0) — the
+- `.claude/settings.json` — the
   [Claude Code hook](claude-code-hook.md).
 
 `AGENTS.md` (repository rules) and `.gitignore` get a managed block between
@@ -83,11 +91,12 @@ the upstream branch. Third-party Python imports for pyright go to
 
 ## Harness versions
 
-The templates are embedded in the binary per harness version: 0.2.0 and
-0.3.0 (adds `.claude/settings.json` and the publication check in CI).
-`skenv repo apply --upgrade` moves a repository to the newest one. `skenv
-doctor` warns about own repositories whose `harness` is older than the
-newest templates of the installed skenv.
+skenv embeds one template set, the harness version of its release (0.4.0).
+`skenv repo check` reports a repository on an older `harness`, and
+`skenv repo apply` moves it to the current one. `skenv doctor` warns about
+own repositories whose `harness` is older than the templates of the
+installed skenv. The CI workflow installs the skenv release named by
+`harness`.
 
 The publication check and the lint rules are described in
 [commands](commands.md#skenv-lint-path---staged---publish).

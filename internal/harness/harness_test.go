@@ -84,7 +84,7 @@ func TestInitCheckApply(t *testing.T) {
 	if changes, _ := Apply(root, mustConfig(t, root), false, false); len(changes) != 0 {
 		t.Errorf("second apply changed %v", changes)
 	}
-	if _, _, err := Init(root, "private", false, false); err == nil || !strings.Contains(err.Error(), "already exists") {
+	if _, _, err := Init(root, "private", false, false); err == nil || !strings.Contains(err.Error(), "already has [repo]") {
 		t.Errorf("second init: %v", err)
 	}
 }
@@ -173,20 +173,100 @@ func TestWorkflowVisibility(t *testing.T) {
 
 func TestConfig(t *testing.T) {
 	root := t.TempDir()
-	write(t, filepath.Join(root, ConfigFile), "harness = \"9.9.9\"\nvisibility = \"private\"\n")
-	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "unknown to this skenv") {
-		t.Errorf("unknown harness: %v", err)
+	cfg := filepath.Join(root, ConfigFile)
+	write(t, cfg, "[repo]\nharness = \"9.9.9\"\nvisibility = \"private\"\n")
+	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "newer than") {
+		t.Errorf("newer harness: %v", err)
 	}
-	write(t, filepath.Join(root, ConfigFile), "harness = \"0.2.0\"\nvisibility = \"internal\"\n")
+	write(t, cfg, "[repo]\nharness = \"0.4.0\"\nvisibility = \"internal\"\n")
 	if _, err := LoadConfig(root); err == nil {
 		t.Error("bad visibility accepted")
 	}
-	write(t, filepath.Join(root, ConfigFile), "# keep\nharness = \"0.1.0\" # old\nvisibility = \"public\"\n")
-	if err := SetHarness(root, "0.2.0", false); err != nil {
+	write(t, cfg, "[repo]\nharness = \"0.4.0\"\nvisibility = \"public\"\nbranch = \"main\"\n")
+	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "repo.branch") {
+		t.Errorf("unknown key: %v", err)
+	}
+	// Top-level keys of the skenv.toml of older skenv versions are rejected.
+	write(t, cfg, "harness = \"0.3.0\"\nvisibility = \"public\"\n")
+	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "unknown top-level keys: harness, visibility") {
+		t.Errorf("old layout: %v", err)
+	}
+	write(t, cfg, "[environment]\n")
+	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "no [repo] section") {
+		t.Errorf("no [repo]: %v", err)
+	}
+	// SetHarness only touches the harness line under [repo].
+	write(t, cfg, "# keep\n[environment.layout]\nharness = \"x\"\n\n[repo]\nharness = \"0.1.0\" # old\nvisibility = \"public\"\n")
+	if err := SetHarness(root, "0.4.0", false); err != nil {
 		t.Fatal(err)
 	}
-	if got := read(t, filepath.Join(root, ConfigFile)); got != "# keep\nharness    = \"0.2.0\"\nvisibility = \"public\"\n" {
+	if got := read(t, cfg); got != "# keep\n[environment.layout]\nharness = \"x\"\n\n[repo]\nharness = \"0.4.0\" # old\nvisibility = \"public\"\n" {
 		t.Errorf("SetHarness:\n%s", got)
+	}
+}
+
+// repo init adds [repo] to the skenv file of a manifest repository and
+// keeps the rest; a public repository must not carry [environment].
+func TestInitNextToEnvironment(t *testing.T) {
+	for _, c := range []struct{ name, content string }{
+		{"skenv.toml", "# my machines\n[environment.layout]\nstore = \"~/s\"  # kept\n"},
+		{"skenv.yaml", "environment:\n  layout:\n    store: ~/s\n"},
+		{"skenv.json", `{"environment": {"layout": {"store": "~/s"}}}`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			write(t, filepath.Join(root, c.name), c.content)
+			if _, _, err := Init(root, "public", false, false); err == nil || !strings.Contains(err.Error(), "must not carry [environment]") {
+				t.Fatalf("public init with [environment]: %v", err)
+			}
+			if _, _, err := Init(root, "private", false, false); err != nil {
+				t.Fatal(err)
+			}
+			got := read(t, filepath.Join(root, c.name))
+			if c.name == "skenv.toml" && !strings.HasPrefix(got, c.content) {
+				t.Errorf("existing text not kept:\n%s", got)
+			}
+			if d, err := Check(root); err != nil || len(d) != 0 {
+				t.Errorf("check: %v %v\n%s", d, err, got)
+			}
+			if _, _, err := Init(root, "private", false, false); err == nil || !strings.Contains(err.Error(), "already has [repo]") {
+				t.Errorf("second init: %v", err)
+			}
+			// Turning it public is reported by check.
+			if err := os.WriteFile(filepath.Join(root, c.name), []byte(strings.Replace(got, "private", "public", 1)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			d, _ := Check(root)
+			found := false
+			for _, x := range d {
+				found = found || strings.Contains(x.Reason, "must not carry [environment]")
+			}
+			if !found {
+				t.Errorf("public + [environment] not reported: %v", d)
+			}
+		})
+	}
+}
+
+// A repository on an older harness is reported by check and moved to
+// Latest by SetHarness (what `repo apply` does).
+func TestOlderHarness(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Init(root, "private", false, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetHarness(root, "0.3.0", false); err != nil {
+		t.Fatal(err)
+	}
+	d, _ := Check(root)
+	if len(d) != 1 || !strings.Contains(d[0].Reason, "harness 0.3.0; this skenv generates "+Latest) {
+		t.Fatalf("drift = %v", d)
+	}
+	if err := SetHarness(root, Latest, false); err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := Check(root); len(d) != 0 {
+		t.Fatalf("drift after SetHarness = %v", d)
 	}
 }
 
@@ -218,10 +298,10 @@ func TestApplyKeepsCRLFOutsideBlock(t *testing.T) {
 
 // Every rendered workflow and hook config must parse.
 func TestRenderedFilesParse(t *testing.T) {
-	for _, v := range []string{"0.2.0", "0.3.0"} {
+	for _, v := range []string{Latest} {
 		for _, vis := range []string{"private", "public"} {
 			c := &Config{Harness: v, Visibility: vis, Runner: DefaultRunner}
-			for _, it := range itemsFor(c) {
+			for _, it := range items {
 				text, err := render(c, it)
 				if err != nil {
 					t.Fatal(err)
@@ -241,9 +321,9 @@ func TestRenderedFilesParse(t *testing.T) {
 	}
 }
 
-func TestHarness030(t *testing.T) {
-	public, _ := render(&Config{Harness: "0.3.0", Visibility: "public"}, items[1])
-	private, _ := render(&Config{Harness: "0.3.0", Visibility: "private", Runner: DefaultRunner}, items[1])
+func TestTemplates(t *testing.T) {
+	public, _ := render(&Config{Harness: Latest, Visibility: "public"}, items[1])
+	private, _ := render(&Config{Harness: Latest, Visibility: "private", Runner: DefaultRunner}, items[1])
 	for _, want := range []string{"skenv lint --publish", "DENYLIST: ${{ secrets.SKENV_DENYLIST }}", "SKENV_DENYLIST=\"$list\" skenv lint --publish"} {
 		if !strings.Contains(public, want) {
 			t.Errorf("public workflow lacks %q", want)
@@ -252,8 +332,8 @@ func TestHarness030(t *testing.T) {
 	if strings.Contains(private, "--publish") || strings.Contains(private, "SKENV_DENYLIST") {
 		t.Error("private workflow must not run the publication check")
 	}
-	lhPublic, _ := render(&Config{Harness: "0.3.0", Visibility: "public"}, items[0])
-	lhPrivate, _ := render(&Config{Harness: "0.3.0", Visibility: "private", Runner: DefaultRunner}, items[0])
+	lhPublic, _ := render(&Config{Harness: Latest, Visibility: "public"}, items[0])
+	lhPrivate, _ := render(&Config{Harness: Latest, Visibility: "private", Runner: DefaultRunner}, items[0])
 	if !strings.Contains(lhPublic, "publish-check:\n      # Public") || !strings.Contains(lhPublic, "run: skenv lint --publish") {
 		t.Errorf("public lefthook lacks the pre-push publication check:\n%s", lhPublic)
 	}
@@ -264,7 +344,7 @@ func TestHarness030(t *testing.T) {
 	if strings.Contains(public, "echo \"$DENYLIST") || strings.Contains(public, "cat \"$list") {
 		t.Error("stop-list printed")
 	}
-	settings, err := render(&Config{Harness: "0.3.0", Visibility: "private", Runner: DefaultRunner}, items[len(items)-1])
+	settings, err := render(&Config{Harness: Latest, Visibility: "private", Runner: DefaultRunner}, items[len(items)-1])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,47 +358,8 @@ func TestHarness030(t *testing.T) {
 		t.Fatalf("settings.json is not JSON: %v", err)
 	}
 	post := parsed.Hooks["PostToolUse"]
-	if len(post) != 1 || post[0].Matcher != "Edit|Write|MultiEdit" || !strings.Contains(post[0].Hooks[0].Command, "skenv lint --hook") {
+	if len(post) != 1 || post[0].Matcher != "Edit|Write|MultiEdit" || post[0].Hooks[0].Command != "command -v skenv >/dev/null 2>&1 || exit 0; skenv lint --hook" {
 		t.Errorf("hook = %+v", post)
-	}
-}
-
-// A repository on harness 0.2.0 keeps its file set until --upgrade.
-func TestUpgradeFrom020(t *testing.T) {
-	root := t.TempDir()
-	c := &Config{Harness: "0.2.0", Visibility: "private"}
-	write(t, filepath.Join(root, ConfigFile), string(c.encode()))
-	if _, err := Apply(root, mustConfig(t, root), false, false); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(root, ".claude", "settings.json")); err == nil {
-		t.Fatal("harness 0.2.0 must not create .claude/settings.json")
-	}
-	if d, _ := Check(root); len(d) != 0 {
-		t.Fatalf("0.2.0 check: %v", d)
-	}
-	if err := SetHarness(root, Latest, false); err != nil {
-		t.Fatal(err)
-	}
-	d, _ := Check(root)
-	if len(d) == 0 {
-		t.Fatal("after the version bump the files must differ")
-	}
-	changes, err := Apply(root, mustConfig(t, root), false, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	created := false
-	for _, ch := range changes {
-		if ch.Path == ".claude/settings.json" && ch.Action == "create" {
-			created = true
-		}
-	}
-	if !created {
-		t.Errorf("changes = %v", changes)
-	}
-	if d, _ := Check(root); len(d) != 0 {
-		t.Fatalf("check after upgrade: %v", d)
 	}
 }
 

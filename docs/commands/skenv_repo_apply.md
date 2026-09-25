@@ -6,8 +6,9 @@ Regenerate the managed files of the harness
 
 ### Synopsis
 
-Regenerate the managed files and blocks for the harness version in skenv.toml
-(--upgrade moves it to 0.3.0 first); then `lefthook install`.
+Regenerate the managed files and blocks from the templates of this skenv
+(harness 0.4.0; an older repo.harness is moved to it); then
+`lefthook install`.
 
 ```
 skenv repo apply [flags]
@@ -19,7 +20,6 @@ skenv repo apply [flags]
       --dry-run   print the plan, change nothing
       --force     replace existing files that skenv does not manage yet
   -h, --help      help for apply
-      --upgrade   move harness to 0.3.0 (the templates of this skenv)
 ```
 
 ### Options inherited from parent commands

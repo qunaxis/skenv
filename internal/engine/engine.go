@@ -73,11 +73,12 @@ type Engine struct {
 // ErrNoManifest means no manifest location is configured. skenv does not
 // guess one: the skills repository can live anywhere and have any name.
 var ErrNoManifest = errors.New("no manifest configured: run `skenv init <owner/repo>` to clone your skills repository " +
-	"and record its env.toml, or pass --manifest FILE (or set $SKENV_MANIFEST)")
+	"and record its skenv.toml, or pass --manifest FILE (or set $SKENV_MANIFEST)")
 
-// ResolveManifest picks the manifest path: --manifest, $SKENV_MANIFEST,
-// then `manifest` in the config file (~/.config/skenv/config.{toml,yaml,yml,json}).
-// Without any of them it returns ErrNoManifest.
+// ResolveManifest picks the manifest, the skenv file with [environment]:
+// --manifest, $SKENV_MANIFEST, then `manifest` in the config file
+// (~/.config/skenv/config.{toml,yaml,yml,json}). Each may name the file or
+// the directory that holds it. Without any of them it returns ErrNoManifest.
 func ResolveManifest(env Env, flag string) (string, error) {
 	m, _, err := config.Resolve(env.Home, env.Getenv, "manifest", flag, "")
 	if err != nil {
@@ -86,7 +87,7 @@ func ResolveManifest(env Env, flag string) (string, error) {
 	if m == "" {
 		return "", ErrNoManifest
 	}
-	return paths.Expand(env.Home, m), nil
+	return manifest.Locate(paths.Expand(env.Home, m))
 }
 
 // Open loads the manifest and state.

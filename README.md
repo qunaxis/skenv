@@ -35,7 +35,8 @@ directory. Copying them by hand between Claude Code, Codex and pi, on a
 laptop, a desktop and a server, drifts within a week.
 
 `skenv` keeps the agent skills on a machine in sync with a declarative
-manifest, `env.toml`, that lives in a git repository you own. Run
+manifest (the `[environment]` section of `skenv.toml`) that lives in a git
+repository you own. Run
 `skenv sync` on any machine and it ends up with the same skills, linked
 into every agent that is installed there.
 
@@ -66,7 +67,7 @@ Its design is guided by these mantras:
 ## Features
 
 - Sync own skills (git working copies) and vendored skills (pinned copies)
-  from one `env.toml` into Claude Code, Codex and pi.
+  from one manifest into Claude Code, Codex and pi.
 - `skenv doctor` compares the machine with the manifest and classifies every
   discrepancy (missing, conflict, wrong-rev, dirty, unpushed, …), as text or
   JSON.
@@ -123,8 +124,8 @@ instead:
 go install github.com/qunaxis/skenv/cmd/skenv@latest
 ```
 
-Then bootstrap the machine from your skills repository, the one that holds
-`env.toml`:
+Then bootstrap the machine from your skills repository, the one whose
+`skenv.toml` has the `[environment]` section:
 
 ```sh
 cd ~/src                        # any directory; the clone lands in ./<skills-repo>
@@ -142,15 +143,17 @@ cloned, point `--path` at it: `skenv init <owner>/<skills-repo> --path ~/src/my-
 > default manifest location. If you never ran `skenv init` and relied on
 > that default, commands now stop with an error. Record your existing
 > checkout once with `skenv init <owner>/<skills-repo> --path <checkout>`;
-> an existing clone is not touched, only its `env.toml` is recorded.
+> an existing clone is not touched, only its skenv file is recorded.
 
 ## Getting started
 
-A skills repository needs an `env.toml` at its root. A minimal one lists
-the repository itself, so skenv keeps its working copy up to date:
+The manifest is the `[environment]` section of `skenv.toml` at the root of
+your skills repository ([the skenv file](docs/skenv-file.md) also holds the
+repository harness in `[repo]`). A minimal one lists the repository itself,
+so skenv keeps its working copy up to date:
 
 ```toml
-[[own]]
+[[environment.own]]
 repo = "<owner>/<skills-repo>"
 path = "~/src/<skills-repo>"
 ```
@@ -174,7 +177,7 @@ skenv sync --adopt
 # 3. Check that the machine matches the manifest (exit 0: in sync).
 skenv doctor
 
-# 4. Pin a third-party skill; skenv edits env.toml and prints the commit command.
+# 4. Pin a third-party skill; skenv edits skenv.toml and prints the commit command.
 skenv vendor add <owner>/<repo> --path <skill-dir>
 
 # 5. Scaffold your own skill in the private skills repository and lint it
@@ -182,12 +185,12 @@ skenv vendor add <owner>/<repo> --path <skill-dir>
 skenv new my-skill
 ```
 
-Commit the changes to `env.toml` and your new skill as usual; every other
+Commit the changes to `skenv.toml` and your new skill as usual; every other
 machine picks them up on its next `skenv sync` (or within the hour, with
 autostart). Later, `skenv vendor bump <name>` moves a vendored skill to a
 new commit and shows what changed.
 
-`skenv new` looks for the own repository whose `skenv.toml` has the
+`skenv new` looks for the own repository whose `[repo]` has the
 requested visibility; set it up once with
 `skenv repo init --visibility private` (see [docs/harness.md](docs/harness.md)),
 or pass `--dir` to target any git repository.
@@ -198,9 +201,11 @@ or pass `--dir` to target any git repository.
   `--adopt`, `doctor` classes, lint rules and the publication check.
 - [Command reference](docs/commands/README.md): one page per command,
   generated from the command definitions by `make docs`.
-- [Manifest](docs/manifest.md): the `env.toml` format, where it is found,
+- [The skenv file](docs/skenv-file.md): `skenv.toml` with its `[repo]` and
+  `[environment]` sections, formats, and moving from `env.toml`.
+- [Manifest](docs/manifest.md): the `[environment]` format, where it is found,
   the layout on disk, and the mapping to `skills-lock.json`.
-- [Harness](docs/harness.md): `skenv repo init|apply|check`, `skenv.toml`,
+- [Harness](docs/harness.md): `skenv repo init|apply|check`, `[repo]`,
   the managed files and harness versions.
 - [Claude Code hook](docs/claude-code-hook.md): how skills are linted while
   an agent edits them.

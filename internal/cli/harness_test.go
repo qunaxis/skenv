@@ -67,7 +67,7 @@ func TestRepoInitCheckApply(t *testing.T) {
 		t.Errorf("CLAUDE.md not reported:\n%s", out)
 	}
 	_, errOut = w.mustRun(2, "repo", "init", "--visibility", "public", "--dir", repo)
-	if !strings.Contains(errOut, "already exists") {
+	if !strings.Contains(errOut, "already has [repo]") {
 		t.Errorf("second init: %s", errOut)
 	}
 }

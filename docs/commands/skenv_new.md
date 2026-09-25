@@ -19,7 +19,7 @@ skenv new <name> [flags]
 ```
       --dir string        target repository instead of the manifest's own repositories
   -h, --help              help for new
-      --manifest string   path to env.toml
+      --manifest string   skenv file with the [environment] section, or its directory
       --repo string       visibility of the target repository: private or public (default "private")
 ```
 

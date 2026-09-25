@@ -18,7 +18,7 @@ skenv vendor remove <name> [flags]
       --adopt             move conflicting unmanaged paths to the backup directory and replace them
       --dry-run           print the plan, change nothing
   -h, --help              help for remove
-      --manifest string   path to env.toml
+      --manifest string   skenv file with the [environment] section, or its directory
 ```
 
 ### SEE ALSO

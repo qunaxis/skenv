@@ -20,7 +20,7 @@ skenv doctor [flags]
 ```
   -h, --help              help for doctor
       --json              print the report as JSON
-      --manifest string   path to env.toml
+      --manifest string   skenv file with the [environment] section, or its directory
 ```
 
 ### SEE ALSO

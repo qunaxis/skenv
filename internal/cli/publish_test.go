@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"github.com/qunaxis/skenv/internal/harness"
+
 	"crypto/rand"
 	"encoding/hex"
 	"os"
@@ -106,8 +108,7 @@ func TestLintHook(t *testing.T) {
 
 func TestNewSkill(t *testing.T) {
 	w := newWorld(t)
-	w.standard("")
-	w.push("me/skills", map[string]string{"skenv.toml": "harness = \"0.3.0\"\nvisibility = \"private\"\n"}, "chore: harness")
+	w.standard("\n[repo]\nharness = \"" + harness.Latest + "\"\nvisibility = \"private\"\n")
 	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
 
 	out, _ := w.mustRun(0, "new", "my-skill")
@@ -140,7 +141,7 @@ func TestNewSkill(t *testing.T) {
 		t.Errorf("public hint missing:\n%s", out)
 	}
 	// --dir takes the visibility from the repository's skenv.toml.
-	writeFile(t, filepath.Join(pub, "skenv.toml"), "harness = \"0.3.0\"\nvisibility = \"public\"\n")
+	writeFile(t, filepath.Join(pub, "skenv.toml"), "[repo]\nharness = \"0.3.0\"\nvisibility = \"public\"\n")
 	out, _ = w.mustRun(0, "new", "other", "--dir", pub)
 	if !strings.Contains(out, "skenv lint --publish") {
 		t.Errorf("visibility from skenv.toml ignored:\n%s", out)

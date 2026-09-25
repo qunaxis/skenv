@@ -15,9 +15,6 @@ import (
 	"github.com/qunaxis/skenv/internal/paths"
 )
 
-// ManifestFile is the manifest file name inside the manifest repository.
-const ManifestFile = "env.toml"
-
 // Init bootstraps a machine (B1): clone the manifest repository, record the
 // manifest path in the skenv config file and run sync. Without dir the
 // repository is cloned into ./<repo> of the current directory, like git
@@ -40,7 +37,6 @@ func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, er
 	if err != nil {
 		return ExitFatal, err
 	}
-	manifestPath := filepath.Join(dir, ManifestFile)
 	show := func(p string) string { return paths.Collapse(env.Home, p) }
 	// A config that cannot be updated fails before anything is cloned, and
 	// --dry-run reports the same error the real run would.
@@ -56,8 +52,8 @@ func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, er
 	cloned := false
 	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
 		if opts.DryRun {
-			fmt.Fprintf(env.Stdout, "would clone %s into %s, record %s in %s and run sync\n",
-				repo, show(dir), show(manifestPath), show(cfgPath))
+			fmt.Fprintf(env.Stdout, "would clone %s into %s, record its skenv file in %s and run sync\n",
+				repo, show(dir), show(cfgPath))
 			return ExitOK, nil
 		}
 		if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
@@ -70,6 +66,10 @@ func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, er
 		cloned = true
 	} else if !env.Git.OK(ctx, dir, "rev-parse", "--is-inside-work-tree") {
 		return ExitFatal, fmt.Errorf("%s exists but is not a git working copy; pass --path", show(dir))
+	}
+	manifestPath, err := manifest.Locate(dir)
+	if err != nil {
+		return ExitFatal, err
 	}
 	if _, err := manifest.Load(manifestPath); err != nil {
 		return ExitFatal, err
