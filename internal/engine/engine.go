@@ -1,5 +1,5 @@
-// Package engine implements the skenv commands: sync, link, doctor, vendor,
-// init and import.
+// Package engine implements the skenv commands: sync, link, doctor, list,
+// vendor, init, clone, use and import.
 package engine
 
 import (
@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/manifest"
 	"github.com/qunaxis/skenv/internal/paths"
+	"github.com/qunaxis/skenv/internal/skenvfile"
 	"github.com/qunaxis/skenv/internal/state"
 )
 
@@ -119,22 +121,45 @@ type Engine struct {
 
 // ErrNoManifest means no manifest location is configured. skenv does not
 // guess one: the skills repository can live anywhere and have any name.
-var ErrNoManifest = errors.New("no manifest configured: run `skenv init <owner/repo>` to clone your skills repository " +
-	"and record its skenv.toml, or pass --manifest FILE (or set $SKENV_MANIFEST)")
+var ErrNoManifest = errors.New("no manifest configured: start one with `skenv init` in a git repository, " +
+	"connect an existing one with `skenv clone <repo>` or, for a checkout you already have, `skenv use <path>`; " +
+	"or pass --manifest FILE (or set $SKENV_MANIFEST)")
 
 // ResolveManifest picks the manifest, the skenv file with [environment]:
 // --manifest, $SKENV_MANIFEST, then `manifest` in the config file
 // (~/.config/skenv/config.{toml,yaml,yml,json}). Each may name the file or
 // the directory that holds it. Without any of them it returns ErrNoManifest.
-func ResolveManifest(env Env, flag string) (string, error) {
+func ResolveManifest(ctx context.Context, env Env, flag string) (string, error) {
 	m, _, err := config.Resolve(env.Home, env.Getenv, "manifest", flag, "")
 	if err != nil {
 		return "", err
 	}
 	if m == "" {
-		return "", ErrNoManifest
+		return "", noManifest(ctx, env)
 	}
 	return manifest.Locate(paths.Expand(env.Home, m))
+}
+
+// noManifest is ErrNoManifest, pointing at `skenv use .` when the git
+// repository of the current directory holds a manifest: the likely case
+// of a checkout that was never recorded.
+func noManifest(ctx context.Context, env Env) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ErrNoManifest
+	}
+	root, err := env.Git.Run(ctx, cwd, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return ErrNoManifest
+	}
+	file, err := skenvfile.Find(root)
+	if err != nil || file == "" {
+		return ErrNoManifest
+	}
+	if doc, err := skenvfile.Read(file); err != nil || !doc.Has(skenvfile.Environment) {
+		return ErrNoManifest
+	}
+	return fmt.Errorf("%w\nthis repository has a manifest (%s): run `skenv use .` to use it on this machine", ErrNoManifest, filepath.Base(file))
 }
 
 // Open loads the manifest and state.
@@ -142,7 +167,7 @@ func Open(ctx context.Context, env Env, opts Options) (*Engine, error) {
 	if err := gitx.Available(); err != nil {
 		return nil, err
 	}
-	mp, err := ResolveManifest(env, opts.Manifest)
+	mp, err := ResolveManifest(ctx, env, opts.Manifest)
 	if err != nil {
 		return nil, err
 	}
@@ -183,10 +208,12 @@ func (e *Engine) setManifest(m *manifest.Manifest) {
 	e.targets = agents.Targets(e.env.Home, e.env.Getenv, m.Layout.Targets, e.store)
 }
 
-// Skill is a manifest skill resolved against the file system.
+// Skill is a manifest skill resolved against the file system: Own and
+// OwnDir for an own skill, Vendor for a vendored one.
 type Skill struct {
 	Name   string
-	OwnDir string // for own skills: <own.path>/<skills_dir>/<name>
+	Own    *manifest.Own
+	OwnDir string // <own.path>/<skills_dir>/<name>
 	Vendor *manifest.Vendor
 }
 
@@ -208,6 +235,45 @@ func (e *Engine) skipped() map[string]string {
 // ownPath is the expanded working copy path of o.
 func (e *Engine) ownPath(o *manifest.Own) string { return paths.Expand(e.env.Home, o.Path) }
 
+// ownSkillsDir is the expanded <own.path>/<skills_dir> of o.
+func (e *Engine) ownSkillsDir(o *manifest.Own) string {
+	return filepath.Join(e.ownPath(o), filepath.FromSlash(o.SkillsDir))
+}
+
+// ownFound lists the skills in dir, the skills directory of an own
+// repository: its subdirectories with a SKILL.md. It fails when dir cannot
+// be read, as before the repository is cloned.
+func ownFound(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var found []string
+	for _, de := range entries {
+		if strings.HasPrefix(de.Name(), ".") || !de.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, de.Name(), "SKILL.md")); err != nil {
+			continue
+		}
+		found = append(found, de.Name())
+	}
+	return found, nil
+}
+
+// ownSkills lists the skills of the own repository o. A working copy
+// without its skills directory has no skills yet; only a working copy that
+// is missing (not cloned yet) or unreadable is an error.
+func (e *Engine) ownSkills(o *manifest.Own) ([]string, error) {
+	found, err := ownFound(e.ownSkillsDir(o))
+	if errors.Is(err, fs.ErrNotExist) {
+		if fi, serr := os.Stat(e.ownPath(o)); serr == nil && fi.IsDir() {
+			return nil, nil
+		}
+	}
+	return found, err
+}
+
 // skills lists every skill of the manifest that applies to this host.
 // Own repositories that are not cloned yet contribute no skills.
 func (e *Engine) skills() ([]Skill, error) {
@@ -216,21 +282,11 @@ func (e *Engine) skills() ([]Skill, error) {
 	e.unselected = map[string]string{}
 	for i := range e.m.Own {
 		o := &e.m.Own[i]
-		dir := filepath.Join(e.ownPath(o), filepath.FromSlash(o.SkillsDir))
-		entries, err := os.ReadDir(dir)
+		dir := e.ownSkillsDir(o)
+		found, err := e.ownSkills(o)
 		if err != nil {
 			e.ownUnavailable = true
 			continue
-		}
-		var found []string
-		for _, de := range entries {
-			if strings.HasPrefix(de.Name(), ".") || !de.IsDir() {
-				continue
-			}
-			if _, err := os.Stat(filepath.Join(dir, de.Name(), "SKILL.md")); err != nil {
-				continue
-			}
-			found = append(found, de.Name())
 		}
 		// skills and exclude select from the repository; M1 is checked on
 		// the selection, before host.skip, so the manifest is valid or not
@@ -268,9 +324,9 @@ func (e *Engine) skills() ([]Skill, error) {
 			e.unselected[r.Name] = fmt.Sprintf("skipped on this host (host.%q.skip)", host)
 			continue
 		}
-		s := Skill{Name: r.Name, Vendor: r.Vendor}
+		s := Skill{Name: r.Name, Vendor: r.Vendor, Own: r.Own}
 		if r.Own != nil {
-			s.OwnDir = filepath.Join(e.ownPath(r.Own), filepath.FromSlash(r.Own.SkillsDir), r.Name)
+			s.OwnDir = filepath.Join(e.ownSkillsDir(r.Own), r.Name)
 		}
 		out = append(out, s)
 	}

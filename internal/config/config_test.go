@@ -224,7 +224,7 @@ func TestSetKeepsTheRest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "#:schema " + latest + "\n# skenv configuration, written by `skenv init`\nmanifest = \"~/a <&> b\"\n"
+	want := "#:schema " + latest + "\n# skenv configuration, written by `skenv init`, `clone` or `use`\nmanifest = \"~/a <&> b\"\n"
 	if got := readFile(t, p); got != want {
 		t.Errorf("new file:\n%s\nwant:\n%s", got, want)
 	}
@@ -248,8 +248,8 @@ func TestSetKeepsTheRest(t *testing.T) {
 // format has comments and the schema directive; later writes keep it.
 func TestSetFormat(t *testing.T) {
 	for format, want := range map[string]string{
-		"toml": "#:schema " + schemas.URL(schemas.Config, schemas.Running()) + "\n# skenv configuration, written by `skenv init`\nmanifest = \"~/a b/skenv.toml\"\n",
-		"yaml": "# yaml-language-server: $schema=" + schemas.URL(schemas.Config, schemas.Running()) + "\n# skenv configuration, written by `skenv init`\nmanifest: ~/a b/skenv.toml\n",
+		"toml": "#:schema " + schemas.URL(schemas.Config, schemas.Running()) + "\n# skenv configuration, written by `skenv init`, `clone` or `use`\nmanifest = \"~/a b/skenv.toml\"\n",
+		"yaml": "# yaml-language-server: $schema=" + schemas.URL(schemas.Config, schemas.Running()) + "\n# skenv configuration, written by `skenv init`, `clone` or `use`\nmanifest: ~/a b/skenv.toml\n",
 		"json": "{\n  \"$schema\": \"" + schemas.URL(schemas.Config, schemas.Running()) + "\",\n  \"manifest\": \"~/a b/skenv.toml\"\n}\n",
 	} {
 		t.Run(format, func(t *testing.T) {

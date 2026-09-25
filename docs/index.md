@@ -20,7 +20,7 @@ hero:
       link: https://github.com/qunaxis/skenv
 ---
 
-![Terminal demo: skenv init clones a skills repository and links the same skills into Claude Code, pi and the Codex store; skenv doctor reports a deleted link, skenv sync restores it, and skenv vendor add pins a third-party skill to a commit](./demo/demo.gif)
+![Terminal demo: skenv clone and skenv sync clone a skills repository and link the same skills into Claude Code, pi and the Codex store; skenv doctor reports a deleted link, skenv sync restores it, and skenv vendor add pins a third-party skill to a commit](./demo/demo.gif)
 
 ## Introduction
 

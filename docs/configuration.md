@@ -24,29 +24,31 @@ guess between two. Keys are lowercase and case-sensitive in every format,
 and an unknown key is an error that names the key and the file. `$schema`,
 the schema URL for editors, is allowed and ignored.
 
-`skenv init` writes it. Without a config file it creates `config.toml` with
-a schema directive for editors (see [Editor support](editor-support.md)):
+`skenv init`, `skenv clone` and `skenv use` write it. Without a config file
+they create `config.toml` with a schema directive for editors (see
+[Editor support](editor-support.md)):
 
 ```toml
 #:schema https://qunaxis.github.io/skenv/schemas/v0.4.0/config.schema.json
-# skenv configuration, written by `skenv init`
+# skenv configuration, written by `skenv init`, `clone` or `use`
 manifest = "~/src/my-skills/skenv.toml"
 ```
 
 To create `config.yaml` or `config.json` instead, pass `--format`:
 
 ```sh
-skenv init <owner>/<skills-repo> --format yaml
+skenv clone <owner>/<skills-repo> --format yaml
+skenv use ~/src/<skills-repo> --format yaml
 ```
 
-`skenv init` without `<owner/repo>`, which starts a manifest in the current
-repository, creates the config in the format of the skenv file it writes.
-skenv reads `config.yml` but never creates it.
+`skenv init`, which starts a manifest in the current repository, creates the
+config in the format of the skenv file it writes. skenv reads `config.yml`
+but never creates it.
 
-An existing file keeps its format and name: `skenv init` changes only
-`manifest`, and comments, other keys and their order stay. It never
-converts the file: `skenv init <owner/repo> --format` that disagrees with
-it is an error (exit code 2), raised before anything is cloned or written.
+An existing file keeps its format and name: these commands change only
+`manifest`, and comments, other keys and their order stay. They never
+convert the file: `--format` that disagrees with it is an error (exit
+code 2), raised before anything is cloned or written.
 
 ## Keys
 
@@ -56,7 +58,9 @@ it is an error (exit code 2), raised before anything is cloned or written.
 
 `manifest` names the skenv file or the directory that holds it. There is no
 default location: when none of them is set, commands that need the manifest
-stop with an error that suggests `skenv init <owner/repo>` or `--manifest`.
+stop with an error that suggests `skenv init`, `skenv clone <repo>`,
+`skenv use <path>` or `--manifest`; inside a repository whose skenv file
+has `[environment]`, it suggests `skenv use .`.
 See [where the manifest is found](manifest.md#where-the-manifest-is-found).
 
 The design is recorded in

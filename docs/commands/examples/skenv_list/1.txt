@@ -1,0 +1,11 @@
+exit 0
+manifest  ~/src/skills/skenv.toml
+store     ~/.agents/skills
+agents    ~/.claude/skills, ~/.pi/agent/skills
+
+SKILL           KIND      SOURCE                VERSION       STATE
+code-review     editable  example-org/skills    ~/src/skills  installed
+commit-message  editable  example-org/skills    ~/src/skills  installed
+diagrams        pinned    example-vendor/tools  27f221f8f2a4  installed
+write-tests     editable  example-org/skills    ~/src/skills  not synced
+1 not synced: run `skenv sync`

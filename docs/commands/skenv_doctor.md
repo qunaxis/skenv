@@ -10,7 +10,8 @@ Compare the machine with the manifest. It changes no skill, link or file,
 but runs `git fetch` in each own repository (network access; it updates their
 remote-tracking branches) to report unpushed and behind.
 Classes: missing, extra-managed, unmanaged, wrong-rev, broken-link, conflict,
-dirty, unpushed, behind, agent-mismatch.
+dirty, unpushed, behind, agent-mismatch, manifest-checkout (the manifest is
+not in the own working copy of its repository, so sync never pulls it).
 
 In a project (a git repository whose skenv file has `[project]`), doctor
 compares the project with its `[project]` section instead, offline, so it can

@@ -97,7 +97,7 @@ case-sensitive in every format. skenv edits the file in these places:
   `--project` `project.vendor` (and the `rev` of `project.from`);
 - `skenv repo init` adds `[repo]` (it creates the file when the repository
   has none, see [Creating the file](#creating-the-file));
-- `skenv init` without `<owner/repo>` adds `[environment]` (it creates the
+- `skenv init` adds `[environment]` (it creates the
   file too);
 - `skenv import` adds `environment.vendor` and `environment.own` entries for
   the skills already installed on the machine (and `[environment]` itself
@@ -125,7 +125,7 @@ stops with an error that says so, and the file is left as it is.
 ## Creating the file
 
 Two commands create a skenv file when the repository has none:
-`skenv repo init` with `[repo]`, and `skenv init` without `<owner/repo>`
+`skenv repo init` with `[repo]`, and `skenv init`
 with `[environment]`. Both write `skenv.toml` unless you pass `--format`:
 
 ```sh
@@ -139,7 +139,7 @@ comment that says what the section is for, and every new file names its
 schema (see [Editor support](#editor-support)). A new `[environment]` is a
 commented skeleton: your repository becomes its first `[[environment.own]]`
 entry when its `origin` is on a network host (GitHub, GitLab and Codeberg in
-their short forms, see [Git hosts](git-hosts.md#skenv-init-without-a-repository)),
+their short forms, see [Git hosts](git-hosts.md#starting-a-manifest-with-skenv-init)),
 and `[[environment.vendor]]` is shown as a commented example in TOML.
 
 When the repository already has a skenv file, both commands add their
@@ -147,8 +147,8 @@ section to it in its own format. They never convert it: `--format` that
 disagrees with the file is an error (exit code 2), and nothing is written.
 Leave `--format` out to use the file as it is, or convert the file by hand.
 
-`skenv init` without `<owner/repo>` starts a manifest in the git repository
-of the current directory (or `--dir`):
+`skenv init` starts a manifest in the git repository of the current
+directory (or `--dir`):
 
 ```sh
 cd ~/src/<skills-repo>
@@ -156,10 +156,10 @@ skenv init --dry-run   # show what it would write
 skenv init
 ```
 
-It refuses when the file has `[environment]` already, or when its `[repo]`
-says `visibility = "public"`. Then it records the file as `manifest` in the
-[tool config](configuration.md), the same way `skenv init <owner/repo>`
-does, and prints the next steps. It doesn't sync. The new manifest is not
+It refuses when the file has `[environment]` already (`skenv use .` records
+that one), or when its `[repo]` says `visibility = "public"`. Then it
+records the file as `manifest` in the [tool config](configuration.md), the
+same way `skenv use` does, and prints the next steps. It doesn't sync. The new manifest is not
 necessarily empty: when the repository's `origin` is on a network host, the
 repository itself is already its first `[[environment.own]]` entry, so the
 first `skenv sync` links the skills it holds.
@@ -175,7 +175,8 @@ Editors then complete keys, describe them on hover and mark mistakes. See
 ## Where skenv looks
 
 - The manifest: `--manifest`, then `$SKENV_MANIFEST`, then `manifest` in the
-  tool config `~/.config/skenv/config.toml` (written by `skenv init`). Each
+  tool config `~/.config/skenv/config.toml` (written by `skenv init`,
+  `skenv clone` or `skenv use`). Each
   names the skenv file or the directory that holds it.
 - The harness: the skenv file at the root of the repository (`--dir`,
   default: the current repository).
@@ -211,5 +212,4 @@ the file. To move a repository by hand:
 4. Run `skenv repo apply` to move the harness to the templates of the installed skenv, and check the
    result with `skenv repo check` and `skenv doctor`.
 5. If `~/.config/skenv/config.toml` records `manifest = ".../env.toml"`,
-   point it at the new file or its directory, or rerun
-   `skenv init <owner>/<skills-repo> --path <checkout>`.
+   point it at the new file or its directory with `skenv use <checkout>`.

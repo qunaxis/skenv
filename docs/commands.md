@@ -8,7 +8,7 @@ shipped in the release archives (`make man` writes them into `man/`; see
 [Install](../README.md#install)); shell completion comes from
 `skenv completion bash|zsh|fish`.
 
-- [Machine: init, import, sync, link, doctor, vendor, autostart](#machine)
+- [Machine: init, clone, use, import, sync, list, link, doctor, vendor, autostart](#machine)
 - [Projects: sync, doctor, vendor --project](#projects)
 - [`--dry-run` and `--adopt`](#--dry-run-and---adopt)
 - [`doctor` classes](#doctor-classes)
@@ -24,36 +24,58 @@ Every command that reads the manifest accepts `--manifest FILE`; see
 ### `skenv init`
 
 ```sh
-skenv init <owner>/<repo>
-skenv init <owner>/<repo> --path ~/src/my-skills
-skenv init <owner>/<repo> --format yaml   # a new config.yaml instead of config.toml
-```
-
-Clones the repository that holds the manifest (`skenv.toml` with
-`[environment]`) into `--path` (default `./<repo>` in the current directory,
-like `git clone`), records the manifest path in
-`~/.config/skenv/config.toml` and runs `sync`. If the repository is already
-cloned, only the path is recorded. Also takes `--adopt` and `--dry-run`.
-`<owner>/<repo>` may also be `gitlab:group/sub/repo`, `codeberg:owner/repo`
-or a full git URL (see [Git hosts](git-hosts.md)).
-
-Without `<owner/repo>` it starts a manifest instead:
-
-```sh
 skenv init                  # in the git repository of the current directory
 skenv init --format json    # skenv.json when the repository has no skenv file
 skenv init --dir ~/src/my-skills --dry-run
 ```
 
-It adds `[environment]` to the skenv file of the repository (or creates
-one), records it in the tool config and prints the next steps; see
-[Creating the file](skenv-file.md#creating-the-file). An existing file
-keeps its format: `--format` that disagrees with it exits 2.
+Starts a manifest: it adds `[environment]` to the skenv file of the
+repository (or creates one), records it in the tool config and prints the
+next steps; see [Creating the file](skenv-file.md#creating-the-file). An
+existing file keeps its format: `--format` that disagrees with it exits 2.
+It takes no repository: `skenv clone` and `skenv use` connect a machine to
+an existing manifest.
 
 `skenv init --import` also imports the skills already installed on the
 machine into the new manifest and runs `sync --adopt`; see
 [Adopting an existing setup](adopting.md).
 Reference: [skenv init](commands/skenv_init.md).
+
+### `skenv clone`
+
+```sh
+skenv clone <owner>/<repo>                    # into ./<repo>, like git clone
+skenv clone <owner>/<repo> ~/src/my-skills
+skenv clone <owner>/<repo> --format yaml      # a new config.yaml instead of config.toml
+```
+
+Clones the repository that holds the manifest (`skenv.toml` with
+`[environment]`) and records the manifest path in
+`~/.config/skenv/config.toml`. A directory that is a working copy of the
+same repository already is used as it is; any other existing directory is
+an error. It never syncs: run `skenv sync --dry-run`, then `skenv sync`.
+`<owner>/<repo>` may also be `gitlab:group/sub/repo`, `codeberg:owner/repo`
+or a full git URL (see [Git hosts](git-hosts.md)). Reference:
+[skenv clone](commands/skenv_clone.md).
+
+### `skenv use`
+
+```sh
+skenv use .                     # in the root of a checkout
+skenv use ~/src/my-skills/skenv.toml
+```
+
+Records an existing manifest (a skenv file with `[environment]`, or its
+directory) in the tool config, without its repository address, and names
+the manifest it replaces. skenv never picks a manifest from the current
+directory by itself. Reference: [skenv use](commands/skenv_use.md).
+
+Without `<dir>`, `clone` puts a new clone at the `path` that the manifest
+gives its own repository, when nothing is there yet. `clone` and `use` warn
+when the manifest checkout is elsewhere: `sync` would keep a second working
+copy at `path` and never pull the manifest checkout, so changes pushed from
+other machines would not arrive. `sync` warns and `doctor` reports
+`manifest-checkout` until you `skenv use` the working copy at `path`.
 
 ### `skenv import`
 
@@ -90,6 +112,20 @@ everything and removes managed paths that left the manifest. Idempotent.
 Also takes `--adopt` and `--dry-run`. Inside a project it syncs the
 project instead (see [Projects](#projects)). Reference:
 [skenv sync](commands/skenv_sync.md).
+
+### `skenv list`
+
+```sh
+skenv list
+skenv list --json
+```
+
+Lists the manifest, the store and the agent directories, then every skill
+of the manifest: `editable` (an own skill, linked from its working copy) or
+`pinned` (a vendored copy at a commit), its source, the commit or working
+copy, and its state on this machine: `installed`, `not synced`, `conflict`,
+`not selected` or `skipped on this host`. Offline and read-only; exit 0.
+Reference: [skenv list](commands/skenv_list.md).
 
 ### `skenv link`
 
@@ -238,6 +274,7 @@ a machine that already has skills installed is usually `skenv sync --adopt`.
 | ----------------------------- | --------------------------------------------------------------------------------------------------- |
 | `missing`                     | a skill is not in the store, or not linked for any agent; an own repository is not cloned           |
 | `agent-mismatch`              | a skill is linked for some agents but not all                                                       |
+| `manifest-checkout`           | the manifest is not in the working copy its own entry names, so `sync` never pulls it: `skenv use` that working copy, or clone the repository there |
 | `extra-managed`               | a path skenv created is no longer in the manifest, not selected, or skipped on this host (`sync` removes it) |
 | `unmanaged`                   | something in the store or an agent directory that is not from the manifest                          |
 | `conflict`                    | a path the manifest needs is taken by something skenv did not create                                |

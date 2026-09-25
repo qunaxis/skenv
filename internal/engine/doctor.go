@@ -28,6 +28,8 @@ const (
 	ClassUnpushed      = "unpushed"
 	ClassBehind        = "behind"
 	ClassAgentMismatch = "agent-mismatch"
+	// The manifest checkout is not the own working copy of its repository.
+	ClassManifestCheckout = "manifest-checkout"
 	// In a project.
 	ClassModified     = "modified"
 	ClassBrokenMirror = "broken-mirror"
@@ -68,6 +70,11 @@ func (e *Engine) Doctor(asJSON bool) (int, error) {
 	}
 
 	e.doctorOwn(add, warn)
+	if root, details := e.manifestElsewhere(); len(details) > 0 {
+		for _, d := range details {
+			add(ClassManifestCheckout, "", root, d)
+		}
+	}
 	skills, err := e.skills()
 	if err != nil {
 		return ExitFatal, err

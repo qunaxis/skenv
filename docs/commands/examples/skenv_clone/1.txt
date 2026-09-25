@@ -1,0 +1,6 @@
+exit 0
+cloned example-org/skills into ~/src/skills
+manifest ~/src/skills/skenv.toml recorded in ~/.config/skenv/config.toml
+next steps:
+  - skenv sync --dry-run    show what sync would change on this machine
+  - skenv sync              apply it; --adopt backs up and replaces skills installed another way

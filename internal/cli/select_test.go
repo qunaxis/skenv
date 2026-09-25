@@ -61,7 +61,7 @@ func TestOwnSelection(t *testing.T) {
 	// The allowlist minus exclude: alpha and beta, in every target; a
 	// directory with an invalid name that is not selected is not warned
 	// about.
-	_, errOut := w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+	_, errOut := w.cloneSync("me/skills", "~/"+ownPath)
 	if strings.Contains(errOut, "not.selected") {
 		t.Errorf("an unselected directory must not be warned about:\n%s", errOut)
 	}
@@ -171,7 +171,7 @@ func TestOwnSelectionSameName(t *testing.T) {
 		"skenv.toml":            selectManifest(rev, "", second+"skills = [\"delta\"]\n"),
 		"skills/alpha/SKILL.md": skillMD("alpha", "mine"),
 	}, "feat: two repositories")
-	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+	w.cloneSync("me/skills", "~/"+ownPath)
 	if got, want := w.readlink(".agents/skills/alpha"), w.path(ownPath+"/skills/alpha"); got != want {
 		t.Errorf("alpha → %s, want %s", got, want)
 	}
@@ -205,7 +205,7 @@ func TestNewSkillNotSelected(t *testing.T) {
 		"skenv.toml":            selectManifest(rev, "skills = [\"alpha\"]\n", "\n[repo]\nharness = \""+harness.Latest+"\"\nvisibility = \"private\"\n"),
 		"skills/alpha/SKILL.md": skillMD("alpha", ""),
 	}, "feat: allowlist")
-	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+	w.cloneSync("me/skills", "~/"+ownPath)
 	out, _ := w.mustRun(0, "new", "fresh")
 	if !strings.Contains(out, "lists its skills in skills, without fresh; add it there") || strings.Contains(out, "skenv link") {
 		t.Errorf("new without the hint:\n%s", out)

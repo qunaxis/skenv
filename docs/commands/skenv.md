@@ -16,11 +16,12 @@ First steps, by situation:
 - No manifest yet: `skenv init` in a git repository starts one.
 - Skills already installed (npx skills, copies): `skenv init --import`
   starts one and takes them over.
-- Another machine: `skenv init <repo>` clones your manifest repository
-  and syncs it.
+- Another machine: `skenv clone <repo>` clones your manifest repository
+  and uses it; `skenv use .` in a checkout you already have.
 
-Then `skenv vendor add <repo>` installs a third-party skill, `skenv sync`
-applies the manifest and `skenv doctor` checks the machine.
+Then `skenv sync` applies the manifest, `skenv list` shows the skills and
+whether they are installed, `skenv vendor add <repo>` installs a third-party
+skill and `skenv doctor` checks the machine.
 
 In a project repository whose skenv file has a `[project]` section, sync and
 doctor work on the skills of the project instead. The manifest location and
@@ -39,14 +40,15 @@ skenv [flags]
 Set up a machine from the manifest repository:
 
 ```console
-$ skenv init example-org/skills
+$ skenv clone example-org/skills
+$ skenv sync
 ```
 
-Compare the machine with the manifest, then bring it in line:
+See what is installed, then check the machine:
 
 ```console
+$ skenv list
 $ skenv doctor
-$ skenv sync
 ```
 
 ### Options
@@ -58,16 +60,19 @@ $ skenv sync
 ### SEE ALSO
 
 * [skenv autostart](skenv_autostart.md)	 - Run `skenv sync --quiet` at login and every hour
+* [skenv clone](skenv_clone.md)	 - Clone a manifest repository and use its manifest on this machine
 * [skenv completion](skenv_completion.md)	 - Generate the autocompletion script for bash, zsh or fish
 * [skenv doctor](skenv_doctor.md)	 - Compare the machine with the manifest, or a project with its `[project]`
 * [skenv import](skenv_import.md)	 - Add the skills already installed on this machine, or in a project, to the skenv file
-* [skenv init](skenv_init.md)	 - Clone the manifest repository and sync, or start a manifest
+* [skenv init](skenv_init.md)	 - Start a manifest in a git repository
 * [skenv link](skenv_link.md)	 - Create store and agent links without pulling
 * [skenv lint](skenv_lint.md)	 - Check skills for format, links, size and secrets
+* [skenv list](skenv_list.md)	 - List the skills of the manifest and whether they are installed
 * [skenv new](skenv_new.md)	 - Scaffold a skill
 * [skenv repo](skenv_repo.md)	 - Set up and check the harness of a skills repository
 * [skenv schema](skenv_schema.md)	 - Print the JSON Schema of the skenv file or the tool config
 * [skenv sync](skenv_sync.md)	 - Apply the manifest to this machine, or sync a project
+* [skenv use](skenv_use.md)	 - Use an existing manifest on this machine
 * [skenv vendor](skenv_vendor.md)	 - Install, update and remove third-party skills, pinned to a commit
 * [skenv version](skenv_version.md)	 - Print the skenv version
 

@@ -2,79 +2,53 @@
 
 ## skenv init
 
-Clone the manifest repository and sync, or start a manifest
+Start a manifest in a git repository
 
 ### Synopsis
 
-With `<repo>`: clone the manifest repository into `--path` (default
-`./<repo>` in the current directory, like git clone), record its skenv file as
-`manifest` in the config file (`~/.config/skenv/config.toml` unless a YAML or
-JSON one exists; a new one is YAML or JSON with `--format`) and run sync. If the
-repository is already cloned, only the path is recorded. `<repo>` is
-owner/repo on `github.com`, gitlab:group/sub/repo, codeberg:owner/repo or a
-full git URL; hosts declared in the manifest are not known before it is
-cloned, so a self-hosted repository takes its URL.
-
-Without `<repo>`: start a manifest in the git repository of the current
-directory (or `--dir`). Its skenv file gets an `[environment]` section with a
-commented skeleton, or `skenv.toml` is created with one (`skenv.yaml` or
-`skenv.json` with `--format`); the repository itself becomes its first own
-repository: owner/repo for an origin on `github.com`, gitlab:... on
-`gitlab.com`, codeberg:... on `codeberg.org`, the URL (without credentials) on
-any other host; a local origin is left out. A repository without an origin
-yet names its future remote with `--remote` (owner/repo, gitlab:group/repo,
-codeberg:owner/repo or a full URL), written the same way; with an origin,
-`--remote` is an error. It does not set up `[repo]`: `skenv repo init` does, and
-picks the CI system from the host of origin. The file is recorded
-as `manifest` in the config file (a new one in the same format), and nothing
-is synced. It refuses when the file has `[environment]` already or its `[repo]`
+Start a manifest in the git repository of the current directory (or `--dir`).
+Its skenv file gets an `[environment]` section with a commented skeleton, or
+`skenv.toml` is created with one (`skenv.yaml` or `skenv.json` with `--format`); the
+repository itself becomes its first own repository: owner/repo for an
+origin on `github.com`, gitlab:... on `gitlab.com`, codeberg:... on
+`codeberg.org`, the URL (without credentials) on any other host; a local
+origin is left out. A repository without an origin yet names its future
+remote with `--remote` (owner/repo, gitlab:group/repo, codeberg:owner/repo or
+a full URL), written the same way; with an origin, `--remote` is an error. It
+does not set up `[repo]`: `skenv repo init` does, and picks the CI system from
+the host of origin. The file is recorded as `manifest` in the config file
+(`~/.config/skenv/config.toml` unless a YAML or JSON one exists; a new one in
+the format of the skenv file), and nothing is synced. It refuses when the
+file has `[environment]` already (`skenv use .` uses that one) or its `[repo]`
 is public.
 
-With `--import` (no `<owner/repo>`): start the manifest, import the skills
-already installed on this machine into it (see `skenv import`) and run
-"skenv sync `--adopt`": one command to adopt an existing setup.
+To use an existing manifest on this machine: `skenv clone <repo>`, or
+`skenv use <path>` for a checkout you already have.
+
+With `--import`: start the manifest, import the skills already installed on
+this machine into it (see `skenv import`) and run `skenv sync --adopt`: one
+command to adopt an existing setup.
 
 An existing file keeps its format: `--format` that disagrees with it is an
 error (exit code 2), and nothing is written.
 
-- Reads: with `<repo>`, the repository; without, the git repository of the
-  current directory (or `--dir`), its origin and skenv file; with `--import`,
-  the installed skills and the lock of the skills CLI.
-- Changes: the skenv file and `manifest` in the config file; with `<repo>`,
-  the new working copy and what sync changes; with `--import`, the lock of the
-  skills CLI and what `skenv sync --adopt` changes.
-- Network: with `<repo>`, git clone and the fetches of sync; without, none;
-  `--import` fetches the repositories of the installed skills.
-- Conflicts: sync reports an unmanaged path in the way as an error; `--adopt`
-  and `--import` move it to `~/.local/state/skenv/backup/<ts>/` and replace it.
-- Preview: `--dry-run` clones nothing, so with `<repo>` it cannot show what sync
-  would change.
-- Next: `skenv doctor`; commit and push the skenv file so that your other
-  machines get it.
+- Reads: the git repository of the current directory (or `--dir`), its origin
+  and skenv file; with `--import`, the installed skills and the lock of the
+  skills CLI.
+- Changes: the skenv file and `manifest` in the config file; with `--import`,
+  the lock of the skills CLI and what `skenv sync --adopt` changes.
+- Network: none; `--import` fetches the repositories of the installed skills.
+- Conflicts: with `--import`, installed copies are moved to
+  `~/.local/state/skenv/backup/<ts>/` and replaced.
+- Preview: `--dry-run` writes nothing except, with `--import`, the clone cache.
+- Next: commit and push the skenv file, then `skenv clone <repo>` on your other
+  machines.
 
 ```
-skenv init [<repo>] [flags]
+skenv init [flags]
 ```
 
 ### Examples
-
-Clone the manifest repository into `./skills`, record it and sync:
-
-```console
-$ skenv init example-org/skills
-cloned example-org/skills into ~/src/skills
-manifest ~/src/skills/skenv.toml recorded in ~/.config/skenv/config.toml
-vendor diagrams from example-vendor/tools@27f221f8f2a4 (tools/diagrams)
-link ~/.agents/skills/code-review → ~/src/skills/skills/code-review
-link ~/.agents/skills/commit-message → ~/src/skills/skills/commit-message
-link ~/.claude/skills/code-review → ../../.agents/skills/code-review
-link ~/.pi/agent/skills/code-review → ../../../.agents/skills/code-review
-link ~/.claude/skills/commit-message → ../../.agents/skills/commit-message
-link ~/.pi/agent/skills/commit-message → ../../../.agents/skills/commit-message
-link ~/.claude/skills/diagrams → ../../.agents/skills/diagrams
-link ~/.pi/agent/skills/diagrams → ../../../.agents/skills/diagrams
-sync: 9 changes, 0 warnings, 0 errors
-```
 
 Start a manifest in the git repository of the current directory:
 
@@ -85,7 +59,7 @@ manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
 next steps:
   - skenv vendor add <repo> --path <dir>         pin a third-party skill
   - skenv sync                                  link the skills of the manifest
-  - commit skenv.toml; on another machine: skenv init example-org/my-skills
+  - commit and push skenv.toml; on another machine: skenv clone example-org/my-skills
 ```
 
 Start one with the skills already installed here, and take them over:
@@ -155,20 +129,18 @@ manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
 next steps:
   - skenv vendor add <repo> --path <dir>         pin a third-party skill
   - skenv sync                                  link the skills of the manifest
-  - commit skenv.toml; on another machine: skenv init gitlab:example-group/my-skills
+  - commit and push skenv.toml; on another machine: skenv clone gitlab:example-group/my-skills
 ```
 
 ### Options
 
 ```
-      --adopt           back up and replace unmanaged paths that conflict with the manifest
-      --dir string      without <repo>: the repository to start the manifest in (default: the current one)
+      --dir string      the repository to start the manifest in (default: the current one)
       --dry-run         print the plan; write nothing except the clone cache ~/.cache/skenv/repos, fetched to resolve commits
       --format string   format of a new file: toml, yaml or json (default toml; an existing file keeps its format)
   -h, --help            help for init
-      --import          without <owner/repo>: import the installed skills into the new manifest and run sync --adopt
-      --path string     where to clone the repository (default ./<repo>)
-      --remote string   without <repo>, for a repository without origin: its future remote, recorded as its own entry (owner/repo, gitlab:group/repo, codeberg:owner/repo or a URL)
+      --import          import the installed skills into the new manifest and run sync --adopt
+      --remote string   for a repository without origin: its future remote, recorded as its own entry (owner/repo, gitlab:group/repo, codeberg:owner/repo or a URL)
 ```
 
 ### SEE ALSO

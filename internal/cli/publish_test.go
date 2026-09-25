@@ -122,7 +122,7 @@ func TestLintHook(t *testing.T) {
 func TestNewSkill(t *testing.T) {
 	w := newWorld(t)
 	w.standard("\n[repo]\nharness = \"" + harness.Latest + "\"\nvisibility = \"private\"\n")
-	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+	w.cloneSync("me/skills", "~/"+ownPath)
 
 	out, _ := w.mustRun(0, "new", "my-skill")
 	skill := w.path(ownPath + "/skills/my-skill")

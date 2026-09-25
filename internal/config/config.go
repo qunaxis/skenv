@@ -10,8 +10,8 @@
 // [project]) is not configuration of the tool and is read by
 // internal/skenvfile.
 //
-// Unknown keys are errors; "$schema" is allowed for editors. `skenv init`
-// edits the file in place: comments, other keys and their order stay.
+// Unknown keys are errors; "$schema" is allowed for editors. `skenv init`,
+// `skenv clone` and `skenv use` edit the file in place: comments, other keys and their order stay.
 package config
 
 import (
@@ -42,9 +42,9 @@ import (
 // environment variable and the precedence of each key.
 type Config struct {
 	// Manifest is the skenv file with the [environment] section, or the
-	// directory that holds it ("~" allowed). `skenv init` records it. There
-	// is no default: without it, commands that need the manifest stop with
-	// an error.
+	// directory that holds it ("~" allowed). `skenv init`, `skenv clone`
+	// and `skenv use` record it. There is no default: without it, commands
+	// that need the manifest stop with an error.
 	Manifest string `toml:"manifest" yaml:"manifest" json:"manifest"`
 }
 
@@ -58,8 +58,8 @@ func Keys() []string {
 	return keys
 }
 
-// Names are the accepted config file names, in lookup order. `skenv init`
-// creates the first one when none exists.
+// Names are the accepted config file names, in lookup order. `skenv init`,
+// `skenv clone` and `skenv use` create the first one when none exists.
 var Names = []string{"config.toml", "config.yaml", "config.yml", "config.json"}
 
 // Dir is ~/.config/skenv.
@@ -277,7 +277,7 @@ func SetFormat(home, format, key, value string) (string, error) {
 
 // header is the first comment of a new config file (TOML and YAML; JSON
 // has no comments).
-const header = "# skenv configuration, written by `skenv init`\n"
+const header = "# skenv configuration, written by `skenv init`, `clone` or `use`\n"
 
 // newFile returns a new config file in the format of ext with key = value,
 // the header and the schema directive.

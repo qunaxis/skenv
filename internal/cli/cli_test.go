@@ -18,7 +18,7 @@ func runMain(args ...string) (int, string, string) {
 // completion exit 0.
 func TestExitCodes(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	for _, args := range []string{"bogus", "sync --bogus", "sync -quiet", "sync extra", "vendor frob", "vendor add", "vendor update a b --rev x", "autostart frob", "repo frob", "init a/b c/d", "init --format yml", "completion powershell", "schema bogus", "schema skenv config"} {
+	for _, args := range []string{"bogus", "sync --bogus", "sync -quiet", "sync extra", "vendor frob", "vendor add", "vendor update a b --rev x", "autostart frob", "repo frob", "init a/b", "clone", "clone a/b c d", "use", "init --format yml", "completion powershell", "schema bogus", "schema skenv config"} {
 		code, _, errOut := runMain(strings.Fields(args)...)
 		if code != 2 || errOut == "" {
 			t.Errorf("skenv %s: exit %d, stderr %q; want exit 2 with a message", args, code, errOut)
@@ -41,7 +41,9 @@ func TestArgumentErrors(t *testing.T) {
 			"Example: skenv vendor add example-vendor/tools --path tools/release-notes\n",
 		"sync extra":          "skenv: sync: unexpected argument \"extra\"\nUsage: skenv sync [flags]\nExample: skenv sync --dry-run\n",
 		"new":                 "skenv: new: missing <name>\n",
-		"init a/b c/d":        "skenv: init: unexpected argument \"c/d\"\n",
+		"clone a/b c d":       "skenv: clone: unexpected argument \"d\"\n",
+		"use":                 "skenv: use: missing <path>\nUsage: skenv use <path> [flags]\nExample: skenv use .\n",
+		"init a/b":            "skenv: init: takes no <repo>; to connect this machine to an existing manifest: `skenv clone <repo>`",
 		"schema skenv config": "skenv: schema: unexpected argument \"config\"\n",
 		"vendor frob":         "skenv: vendor: unknown subcommand \"frob\" (add, update, remove)\n",
 	} {
@@ -82,7 +84,7 @@ func TestGroupsPrintHelp(t *testing.T) {
 // Every command that changes something ends its help with the same
 // contract.
 func TestMutatingCommandsHaveAContract(t *testing.T) {
-	for _, path := range []string{"init", "import", "sync", "link", "vendor add", "vendor update", "vendor remove", "new", "repo init", "repo apply", "autostart enable"} {
+	for _, path := range []string{"init", "clone", "use", "import", "sync", "link", "vendor add", "vendor update", "vendor remove", "new", "repo init", "repo apply", "autostart enable"} {
 		_, out, _ := runMain(append(strings.Fields(path), "--help")...)
 		last := ""
 		for _, field := range []string{"- Reads: ", "- Changes: ", "- Network: ", "- Next: "} {

@@ -86,6 +86,11 @@ func (e *Engine) Sync() (int, error) {
 		return ExitFatal, err
 	}
 	e.setManifest(m)
+	if root, details := e.manifestElsewhere(); len(details) > 0 {
+		for _, d := range details {
+			e.warnf("%s: %s", e.show(root), d)
+		}
+	}
 	skills, err := e.skills()
 	if err != nil {
 		return ExitFatal, err
