@@ -417,3 +417,26 @@ func sortedKeys(m map[string]any) []string {
 	sort.Strings(out)
 	return out
 }
+
+// SkillOf returns the skill directory containing file: the nearest
+// ancestor with SKILL.md, not looking above a git work tree root.
+func SkillOf(file string) (string, bool) {
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return "", false
+	}
+	dir := filepath.Dir(abs)
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err == nil {
+			return dir, true
+		}
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return "", false
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
