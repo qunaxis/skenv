@@ -611,7 +611,11 @@ func Init(root, visibility, ci, format string, runner []string, dryRun, force bo
 		return nil, nil, err
 	}
 	if len(runner) > 0 && visibility != "private" {
-		return nil, nil, errors.New("--runner is for private repositories: public ones run on the hosted ubuntu-latest runners")
+		hosted := "the GitHub-hosted ubuntu-latest runners"
+		if ci == CIGitLab {
+			hosted = "the GitLab shared runners"
+		}
+		return nil, nil, fmt.Errorf("--runner is for private repositories: the CI jobs of a public one run on %s", hosted)
 	}
 	c := &Config{Harness: Latest, Visibility: visibility, CI: ci, Runner: runner, File: file}
 	var data []byte

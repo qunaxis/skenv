@@ -17,8 +17,8 @@ is on `gitlab.com` or on a host declared with type `gitlab` in the manifest
 (this repository's own `[environment]`, else the manifest in the config file),
 github otherwise, also when there is no origin.
 
-CI jobs of a public repository run on the hosted ubuntu-latest runners.
-Those of a private one run on `--runner`: the runs-on labels on GitHub, the
+CI jobs of a public repository run on the hosted runners (ubuntu-latest on
+GitHub, the shared runners on GitLab). Those of a private one run on `--runner`: the runs-on labels on GitHub, the
 runner tags on GitLab; default self-hosted, linux, docker (a self-hosted
 Docker runner). `--runner` ubuntu-latest picks the GitHub-hosted runners.
 Afterwards `repo.runner` in the skenv file holds it; change it there and run
@@ -66,6 +66,7 @@ create .gitignore
 create .claude/settings.json
 ci github: the default, the repository has no origin; --ci overrides it
 harness 0.5.0 (public, ci github) set up in ~/src/public-skills
+git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active
 ```
 
@@ -85,6 +86,7 @@ create .gitignore
 create .claude/settings.json
 harness 0.5.0 (private, ci gitlab) set up in ~/src/team-skills
 CI jobs run on runners self-hosted, linux, docker (repo.runner); to change them, edit repo.runner and run `skenv repo apply`
+git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active
 ```
 
@@ -105,6 +107,7 @@ create .claude/settings.json
 ci github: the default, the repository has no origin; --ci overrides it
 harness 0.5.0 (private, ci github) set up in ~/src/my-skills
 CI jobs run on runners ubuntu-latest (repo.runner); to change them, edit repo.runner and run `skenv repo apply`
+git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active
 ```
 

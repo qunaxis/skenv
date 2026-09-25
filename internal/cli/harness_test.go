@@ -321,12 +321,19 @@ func TestRepoInitRunner(t *testing.T) {
 	t.Cleanup(func() { lookLefthook, lookTool = exec.LookPath, exec.LookPath })
 
 	_, errOut := w.mustRun(2, "repo", "init", "--visibility", "public", "--runner", "ubuntu-latest", "--dir", repo)
-	if !strings.Contains(errOut, "--runner is for private repositories") {
+	if !strings.Contains(errOut, "--runner is for private repositories: the CI jobs of a public one run on the GitHub-hosted ubuntu-latest runners") {
 		t.Errorf("public --runner: %s", errOut)
+	}
+	_, errOut = w.mustRun(2, "repo", "init", "--visibility", "public", "--ci", "gitlab", "--runner", "docker", "--dir", repo)
+	if !strings.Contains(errOut, "run on the GitLab shared runners") {
+		t.Errorf("public --runner on GitLab: %s", errOut)
 	}
 	out, errOut := w.mustRun(0, "repo", "init", "--visibility", "private", "--runner", "ubuntu-latest", "--dir", repo)
 	if !strings.Contains(out, "CI jobs run on runners ubuntu-latest (repo.runner)") {
 		t.Errorf("init output:\n%s", out)
+	}
+	if !strings.Contains(out, "git hooks need lefthook, uv and gitleaks: found uv; missing lefthook, gitleaks\n") {
+		t.Errorf("found tools:\n%s", out)
 	}
 	if !strings.Contains(errOut, "the git hooks need lefthook, gitleaks, not found on PATH") {
 		t.Errorf("missing tools:\n%s", errOut)

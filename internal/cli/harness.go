@@ -214,7 +214,7 @@ func repoCmd(a *app) *cobra.Command {
 	initC := sub("init", "init --visibility private|public [--ci github|gitlab] [--runner label,...]", "Set up the harness of a skills repository",
 		"Set up the harness of a skills repository: the [repo] section and the schema\ndirective of the skenv file, lefthook.yml, the CI pipeline, linter configs and\nthe managed blocks of AGENTS.md and .gitignore; then `lefthook install`.\nRefuses if [repo] exists.\n\n"+
 			"--ci picks the CI system: github (.github/workflows/check.yml) or gitlab\n(.gitlab-ci.yml). Without it, the host of origin decides: gitlab when origin\nis on gitlab.com or on a host declared with type \"gitlab\" in the manifest\n(this repository's own [environment], else the manifest in the config file),\ngithub otherwise, also when there is no origin.\n\n"+
-			"CI jobs of a public repository run on the hosted ubuntu-latest runners.\nThose of a private one run on --runner: the runs-on labels on GitHub, the\nrunner tags on GitLab; default self-hosted, linux, docker (a self-hosted\nDocker runner). --runner ubuntu-latest picks the GitHub-hosted runners.\nAfterwards repo.runner in the skenv file holds it; change it there and run\n`skenv repo apply`.\n\n"+
+			"CI jobs of a public repository run on the hosted runners (ubuntu-latest on\nGitHub, the shared runners on GitLab). Those of a private one run on --runner: the runs-on labels on GitHub, the\nrunner tags on GitLab; default self-hosted, linux, docker (a self-hosted\nDocker runner). --runner ubuntu-latest picks the GitHub-hosted runners.\nAfterwards repo.runner in the skenv file holds it; change it there and run\n`skenv repo apply`.\n\n"+
 			"The generated git hooks need lefthook, uv and gitleaks on PATH; the output\nsays which of them are missing. Skill management and sync need none of\nthem: this harness is optional tooling for a repository you publish or\nshare.\n\n"+
 			"Without a skenv file it creates skenv.toml, or skenv.yaml or skenv.json with\n--format. An existing skenv file gets [repo] added in its own format;\n--format that disagrees with it is an error, and nothing is written.\n\n"+
 			"- Reads: the repository, its origin and skenv file, and the hosts declared\n  in the manifest (to detect the CI system).\n"+
@@ -441,18 +441,30 @@ var (
 	lookTool  = exec.LookPath
 )
 
-// printHookTools warns about the programs the hooks need that are not on
-// PATH: without them a commit in the repository fails.
+// printHookTools lists the programs the hooks need, found or not on PATH,
+// and warns about the missing ones: without them a commit in the
+// repository fails.
 func printHookTools(env engine.Env) {
-	var missing []string
+	var found, missing []string
 	if _, err := lookLefthook("lefthook"); err != nil {
 		missing = append(missing, "lefthook")
+	} else {
+		found = append(found, "lefthook")
 	}
 	for _, t := range hookTools {
 		if _, err := lookTool(t); err != nil {
 			missing = append(missing, t)
+		} else {
+			found = append(found, t)
 		}
 	}
+	list := func(names []string) string {
+		if len(names) == 0 {
+			return "none"
+		}
+		return strings.Join(names, ", ")
+	}
+	fmt.Fprintf(env.Stdout, "git hooks need lefthook, uv and gitleaks: found %s; missing %s\n", list(found), list(missing))
 	if len(missing) > 0 {
 		fmt.Fprintf(env.Stderr, "warning: the git hooks need %s, not found on PATH; install them before committing here\n", strings.Join(missing, ", "))
 	}

@@ -12,4 +12,5 @@ create .claude/settings.json
 ci github: the default, the repository has no origin; --ci overrides it
 harness 0.5.0 (private, ci github) set up in ~/src/my-skills
 CI jobs run on runners ubuntu-latest (repo.runner); to change them, edit repo.runner and run `skenv repo apply`
+git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active

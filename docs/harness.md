@@ -36,15 +36,17 @@ repository:
 A **public** repository also needs a stop-list
 (`~/.config/skenv/denylist.txt` or `$SKENV_DENYLIST`): its pre-push hook
 runs the publication check (see [Validation and publication](lint.md)).
-`skenv repo init` warns about the tools it cannot find on `PATH`; without
-them, commits in the repository fail.
+`skenv repo init` lists which of lefthook, uv and gitleaks it found on
+`PATH` and warns about the missing ones; without them, commits in the
+repository fail.
 
 Decide where the CI jobs of a **private** repository run: by default on a
 self-hosted runner with the labels (GitHub) or tags (GitLab) `self-hosted`,
 `linux`, `docker`. Without such a runner the jobs wait in the queue. On
 GitHub, `--runner ubuntu-latest` uses the GitHub-hosted runners instead;
-see [Runners](#runners). Public repositories always run on the runners of
-the host.
+see [Runners](#runners). Public repositories always run on the hosted
+runners: GitHub-hosted `ubuntu-latest` on GitHub, the shared runners on
+GitLab.
 
 ## Set it up
 
@@ -61,7 +63,8 @@ tags of your runners instead (`saas-linux-small-amd64` for the GitLab.com
 instance runners), or leave `--runner` out for the self-hosted default.
 
 `repo init` lists the files it creates, the CI system it picked, where the
-private CI jobs run and how to change that, then runs `lefthook install`:
+private CI jobs run and how to change that, the hook tools it found and
+missed, then runs `lefthook install`:
 
 ```text
 create skenv.toml
@@ -70,6 +73,7 @@ create .github/workflows/check.yml
 ...
 harness 0.5.0 (private, ci github) set up in ~/src/<skills-repo>
 CI jobs run on runners ubuntu-latest (repo.runner); to change them, edit repo.runner and run `skenv repo apply`
+git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active
 ```
 
@@ -130,7 +134,7 @@ that disagrees with it is an error (see
 system; without it, the host of `origin` decides, and the output says what
 was detected. `--runner` (comma-separated or repeated) sets `runner` of a
 private repository and is an error for a public one; the output names the
-runners and warns about hook tools missing from `PATH`. Reference:
+runners and lists the hook tools found and missing on `PATH`. Reference:
 [skenv repo init](commands/skenv_repo_init.md).
 
 ### `skenv repo apply`
