@@ -110,6 +110,19 @@ export default defineConfig({
   markdown: {
     anchor: { slugify: githubSlug },
     config(md) {
+      // <!-- github-only --> ... <!-- /github-only --> is shown on GitHub
+      // (pointers from pages that only include README sections), not here.
+      md.core.ruler.after('block', 'skenv-github-only', (state) => {
+        const marker = (i: number, text: string) =>
+          state.tokens[i].type === 'html_block' && state.tokens[i].content.trim() === text
+        for (let i = 0; i < state.tokens.length; i++) {
+          if (!marker(i, '<!-- github-only -->')) continue
+          let j = i
+          while (j < state.tokens.length && !marker(j, '<!-- /github-only -->')) j++
+          state.tokens.splice(i, j - i + 1)
+          i--
+        }
+      })
       md.core.ruler.after('inline', 'skenv-links', (state) => {
         const page = (state.env as { path?: string }).path ?? ''
         for (const block of state.tokens) {

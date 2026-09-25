@@ -1,5 +1,12 @@
 # Contributing
 
+<!-- github-only -->
+
+> This page is part of the [documentation site](https://qunaxis.github.io/skenv/contributing).
+> Its content is the [Contribute section of the README](../README.md#contribute).
+
+<!-- /github-only -->
+
 <!--@include: ../README.md#contribute-->
 
 ## The documentation site
