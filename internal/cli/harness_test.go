@@ -306,3 +306,36 @@ func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
 }
+
+// --runner sets the runners of a private repository's CI jobs; init names
+// them and the tools the generated hooks need that are missing.
+func TestRepoInitRunner(t *testing.T) {
+	w, repo := harnessRepo(t)
+	lookLefthook = func(string) (string, error) { return "", exec.ErrNotFound }
+	lookTool = func(name string) (string, error) {
+		if name == "gitleaks" {
+			return "", exec.ErrNotFound
+		}
+		return "/bin/" + name, nil
+	}
+	t.Cleanup(func() { lookLefthook, lookTool = exec.LookPath, exec.LookPath })
+
+	_, errOut := w.mustRun(2, "repo", "init", "--visibility", "public", "--runner", "ubuntu-latest", "--dir", repo)
+	if !strings.Contains(errOut, "--runner is for private repositories") {
+		t.Errorf("public --runner: %s", errOut)
+	}
+	out, errOut := w.mustRun(0, "repo", "init", "--visibility", "private", "--runner", "ubuntu-latest", "--dir", repo)
+	if !strings.Contains(out, "CI jobs run on runners ubuntu-latest (repo.runner)") {
+		t.Errorf("init output:\n%s", out)
+	}
+	if !strings.Contains(errOut, "the git hooks need lefthook, gitleaks, not found on PATH") {
+		t.Errorf("missing tools:\n%s", errOut)
+	}
+	if got := readFile(t, filepath.Join(repo, "skenv.toml")); !strings.Contains(got, `runner     = ["ubuntu-latest"]`) {
+		t.Errorf("skenv.toml:\n%s", got)
+	}
+	if got := readFile(t, filepath.Join(repo, ".github/workflows/check.yml")); !strings.Contains(got, "runs-on: [ubuntu-latest]") {
+		t.Errorf("check.yml does not run on ubuntu-latest")
+	}
+	w.mustRun(0, "repo", "check", "--dir", repo)
+}

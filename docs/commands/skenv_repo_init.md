@@ -17,6 +17,18 @@ is on `gitlab.com` or on a host declared with type `gitlab` in the manifest
 (this repository's own `[environment]`, else the manifest in the config file),
 github otherwise, also when there is no origin.
 
+CI jobs of a public repository run on the hosted ubuntu-latest runners.
+Those of a private one run on `--runner`: the runs-on labels on GitHub, the
+runner tags on GitLab; default self-hosted, linux, docker (a self-hosted
+Docker runner). `--runner` ubuntu-latest picks the GitHub-hosted runners.
+Afterwards `repo.runner` in the skenv file holds it; change it there and run
+`skenv repo apply`.
+
+The generated git hooks need lefthook, uv and gitleaks on PATH; the output
+says which of them are missing. Skill management and sync need none of
+them: this harness is optional tooling for a repository you publish or
+share.
+
 Without a skenv file it creates `skenv.toml`, or `skenv.yaml` or `skenv.json` with
 `--format`. An existing skenv file gets `[repo]` added in its own format;
 `--format` that disagrees with it is an error, and nothing is written.
@@ -33,7 +45,7 @@ Without a skenv file it creates `skenv.toml`, or `skenv.yaml` or `skenv.json` wi
   with the templates later.
 
 ```
-skenv repo init --visibility private|public [--ci github|gitlab] [flags]
+skenv repo init --visibility private|public [--ci github|gitlab] [--runner label,...] [flags]
 ```
 
 ### Examples
@@ -72,6 +84,27 @@ create AGENTS.md
 create .gitignore
 create .claude/settings.json
 harness 0.5.0 (private, ci gitlab) set up in ~/src/team-skills
+CI jobs run on runners self-hosted, linux, docker (repo.runner); to change them, edit repo.runner and run `skenv repo apply`
+lefthook install: hooks active
+```
+
+A private repository on GitHub, with jobs on the GitHub-hosted runners:
+
+```console
+$ skenv repo init --visibility private --runner ubuntu-latest
+create skenv.toml
+create lefthook.yml
+create .github/workflows/check.yml
+create ruff.toml
+create pyrightconfig.json
+create .editorconfig
+create .markdownlint.yaml
+create AGENTS.md
+create .gitignore
+create .claude/settings.json
+ci github: the default, the repository has no origin; --ci overrides it
+harness 0.5.0 (private, ci github) set up in ~/src/my-skills
+CI jobs run on runners ubuntu-latest (repo.runner); to change them, edit repo.runner and run `skenv repo apply`
 lefthook install: hooks active
 ```
 
@@ -83,6 +116,7 @@ lefthook install: hooks active
       --force               replace existing files that skenv does not manage yet
       --format string       format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)
   -h, --help                help for init
+      --runner strings      private repositories: runs-on labels (GitHub) or runner tags (GitLab) of the CI jobs, comma-separated or repeated (default self-hosted,linux,docker)
       --visibility string   private or public (required)
 ```
 

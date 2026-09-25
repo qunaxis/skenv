@@ -192,6 +192,7 @@ func gitRoot(ctx context.Context, dir string) (string, error) {
 
 func repoCmd(a *app) *cobra.Command {
 	var dir, visibility, ci, format string
+	var runner []string
 	var dryRun, force bool
 	sub := func(name, use, short, long, example string) *cobra.Command {
 		c := &cobra.Command{
@@ -201,7 +202,7 @@ func repoCmd(a *app) *cobra.Command {
 			Example: example,
 			Args:    nArgs(0),
 			RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
-				return runRepo(ctx, env, name, dir, visibility, ci, format, dryRun, force)
+				return runRepo(ctx, env, name, dir, visibility, ci, format, runner, dryRun, force)
 			}),
 		}
 		if name != "check" {
@@ -210,9 +211,11 @@ func repoCmd(a *app) *cobra.Command {
 		}
 		return c
 	}
-	initC := sub("init", "init --visibility private|public [--ci github|gitlab]", "Set up the harness of a skills repository",
+	initC := sub("init", "init --visibility private|public [--ci github|gitlab] [--runner label,...]", "Set up the harness of a skills repository",
 		"Set up the harness of a skills repository: the [repo] section and the schema\ndirective of the skenv file, lefthook.yml, the CI pipeline, linter configs and\nthe managed blocks of AGENTS.md and .gitignore; then `lefthook install`.\nRefuses if [repo] exists.\n\n"+
 			"--ci picks the CI system: github (.github/workflows/check.yml) or gitlab\n(.gitlab-ci.yml). Without it, the host of origin decides: gitlab when origin\nis on gitlab.com or on a host declared with type \"gitlab\" in the manifest\n(this repository's own [environment], else the manifest in the config file),\ngithub otherwise, also when there is no origin.\n\n"+
+			"CI jobs of a public repository run on the hosted ubuntu-latest runners.\nThose of a private one run on --runner: the runs-on labels on GitHub, the\nrunner tags on GitLab; default self-hosted, linux, docker (a self-hosted\nDocker runner). --runner ubuntu-latest picks the GitHub-hosted runners.\nAfterwards repo.runner in the skenv file holds it; change it there and run\n`skenv repo apply`.\n\n"+
+			"The generated git hooks need lefthook, uv and gitleaks on PATH; the output\nsays which of them are missing. Skill management and sync need none of\nthem: this harness is optional tooling for a repository you publish or\nshare.\n\n"+
 			"Without a skenv file it creates skenv.toml, or skenv.yaml or skenv.json with\n--format. An existing skenv file gets [repo] added in its own format;\n--format that disagrees with it is an error, and nothing is written.\n\n"+
 			"- Reads: the repository, its origin and skenv file, and the hosts declared\n  in the manifest (to detect the CI system).\n"+
 			"- Changes: the skenv file ([repo], created if absent), the managed files\n  and blocks, and the git hooks (lefthook install).\n"+
@@ -223,9 +226,12 @@ func repoCmd(a *app) *cobra.Command {
 		"# Set up the harness of a public skills repository in the current directory\n"+
 			"skenv repo init --visibility public\n"+
 			"# A private repository on GitLab, with jobs on runners tagged self-hosted, linux, docker\n"+
-			"skenv repo init --visibility private --ci gitlab")
+			"skenv repo init --visibility private --ci gitlab\n"+
+			"# A private repository on GitHub, with jobs on the GitHub-hosted runners\n"+
+			"skenv repo init --visibility private --runner ubuntu-latest")
 	initC.Flags().StringVar(&visibility, "visibility", "", "private or public (required)")
 	_ = initC.RegisterFlagCompletionFunc("visibility", cobra.FixedCompletions([]string{"private", "public"}, cobra.ShellCompDirectiveNoFileComp))
+	initC.Flags().StringSliceVar(&runner, "runner", nil, "private repositories: runs-on labels (GitHub) or runner tags (GitLab) of the CI jobs, comma-separated or repeated (default self-hosted,linux,docker)")
 	initC.Flags().StringVar(&ci, "ci", "", "CI system: github or gitlab (default: detected from the host of origin, else github)")
 	_ = initC.RegisterFlagCompletionFunc("ci", cobra.FixedCompletions(harness.CIs, cobra.ShellCompDirectiveNoFileComp))
 	formatFlag(initC, &format, "format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)")
@@ -247,7 +253,7 @@ func repoCmd(a *app) *cobra.Command {
 	return c
 }
 
-func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, format string, dryRun, force bool) (int, error) {
+func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, format string, runner []string, dryRun, force bool) (int, error) {
 	root, err := gitRoot(ctx, dir)
 	if err != nil {
 		return engine.ExitFatal, err
@@ -267,7 +273,7 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, form
 		case !slices.Contains(harness.CIs, ci):
 			return engine.ExitFatal, usageError{fmt.Sprintf("repo init: --ci must be github or gitlab, got %q", ci)}
 		}
-		c, changes, err := harness.Init(root, visibility, ci, format, dryRun, force)
+		c, changes, err := harness.Init(root, visibility, ci, format, runner, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
 			return engine.ExitFatal, err
@@ -276,6 +282,10 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, form
 			fmt.Fprintf(env.Stdout, "ci %s: %s; --ci overrides it\n", c.CI, detected)
 		}
 		fmt.Fprintf(env.Stdout, "harness %s (%s, ci %s) set up in %s\n", c.Harness, c.Visibility, c.CI, root)
+		if c.Visibility == "private" {
+			fmt.Fprintf(env.Stdout, "CI jobs run on runners %s (repo.runner); to change them, edit repo.runner and run `skenv repo apply`\n", strings.Join(c.Runner, ", "))
+		}
+		printHookTools(env)
 		return lefthookInstall(ctx, env, root, dryRun), nil
 	case "apply":
 		c, err := harness.LoadConfig(root)
@@ -423,3 +433,27 @@ func lefthookInstall(ctx context.Context, env engine.Env, root string, dryRun bo
 
 // lookLefthook is replaced in tests.
 var lookLefthook = exec.LookPath
+
+// hookTools are the programs the generated git hooks run besides skenv and
+// git (templates/lefthook.yml); lookTool is replaced in tests.
+var (
+	hookTools = []string{"uv", "gitleaks"}
+	lookTool  = exec.LookPath
+)
+
+// printHookTools warns about the programs the hooks need that are not on
+// PATH: without them a commit in the repository fails.
+func printHookTools(env engine.Env) {
+	var missing []string
+	if _, err := lookLefthook("lefthook"); err != nil {
+		missing = append(missing, "lefthook")
+	}
+	for _, t := range hookTools {
+		if _, err := lookTool(t); err != nil {
+			missing = append(missing, t)
+		}
+	}
+	if len(missing) > 0 {
+		fmt.Fprintf(env.Stderr, "warning: the git hooks need %s, not found on PATH; install them before committing here\n", strings.Join(missing, ", "))
+	}
+}

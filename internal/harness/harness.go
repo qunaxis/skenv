@@ -600,8 +600,8 @@ func mergeBlock(it item, data, want string, exists bool) (string, error) {
 // it creates skenv.<format> (format "" is TOML); an existing one (a
 // manifest repository) gets the section added in its own format, and a
 // format that disagrees with it is an error. It refuses when [repo] exists
-// already.
-func Init(root, visibility, ci, format string, dryRun, force bool) (*Config, []Change, error) {
+// already. runner, when set, is repo.runner of a private repository.
+func Init(root, visibility, ci, format string, runner []string, dryRun, force bool) (*Config, []Change, error) {
 	file, err := skenvfile.Find(root)
 	if err != nil {
 		return nil, nil, err
@@ -610,7 +610,10 @@ func Init(root, visibility, ci, format string, dryRun, force bool) (*Config, []C
 	if err != nil {
 		return nil, nil, err
 	}
-	c := &Config{Harness: Latest, Visibility: visibility, CI: ci, File: file}
+	if len(runner) > 0 && visibility != "private" {
+		return nil, nil, errors.New("--runner is for private repositories: public ones run on the hosted ubuntu-latest runners")
+	}
+	c := &Config{Harness: Latest, Visibility: visibility, CI: ci, Runner: runner, File: file}
 	var data []byte
 	if file != "" {
 		doc, err := skenvfile.Read(file)
