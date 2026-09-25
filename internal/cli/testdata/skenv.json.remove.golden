@@ -1,0 +1,17 @@
+{
+  "$schema": "https://qunaxis.github.io/skenv/schemas/skenv.schema.json",
+  "environment": {
+    "vendor": [],
+    "own": [
+      {
+        "repo": "me/skills",
+        "path": "~/src/skills"
+      }
+    ],
+    "layout": {
+      "ignore": [
+        "tool<x>&*"
+      ]
+    }
+  }
+}

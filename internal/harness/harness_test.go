@@ -8,6 +8,9 @@ import (
 	"testing"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/qunaxis/skenv/internal/docedit"
+	"github.com/qunaxis/skenv/schemas"
 )
 
 func write(t *testing.T, p, s string) {
@@ -195,13 +198,22 @@ func TestConfig(t *testing.T) {
 	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "no [repo] section") {
 		t.Errorf("no [repo]: %v", err)
 	}
-	// SetHarness only touches the harness line under [repo].
-	write(t, cfg, "# keep\n[environment.layout]\nharness = \"x\"\n\n[repo]\nharness = \"0.1.0\" # old\nvisibility = \"public\"\n")
-	if err := SetHarness(root, "0.4.0", false); err != nil {
-		t.Fatal(err)
+	write(t, cfg, "[repo]\nharness = \"0.4\"\nvisibility = \"public\"\n")
+	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "must be a version") {
+		t.Errorf("bad version: %v", err)
 	}
-	if got := read(t, cfg); got != "# keep\n[environment.layout]\nharness = \"x\"\n\n[repo]\nharness = \"0.4.0\" # old\nvisibility = \"public\"\n" {
-		t.Errorf("SetHarness:\n%s", got)
+	// Update only touches the harness line under [repo], and adds the
+	// schema directive of that version.
+	write(t, cfg, "# keep\n[environment.layout]\nharness = \"x\"\n\n[repo]\nharness = \"0.1.0\" # old\nvisibility = \"public\"\n")
+	if changed, err := Update(root, "0.4.0", false); err != nil || !changed {
+		t.Fatal(changed, err)
+	}
+	want := "#:schema " + schemas.URL(schemas.Skenv, "0.4.0") + "\n# keep\n[environment.layout]\nharness = \"x\"\n\n[repo]\nharness = \"0.4.0\" # old\nvisibility = \"public\"\n"
+	if got := read(t, cfg); got != want {
+		t.Errorf("Update:\n%s", got)
+	}
+	if changed, err := Update(root, "0.4.0", false); err != nil || changed {
+		t.Errorf("second Update: %v %v", changed, err)
 	}
 }
 
@@ -223,8 +235,11 @@ func TestInitNextToEnvironment(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := read(t, filepath.Join(root, c.name))
-			if c.name == "skenv.toml" && !strings.HasPrefix(got, c.content) {
+			if c.name == "skenv.toml" && !strings.HasPrefix(got, "#:schema "+schemas.URL(schemas.Skenv, Latest)+"\n"+c.content) {
 				t.Errorf("existing text not kept:\n%s", got)
+			}
+			if u, ok := docedit.Directive([]byte(got), filepath.Ext(c.name)); !ok || u != schemas.URL(schemas.Skenv, Latest) {
+				t.Errorf("directive %q, %v:\n%s", u, ok, got)
 			}
 			if d, err := Check(root); err != nil || len(d) != 0 {
 				t.Errorf("check: %v %v\n%s", d, err, got)
@@ -249,24 +264,24 @@ func TestInitNextToEnvironment(t *testing.T) {
 }
 
 // A repository on an older harness is reported by check and moved to
-// Latest by SetHarness (what `repo apply` does).
+// Latest by Update (what `repo apply` does).
 func TestOlderHarness(t *testing.T) {
 	root := t.TempDir()
 	if _, _, err := Init(root, "private", false, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetHarness(root, "0.3.0", false); err != nil {
+	if _, err := Update(root, "0.3.0", false); err != nil {
 		t.Fatal(err)
 	}
 	d, _ := Check(root)
 	if len(d) != 1 || !strings.Contains(d[0].Reason, "harness 0.3.0; this skenv generates "+Latest) {
 		t.Fatalf("drift = %v", d)
 	}
-	if err := SetHarness(root, Latest, false); err != nil {
+	if _, err := Update(root, Latest, false); err != nil {
 		t.Fatal(err)
 	}
 	if d, _ := Check(root); len(d) != 0 {
-		t.Fatalf("drift after SetHarness = %v", d)
+		t.Fatalf("drift after Update = %v", d)
 	}
 }
 
@@ -391,5 +406,51 @@ func TestForeignFilesNeedForce(t *testing.T) {
 	write(t, filepath.Join(root, "ruff.toml"), read(t, filepath.Join(root, "ruff.toml"))+"# edit\n")
 	if _, err := Apply(root, mustConfig(t, root), false, false); err != nil {
 		t.Fatalf("apply over an edited managed file: %v", err)
+	}
+}
+
+// repo init and apply edit YAML and JSON in place: comments, the
+// directive, key order and formatting stay; [repo] goes to the top.
+func TestInitAndUpdateKeepYAMLAndJSON(t *testing.T) {
+	url := schemas.URL(schemas.Skenv, Latest)
+	old := schemas.Base + "v0.3.9/" + schemas.Skenv
+	cases := []struct{ name, in, init, update string }{
+		{
+			name: "skenv.yaml",
+			in:   "# yaml-language-server: $schema=" + old + "\n# my manifest\nenvironment:\n  # where skills live\n  layout:\n    store: ~/.skills\n\n    targets: []\n",
+			init: "# yaml-language-server: $schema=" + url + "\nrepo:\n  harness: " + Latest + "\n  visibility: private\n  runner: [self-hosted, linux, docker]\n" +
+				"# my manifest\nenvironment:\n  # where skills live\n  layout:\n    store: ~/.skills\n\n    targets: []\n",
+			// 0.1.0 predates the schemas: the directive names the latest.
+			update: "# yaml-language-server: $schema=" + schemas.URL(schemas.Skenv, "") + "\nrepo:\n  harness: 0.1.0\n  visibility: private\n  runner: [self-hosted, linux, docker]\n" +
+				"# my manifest\nenvironment:\n  # where skills live\n  layout:\n    store: ~/.skills\n\n    targets: []\n",
+		},
+		{
+			name: "skenv.json",
+			in:   `{"environment": {"vendor": [], "layout": {"ignore": ["a<b>&*"]}}}`,
+			init: "{\n  \"$schema\": \"" + url + "\",\n  \"repo\": {\n    \"harness\": \"" + Latest + "\",\n    \"visibility\": \"private\",\n    \"runner\": [\n      \"self-hosted\",\n      \"linux\",\n      \"docker\"\n    ]\n  },\n" +
+				"  \"environment\": {\n    \"vendor\": [],\n    \"layout\": {\n      \"ignore\": [\n        \"a<b>&*\"\n      ]\n    }\n  }\n}\n",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			file := filepath.Join(root, c.name)
+			write(t, file, c.in)
+			if _, _, err := Init(root, "private", false, false); err != nil {
+				t.Fatal(err)
+			}
+			if got := read(t, file); got != c.init {
+				t.Errorf("init:\n%s\nwant:\n%s", got, c.init)
+			}
+			if c.update == "" {
+				return
+			}
+			if _, err := Update(root, "0.1.0", false); err != nil {
+				t.Fatal(err)
+			}
+			if got := read(t, file); got != c.update {
+				t.Errorf("update:\n%s\nwant:\n%s", got, c.update)
+			}
+		})
 	}
 }

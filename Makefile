@@ -3,7 +3,7 @@ GO            ?= go
 STATICCHECK   ?= $(GO) run honnef.co/go/tools/cmd/staticcheck@2026.2.1
 GOLANGCI_LINT ?= golangci-lint
 
-.PHONY: help build test lint docs man check check-commits hooks release snapshot demo clean
+.PHONY: help build test lint docs schemas man check check-commits hooks release snapshot demo clean
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -23,6 +23,9 @@ lint: ## go mod tidy -diff, go vet, staticcheck, golangci-lint
 docs: ## regenerate the command reference in docs/commands
 	$(GO) run ./internal/tools/gendocs docs/commands
 
+schemas: ## regenerate the JSON Schemas in schemas/ from the Go types
+	$(GO) run ./internal/tools/genschemas schemas
+
 man: ## write section-1 man pages into man/ (not committed; releases ship them)
 	$(GO) run ./internal/tools/gendocs -man man
 
@@ -41,20 +44,24 @@ snapshot: ## local goreleaser build without publishing
 	goreleaser release --snapshot --clean
 
 # The documentation site (VitePress) needs Node (.nvmrc); nothing else does.
-.PHONY: docs-site docs-serve
+.PHONY: docs-site docs-serve site-schemas
 
 node_modules: package.json package-lock.json
 	npm ci
 	@touch node_modules
 
-docs-site: docs node_modules ## build the documentation site into docs/.vitepress/dist
+# The schemas of every release, from the tags (docs/public/schemas/README.md).
+site-schemas:
+	scripts/site-schemas.sh docs/public/schemas
+
+docs-site: docs site-schemas node_modules ## build the documentation site into docs/.vitepress/dist
 	npm run docs:build
 
-docs-serve: docs node_modules ## serve the documentation site with live reload
+docs-serve: docs site-schemas node_modules ## serve the documentation site with live reload
 	npm run docs:dev
 
 demo: ## re-record docs/demo/demo.gif with vhs (sandbox in /tmp)
 	vhs docs/demo/demo.tape
 
 clean:
-	rm -rf skenv dist man
+	rm -rf skenv dist man build

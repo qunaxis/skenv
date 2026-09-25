@@ -8,6 +8,9 @@
 //
 // The skenv file of a repository (skenv.toml with [repo] and [environment])
 // is not configuration of the tool and is read by internal/skenvfile.
+//
+// Unknown keys are errors; "$schema" is allowed for editors. `skenv init`
+// edits the file in place: comments, other keys and their order stay.
 package config
 
 import (
@@ -18,13 +21,40 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 	"go.yaml.in/yaml/v3"
 
 	"github.com/qunaxis/skenv/internal/atomicfile"
+	"github.com/qunaxis/skenv/internal/docedit"
+	"github.com/qunaxis/skenv/schemas"
 )
+
+// Config lists the keys of the tool config. Its doc comments are the
+// descriptions of the JSON Schema (`make schemas`), which adds the flag, the
+// environment variable and the precedence of each key.
+type Config struct {
+	// Manifest is the skenv file with the [environment] section, or the
+	// directory that holds it ("~" allowed). `skenv init` records it. There
+	// is no default: without it, commands that need the manifest stop with
+	// an error.
+	Manifest string `toml:"manifest" yaml:"manifest" json:"manifest"`
+}
+
+// Keys are the keys of Config, in order.
+func Keys() []string {
+	t := reflect.TypeFor[Config]()
+	keys := make([]string, t.NumField())
+	for i := range keys {
+		keys[i] = t.Field(i).Tag.Get("json")
+	}
+	return keys
+}
 
 // Names are the accepted config file names, in lookup order. `skenv init`
 // creates the first one when none exists.
@@ -96,16 +126,39 @@ func decode(path string, data []byte) (map[string]any, error) {
 	default:
 		err = fmt.Errorf("unsupported format %q", filepath.Ext(path))
 	}
+	if err != nil {
+		return nil, err
+	}
 	if values == nil { // an empty YAML document
 		values = map[string]any{}
 	}
-	return values, err
+	var unknown []string
+	for k := range values {
+		if k != docedit.SchemaKey && !slices.Contains(Keys(), k) {
+			unknown = append(unknown, k)
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return nil, fmt.Errorf("unknown key %q (known keys: %s)", strings.Join(unknown, `", "`), strings.Join(Keys(), ", "))
+	}
+	for _, k := range append([]string{docedit.SchemaKey}, Keys()...) {
+		if v, ok := values[k]; ok {
+			if v == nil {
+				return nil, fmt.Errorf("%s must be a string, got an empty value (null); give it a value or remove it", k)
+			}
+			if _, isString := v.(string); !isString {
+				return nil, fmt.Errorf("%s must be a string, got %v", k, v)
+			}
+		}
+	}
+	return values, nil
 }
 
 // String returns key from the file; ok is false when it is not set.
 func (f *File) String(key string) (string, bool, error) {
 	v, ok := f.values[key]
-	if !ok || v == nil { // absent, or null in YAML and JSON
+	if !ok {
 		return "", false, nil
 	}
 	s, isString := v.(string)
@@ -154,36 +207,40 @@ func Resolve(home string, getenv func(string) string, key, flag, def string) (st
 	return def, FromDefault, nil
 }
 
-// Set writes key = value into the config file of home, keeping the other
-// keys. An existing file keeps its format; without one, config.toml is
-// created. Comments in the file are not kept.
+// Set writes key = value into the config file of home. An existing file
+// keeps its format, comments, other keys and their order, and a skenv
+// schema directive in it moves to the version of the running skenv. Without
+// a file, config.toml is created with a header and the schema directive.
 func Set(home, key, value string) (string, error) {
 	f, err := Load(home)
 	if err != nil {
 		return "", err
 	}
 	path := f.Path
+	var out []byte
 	if path == "" {
 		path = filepath.Join(Dir(home), Names[0])
+		out = fmt.Appendf(nil, "#:schema %s\n# skenv configuration, written by `skenv init`\n%s = %s\n",
+			schemas.URL(schemas.Config, schemas.Running()), key, tomlString(value))
+	} else {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
+		if out, err = setKey(data, filepath.Ext(path), key, value); err != nil {
+			return "", fmt.Errorf("config %s: %w", path, err)
+		}
+		if out, err = schemas.Stamp(out, filepath.Ext(path), schemas.Config, schemas.Running(), false); err != nil {
+			return "", err
+		}
 	}
-	f.values[key] = value
-	var b bytes.Buffer
-	switch filepath.Ext(path) {
-	case ".toml":
-		b.WriteString("# skenv configuration, written by `skenv init`\n")
-		err = toml.NewEncoder(&b).Encode(f.values)
-	case ".yaml", ".yml":
-		b.WriteString("# skenv configuration, written by `skenv init`\n")
-		enc := yaml.NewEncoder(&b)
-		enc.SetIndent(2)
-		err = enc.Encode(f.values)
-	case ".json":
-		enc := json.NewEncoder(&b)
-		enc.SetIndent("", "  ")
-		err = enc.Encode(f.values)
-	}
+	// The edit must read back as intended.
+	values, err := decode(path, out)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("config %s: the edit would make it invalid: %w", path, err)
+	}
+	if values[key] != value {
+		return "", fmt.Errorf("config %s: could not set %s; edit the file by hand", path, key)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", err
@@ -192,5 +249,83 @@ func Set(home, key, value string) (string, error) {
 	if fi, err := os.Stat(path); err == nil {
 		mode = fi.Mode().Perm()
 	}
-	return path, atomicfile.Write(path, b.Bytes(), mode)
+	return path, atomicfile.Write(path, out, mode)
+}
+
+// A top-level TOML key line: key = "value" or 'value', with an optional
+// comment.
+var tomlKeyRe = regexp.MustCompile(`^(\s*)([A-Za-z0-9_-]+|"[^"]*")(\s*=\s*)("(?:[^"\\]|\\.)*"|'[^']*')(.*)$`)
+
+func setKey(data []byte, ext, key, value string) ([]byte, error) {
+	if ext != ".toml" {
+		d, err := docedit.Open(data, ext)
+		if err != nil {
+			return nil, err
+		}
+		cur, err := decode("x"+ext, data)
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := cur[key]; exists {
+			err = d.SetString([]any{key}, value)
+		} else {
+			err = d.Put(nil, key, value, false)
+		}
+		if err != nil {
+			return nil, err
+		}
+		return d.Bytes(), nil
+	}
+	// TOML: replace the line of the key among the top-level keys, or add
+	// one after them.
+	var lines []string
+	if len(data) > 0 {
+		lines = strings.SplitAfter(string(data), "\n")
+		if lines[len(lines)-1] == "" {
+			lines = lines[:len(lines)-1]
+		}
+	}
+	end := len(lines)
+	for i, l := range lines {
+		t := strings.TrimRight(l, "\r\n")
+		if strings.HasPrefix(strings.TrimSpace(t), "[") {
+			end = i
+			break
+		}
+		m := tomlKeyRe.FindStringSubmatch(t)
+		if m != nil && strings.Trim(m[2], `"`) == key {
+			lines[i] = m[1] + m[2] + m[3] + tomlString(value) + m[5] + l[len(t):]
+			return []byte(strings.Join(lines, "")), nil
+		}
+	}
+	// After the last top-level key, before the blank lines and comments
+	// that lead into the first table.
+	at := end
+	for at > 0 && isBlankOrComment(lines[at-1]) && end < len(lines) {
+		at--
+	}
+	nl := "\n"
+	if bytes.Contains(data, []byte("\r\n")) {
+		nl = "\r\n"
+	}
+	if at > 0 && !strings.HasSuffix(lines[at-1], "\n") {
+		lines[at-1] += nl
+	}
+	line := key + " = " + tomlString(value) + nl
+	lines = append(lines[:at], append([]string{line}, lines[at:]...)...)
+	return []byte(strings.Join(lines, "")), nil
+}
+
+func isBlankOrComment(l string) bool {
+	t := strings.TrimSpace(l)
+	return t == "" || strings.HasPrefix(t, "#")
+}
+
+// tomlString renders s as a TOML basic string.
+func tomlString(s string) string {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(s)
+	return strings.TrimSuffix(b.String(), "\n")
 }

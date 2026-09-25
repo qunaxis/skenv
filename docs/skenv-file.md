@@ -6,13 +6,15 @@ those formats. More than one of them in the same directory is an error.
 
 - [Sections](#sections)
 - [Formats and editing](#formats-and-editing)
+- [Editor support](#editor-support)
 - [Where skenv looks](#where-skenv-looks)
 - [Moving from `env.toml` and the old `skenv.toml`](#moving-from-envtoml-and-the-old-skenvtoml)
 
 ## Sections
 
 The file has two optional top-level sections. Nothing else is allowed at
-the top level, and unknown keys inside a section are errors.
+the top level (except `$schema`, the schema URL for editors, which skenv
+ignores), and unknown keys inside a section are errors.
 
 | Section         | What it is                                                                                            | Who writes it                              | Reference                     |
 | --------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------ | ----------------------------- |
@@ -86,10 +88,26 @@ case-sensitive in every format. skenv edits the file in three places:
 - `skenv repo apply` sets `repo.harness` when it moves the repository to the
   templates of the installed skenv.
 
-In `skenv.toml` these edits change only the affected lines, so comments,
-order and formatting stay. A YAML or JSON file is decoded, changed and
-encoded again: YAML comments are lost and keys come out sorted. Prefer TOML
-for a file you annotate.
+Each edit changes only what it has to, in every format: comments, blank
+lines, key order and the formatting of everything else stay. New entries
+come in the order the docs use (`name`, `repo`, `path`, `rev` for a vendor;
+`harness`, `visibility`, `runner` for `[repo]`). In YAML, `[repo]` goes to
+the top of the file and a vendor entry follows the existing ones. JSON is
+written with two-space indentation, keeps its key order and `"$schema"`,
+and leaves `<`, `>` and `&` as they are.
+
+skenv can only edit a YAML list or mapping written in block style (one
+`- ` item or `key:` per line); an empty `[]` or `{}` is fine. If
+`environment.vendor` is written in flow style (`[{name: …}]`), the edit
+stops with an error that says so, and the file is left as it is.
+
+## Editor support
+
+skenv publishes a JSON Schema of this file, and every skenv file it writes
+names it in a directive: a first line `#:schema <url>` in TOML,
+`# yaml-language-server: $schema=<url>` in YAML, a `"$schema"` key in JSON.
+Editors then complete keys, describe them on hover and mark mistakes. See
+[Editor support](editor-support.md) for the URLs and editor setup.
 
 ## Where skenv looks
 

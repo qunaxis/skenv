@@ -46,6 +46,9 @@ func TestParseErrors(t *testing.T) {
 		{"[[vendor]]\nname = \"x\"\n", ".toml", "unknown top-level keys: vendor"},
 		{"layout:\n  store: x\n", ".yaml", "unknown top-level keys: layout"},
 		{`{"repo": 1}`, ".json", "repo must be a table"},
+		{`{"environment": {"vendor": null}}`, ".json", "environment.vendor is empty (null)"},
+		{"repo:\n  runner: [ubuntu, 1]\n", ".yaml", "repo.runner[1] must be a string, got 1; quote it"},
+		{"environment:\n  vendor:\n    - rev: 1234\n", ".yaml", "environment.vendor[0].rev must be a string"},
 		{"x", ".ini", "unsupported format"},
 	} {
 		if _, err := Parse([]byte(c.text), c.ext); err == nil || !strings.Contains(err.Error(), c.want) {
@@ -86,29 +89,43 @@ func TestFind(t *testing.T) {
 	}
 }
 
-func TestRewrite(t *testing.T) {
-	for _, ext := range []string{".yaml", ".json"} {
-		out, err := Rewrite([]byte(docs[ext]), ext, func(doc map[string]any) error {
-			repo, err := Table(doc, Repo)
-			repo["harness"] = "0.5.0"
-			return err
-		})
+// "$schema" is accepted and ignored at the top level in every format; it
+// must be a string, and other unknown keys are still errors.
+func TestSchemaKey(t *testing.T) {
+	for ext, text := range map[string]string{
+		".json": `{"$schema": "https://qunaxis.github.io/skenv/schemas/skenv.schema.json", "environment": {"layout": {"store": "~/.skills"}}}`,
+		".yaml": "$schema: x\nenvironment: {}\n",
+		".toml": "\"$schema\" = \"x\"\n[environment]\n",
+	} {
+		d, err := Parse([]byte(text), ext)
+		if err != nil || !d.Has(Environment) {
+			t.Errorf("%s: %v", ext, err)
+		}
+	}
+	for ext, c := range map[string]struct{ text, want string }{
+		".json": {`{"$schema": 1}`, "$schema must be a string"},
+		".yaml": {"$schema: [x]\n", "$schema must be a string"},
+		".toml": {"\"$schema\" = \"x\"\nother = 1\n", "unknown top-level keys: other"},
+	} {
+		if _, err := Parse([]byte(c.text), ext); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s %q: err = %v, want %q", ext, c.text, err, c.want)
+		}
+	}
+}
+
+func TestSchemaVersion(t *testing.T) {
+	for text, want := range map[string]string{
+		"[repo]\nharness = \"0.4.0\"\n": "0.4.0",
+		"[repo]\nharness = \"x\"\n":     "", // a test binary is a development build
+		"[environment]\n":               "",
+	} {
+		d, err := Parse([]byte(text), ".toml")
 		if err != nil {
 			t.Fatal(err)
 		}
-		d, err := Parse(out, ext)
-		if err != nil {
-			t.Fatalf("%s: %v\n%s", ext, err, out)
+		if got := d.SchemaVersion(); got != want {
+			t.Errorf("%q: %q, want %q", text, got, want)
 		}
-		var repo struct {
-			Harness string `yaml:"harness" json:"harness"`
-		}
-		if err := d.Decode(Repo, &repo); err != nil || repo.Harness != "0.5.0" || !d.IsDefined(Environment, "layout", "targets") {
-			t.Errorf("%s: %+v %v\n%s", ext, repo, err, out)
-		}
-	}
-	if _, err := Rewrite(nil, ".toml", nil); err == nil {
-		t.Error("TOML must be edited as text")
 	}
 }
 

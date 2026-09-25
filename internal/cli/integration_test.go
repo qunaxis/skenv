@@ -11,6 +11,7 @@ import (
 
 	"github.com/qunaxis/skenv/internal/engine"
 	"github.com/qunaxis/skenv/internal/harness"
+	"github.com/qunaxis/skenv/schemas"
 )
 
 func assertStandardLayout(t *testing.T, w *world) {
@@ -49,6 +50,10 @@ func TestInitOnCleanHome(t *testing.T) {
 	cfg := readFile(t, w.path(".config/skenv/config.toml"))
 	if !strings.Contains(cfg, `manifest = "~/`+ownPath+`/skenv.toml"`) {
 		t.Fatalf("config.toml does not record the manifest:\n%s", cfg)
+	}
+	// A development build names the latest schema.
+	if !strings.HasPrefix(cfg, "#:schema "+schemas.URL(schemas.Config, "")+"\n") {
+		t.Errorf("config.toml has no schema directive:\n%s", cfg)
 	}
 	assertStandardLayout(t, w)
 	marker := readFile(t, w.path(".agents/skills/archify/.skenv"))
@@ -305,6 +310,10 @@ func TestVendorAddAndRemove(t *testing.T) {
 		t.Errorf("several skills must be listed:\n%s", errOut)
 	}
 	w.mustRun(2, "vendor", "add", "ext/tools", "--path", "tools/archify") // duplicate name
+	// One skill-name rule everywhere: dots and underscores are rejected.
+	if _, errOut = w.mustRun(2, "vendor", "add", "ext/tools", "--path", "tools/other", "--name", "foo.bar_v2"); !strings.Contains(errOut, "single hyphens") {
+		t.Errorf("vendor add --name foo.bar_v2: %s", errOut)
+	}
 
 	out, _ := w.mustRun(0, "vendor", "add", "ext/tools", "--path", "tools/other")
 	if !strings.Contains(out, "git -C ~/"+ownPath+" commit") {
@@ -401,6 +410,10 @@ func TestInitClonesIntoCurrentDirectory(t *testing.T) {
 	cfg := readFile(t, w.path(".config/skenv/config.toml"))
 	if !strings.Contains(cfg, `manifest = "~/`+ownPath+`/skenv.toml"`) {
 		t.Fatalf("config.toml does not record the manifest:\n%s", cfg)
+	}
+	// A development build names the latest schema.
+	if !strings.HasPrefix(cfg, "#:schema "+schemas.URL(schemas.Config, "")+"\n") {
+		t.Errorf("config.toml has no schema directive:\n%s", cfg)
 	}
 	assertStandardLayout(t, w)
 	w.mustRun(0, "doctor")
@@ -613,15 +626,44 @@ func TestConfigFormats(t *testing.T) {
 	}
 }
 
-// The manifest may be skenv.yaml or skenv.json; vendor edits rewrite it
-// from its data. --manifest may name the directory of the skenv file.
+// The manifest may be skenv.yaml or skenv.json, and --manifest may name the
+// directory of the skenv file. vendor add|bump|remove edit it in place:
+// comments, the schema directive (moved to this skenv, the latest URL for
+// a development build), key order and untouched values stay (golden files
+// in testdata/; `go test ./internal/cli -run TestManifestFormats -update`
+// rewrites them).
 func TestManifestFormats(t *testing.T) {
+	old := schemas.Base + "v0.3.9/" + schemas.Skenv
 	for name, content := range map[string]func(rev string) string{
 		"skenv.yaml": func(rev string) string {
-			return "environment:\n  own:\n    - repo: me/skills\n      path: ~/" + ownPath + "\n  vendor:\n    - name: archify\n      repo: ext/tools\n      path: tools/archify\n      rev: \"" + rev + "\"\n"
+			return "# yaml-language-server: $schema=" + old + `
+# my manifest
+environment:
+  # where skills live
+  own:
+    - repo: me/skills   # the manifest repository
+      path: ~/` + ownPath + `
+
+  # pinned third-party skills
+  vendor:
+    - name: archify
+      repo: ext/tools
+      path: tools/archify
+      rev: "` + rev + `"   # keep this comment
+  host:
+    other-host:
+      skip: [beta]
+`
 		},
 		"skenv.json": func(rev string) string {
-			return `{"environment": {"own": [{"repo": "me/skills", "path": "~/` + ownPath + `"}], "vendor": [{"name": "archify", "repo": "ext/tools", "path": "tools/archify", "rev": "` + rev + `"}]}}`
+			return `{
+  "$schema": "` + old + `",
+  "environment": {
+    "vendor": [{"name": "archify", "repo": "ext/tools", "path": "tools/archify", "rev": "` + rev + `"}],
+    "own": [{"repo": "me/skills", "path": "~/` + ownPath + `"}],
+    "layout": {"ignore": ["tool<x>&*"]}
+  }
+}`
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -631,13 +673,20 @@ func TestManifestFormats(t *testing.T) {
 			w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
 			assertStandardLayout(t, w)
 			w.mustRun(0, "doctor", "--manifest", "~/"+ownPath)
-			out, _ := w.mustRun(0, "vendor", "add", "ext/tools", "--path", "tools/other")
-			if !strings.Contains(out, "only TOML keeps comments") {
-				t.Errorf("vendor add output = %q", out)
+			file := w.path(ownPath + "/" + name)
+			revs := map[string]string{rev: "<rev>"}
+			_, errOut := w.mustRun(0, "vendor", "add", "ext/tools", "--path", "tools/other")
+			if strings.Contains(errOut, "rewritten") {
+				t.Errorf("vendor add: %s", errOut)
 			}
-			if !strings.Contains(readFile(t, w.path(ownPath+"/"+name)), "tools/other") {
-				t.Error("vendor not recorded")
-			}
+			golden(t, name+".add", readFile(t, file), revs)
+			newRev := w.push("ext/tools", map[string]string{"tools/archify/SKILL.md": skillMD("archify", "v2")}, "fix: archify v2")
+			revs[newRev] = "<new-rev>"
+			w.mustRun(0, "vendor", "bump", "archify", "--rev", newRev)
+			golden(t, name+".bump", readFile(t, file), revs)
+			w.mustRun(0, "vendor", "remove", "other")
+			w.mustRun(0, "vendor", "remove", "archify")
+			golden(t, name+".remove", readFile(t, file), revs)
 		})
 	}
 }

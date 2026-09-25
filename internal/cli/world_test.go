@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -201,4 +202,23 @@ func (w *world) initStandard(extraManifest string) string {
 	rev := w.standard(extraManifest)
 	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
 	return rev
+}
+
+var update = flag.Bool("update", false, "rewrite the golden files in testdata/")
+
+// golden compares got with testdata/<name>.golden after replacing each key
+// of subst (commit SHAs, temporary paths) with its value.
+func golden(t *testing.T, name, got string, subst map[string]string) {
+	t.Helper()
+	for from, to := range subst {
+		got = strings.ReplaceAll(got, from, to)
+	}
+	p := filepath.Join("testdata", name+".golden")
+	if *update {
+		writeFile(t, p, got)
+		return
+	}
+	if want := readFile(t, p); got != want {
+		t.Errorf("%s differs from %s (rerun with -update if intended):\n--- got\n%s\n--- want\n%s", name, p, got, want)
+	}
 }

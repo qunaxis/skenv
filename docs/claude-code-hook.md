@@ -34,7 +34,7 @@ The agent received, right after the edit:
 PostToolUse:Edit hook blocking error from command: "command -v skenv … skenv lint --hook":
 skenv lint: …/skills/demo has 2 problems after Edit; fix them:
 …/skills/demo/SKILL.md: L2: name "Demo_Skill" must equal the directory name "demo"
-…/skills/demo/SKILL.md: L2: name "Demo_Skill" may contain only lowercase letters, digits and "-"
+…/skills/demo/SKILL.md: L2: name "Demo_Skill" must be lowercase letters, digits and single hyphens, with no hyphen at the start or end
 ```
 
 and quoted it back in its answer. In an interactive session the same message

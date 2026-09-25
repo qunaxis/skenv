@@ -2,20 +2,20 @@ package manifest
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"regexp"
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/atomicfile"
+	"github.com/qunaxis/skenv/internal/docedit"
 	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
 // The editing helpers below work on the TOML text rather than on the
 // decoded structure so that comments, ordering and formatting survive
-// `skenv vendor add|bump|remove`. YAML and JSON skenv files are decoded and
-// encoded again instead: their comments and key order are not kept.
+// `skenv vendor add|bump|remove`. YAML and JSON skenv files are edited with
+// internal/docedit, which keeps comments and key order as well.
 
 var (
 	headerRe  = regexp.MustCompile(`^\s*\[`)
@@ -57,8 +57,9 @@ func vendorBlock(lines []string, name string) (block, error) {
 // AppendVendor returns data with a new vendor entry appended.
 func AppendVendor(data []byte, ext string, v Vendor) ([]byte, error) {
 	if ext != ".toml" {
-		return rewriteVendors(data, ext, func(list []any) ([]any, error) {
-			return append(list, map[string]any{"name": v.Name, "repo": v.Repo, "path": v.Path, "rev": v.Rev}), nil
+		return editDoc(data, ext, func(d docedit.Doc) error {
+			return d.Append([]string{skenvfile.Environment, "vendor"},
+				docedit.Map{{Key: "name", Value: v.Name}, {Key: "repo", Value: v.Repo}, {Key: "path", Value: v.Path}, {Key: "rev", Value: v.Rev}})
 		})
 	}
 	var b bytes.Buffer
@@ -77,13 +78,12 @@ func AppendVendor(data []byte, ext string, v Vendor) ([]byte, error) {
 // SetVendorRev returns data with the rev of vendor name replaced.
 func SetVendorRev(data []byte, ext, name, rev string) ([]byte, error) {
 	if ext != ".toml" {
-		return rewriteVendors(data, ext, func(list []any) ([]any, error) {
-			i, err := vendorIndex(list, name)
-			if err != nil {
-				return nil, err
-			}
-			list[i].(map[string]any)["rev"] = rev
-			return list, nil
+		i, err := vendorIndex(data, ext, name)
+		if err != nil {
+			return nil, err
+		}
+		return editDoc(data, ext, func(d docedit.Doc) error {
+			return d.SetString([]any{skenvfile.Environment, "vendor", i, "rev"}, rev)
 		})
 	}
 	lines := splitLines(data)
@@ -106,12 +106,12 @@ func SetVendorRev(data []byte, ext, name, rev string) ([]byte, error) {
 // next table) are kept.
 func RemoveVendor(data []byte, ext, name string) ([]byte, error) {
 	if ext != ".toml" {
-		return rewriteVendors(data, ext, func(list []any) ([]any, error) {
-			i, err := vendorIndex(list, name)
-			if err != nil {
-				return nil, err
-			}
-			return append(list[:i], list[i+1:]...), nil
+		i, err := vendorIndex(data, ext, name)
+		if err != nil {
+			return nil, err
+		}
+		return editDoc(data, ext, func(d docedit.Doc) error {
+			return d.Remove([]any{skenvfile.Environment, "vendor", i})
 		})
 	}
 	lines := splitLines(data)
@@ -135,32 +135,26 @@ func RemoveVendor(data []byte, ext, name string) ([]byte, error) {
 	return checked([]byte(strings.Join(out, "")), ext)
 }
 
-// rewriteVendors edits environment.vendor of a YAML or JSON skenv file.
-func rewriteVendors(data []byte, ext string, edit func([]any) ([]any, error)) ([]byte, error) {
-	out, err := skenvfile.Rewrite(data, ext, func(doc map[string]any) error {
-		env, err := skenvfile.Table(doc, skenvfile.Environment)
-		if err != nil {
-			return err
-		}
-		list, _ := env["vendor"].([]any)
-		if env["vendor"] != nil && list == nil {
-			return errors.New("environment.vendor must be a list")
-		}
-		if list, err = edit(list); err != nil {
-			return err
-		}
-		env["vendor"] = list
-		return nil
-	})
+// editDoc edits a YAML or JSON skenv file in place.
+func editDoc(data []byte, ext string, edit func(docedit.Doc) error) ([]byte, error) {
+	d, err := docedit.Open(data, ext)
 	if err != nil {
 		return nil, err
 	}
-	return checked(out, ext)
+	if err := edit(d); err != nil {
+		return nil, err
+	}
+	return checked(d.Bytes(), ext)
 }
 
-func vendorIndex(list []any, name string) (int, error) {
-	for i, v := range list {
-		if m, ok := v.(map[string]any); ok && m["name"] == name {
+// vendorIndex is the position of vendor name in environment.vendor.
+func vendorIndex(data []byte, ext, name string) (int, error) {
+	m, err := Parse(data, ext)
+	if err != nil {
+		return 0, err
+	}
+	for i, v := range m.Vendor {
+		if v.Name == name {
 			return i, nil
 		}
 	}

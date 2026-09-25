@@ -76,7 +76,10 @@ Its design is guided by these mantras:
   discrepancy (missing, conflict, wrong-rev, dirty, unpushed, …), as text or
   JSON.
 - `skenv vendor add|bump|remove` edit the manifest in place, keeping its
-  comments and order.
+  comments and order, in TOML, YAML or JSON.
+- JSON Schemas for the skenv file and the tool config: files skenv writes
+  name their schema, so editors complete and check them
+  ([editor support](docs/editor-support.md)).
 - Per-host skips, custom agent directories, and ignore patterns for skills
   owned by other tools.
 - `skenv autostart` runs `sync` at login and hourly via launchd or systemd.
@@ -232,6 +235,8 @@ The same pages, with search, are published at
   generated from the command definitions by `make docs`.
 - [The skenv file](docs/skenv-file.md): `skenv.toml` with its `[repo]` and
   `[environment]` sections, formats, and moving from `env.toml`.
+- [Editor support](docs/editor-support.md): JSON Schemas of the skenv file
+  and the tool config, and editor setup.
 - [Manifest](docs/manifest.md): the `[environment]` format, where it is found,
   the layout on disk, and the mapping to `skills-lock.json`.
 - [Harness](docs/harness.md): `skenv repo init|apply|check`, `[repo]`,

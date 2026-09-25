@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qunaxis.github.io/skenv/schemas/config.schema.json",
+  "title": "skenv tool config",
+  "description": "skenv's own configuration, one per machine: ~/.config/skenv/config.toml (or config.yaml, config.yml, config.json; only one of them). Unknown keys are errors. Docs: https://qunaxis.github.io/skenv/configuration",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "The URL of this schema, for editors. skenv ignores it.",
+      "type": "string"
+    },
+    "manifest": {
+      "description": "The skenv file with the [environment] section, or the directory that holds it (\"~\" allowed). `skenv init` records it. There is no default: without it, commands that need the manifest stop with an error. Overridden by the flag --manifest and the environment variable SKENV_MANIFEST; precedence: flag, environment variable, this file, default.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

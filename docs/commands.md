@@ -12,6 +12,7 @@ shipped in the release archives (`make man` writes them into `man/`; see
 - [`--dry-run` and `--adopt`](#--dry-run-and---adopt)
 - [`doctor` classes](#doctor-classes)
 - [Skills repositories: lint, new, repo](#skills-repositories)
+- [JSON Schemas: schema](#json-schemas)
 - [Exit codes](#exit-codes)
 
 Every command that reads the manifest accepts `--manifest FILE`; see
@@ -178,7 +179,7 @@ Inside git only the files git would commit are checked. Exit code 0: clean,
 | Rule | Check                                                                                                                         |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------- |
 | L1   | YAML frontmatter is valid and has `name` and `description`                                                                    |
-| L2   | `name` equals the directory name and uses only `[a-z0-9-]`                                                                    |
+| L2   | `name` equals the directory name and is lowercase letters, digits and single hyphens, with no hyphen at the start or end       |
 | L3   | Agent Skills limits: `name` ≤ 64 characters; `description` not empty, ≤ 1024; `license` a string, `metadata` a map of strings |
 | L4   | relative links in `SKILL.md` and `references/*.md` point to existing files inside the skill                                   |
 | L5   | no file larger than 10 MB; no `.env`, `*.pem`, `*.key`, `.credentials*`                                                       |
@@ -225,6 +226,21 @@ repository at `--dir` (its `skenv.toml` decides the visibility there).
 
 Set up, regenerate and verify the harness of a skills repository (lefthook,
 CI workflow, linter configs, managed blocks). See [harness](harness.md).
+
+## JSON Schemas
+
+### `skenv schema`
+
+```sh
+skenv schema          # the skenv file
+skenv schema config   # the tool config
+```
+
+Prints the JSON Schema of the installed skenv version for the skenv file
+or the tool config, for offline use and custom editor mappings. The files
+skenv writes name their schema already. See
+[Editor support](editor-support.md). Reference:
+[skenv schema](commands/skenv_schema.md).
 
 ## Exit codes
 

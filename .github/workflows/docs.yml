@@ -1,12 +1,18 @@
 name: docs
 
 # Builds the documentation site on every pull request (a link to a missing
-# page fails the build) and publishes it to GitHub Pages from main.
+# page fails the build) and publishes it to GitHub Pages from main. It also
+# runs after each release, whose tag brings a new set of JSON Schemas
+# (scripts/site-schemas.sh): the tag is pushed with GITHUB_TOKEN, which
+# starts no push workflow.
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
 
 permissions:
   contents: read
@@ -17,9 +23,13 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The release tags carry the schemas the site publishes.
+          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -28,7 +38,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       # make docs regenerates the command reference first, so the published
-      # reference always matches the commands.
+      # reference always matches the commands; the schemas of every release
+      # come from the tags.
       - run: make docs-site
       - if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5

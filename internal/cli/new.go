@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -14,10 +13,9 @@ import (
 	"github.com/qunaxis/skenv/internal/engine"
 	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/lint"
+	"github.com/qunaxis/skenv/internal/manifest"
 	"github.com/qunaxis/skenv/internal/paths"
 )
-
-var skillNameRe = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 // cmdNew scaffolds a skill (P3) in the own repository whose skenv.toml has
 // the requested visibility (private by default), or in --dir.
@@ -44,8 +42,8 @@ private), or in the git repository at --dir.`,
 
 func runNew(ctx context.Context, env engine.Env, o engine.Options, name, repo string, repoSet bool, dir string) (int, error) {
 	var err error
-	if !skillNameRe.MatchString(name) || len(name) > lint.MaxNameLen {
-		return engine.ExitFatal, fmt.Errorf("skill name %q must be lowercase letters, digits and single hyphens, at most %d characters", name, lint.MaxNameLen)
+	if err := manifest.ValidName(name); err != nil {
+		return engine.ExitFatal, fmt.Errorf("skill %w", err)
 	}
 	if repo != "private" && repo != "public" {
 		return engine.ExitFatal, usageError{fmt.Sprintf("new: --repo must be private or public, got %q", repo)}

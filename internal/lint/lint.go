@@ -17,11 +17,13 @@ import (
 	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/qunaxis/skenv/internal/skillname"
 )
 
 // Limits from the Agent Skills specification (agentskills.io).
 const (
-	MaxNameLen        = 64
+	MaxNameLen        = skillname.MaxLen
 	MaxDescriptionLen = 1024
 	MaxFileSize       = 10 << 20 // L5
 )
@@ -43,7 +45,6 @@ func (f Finding) String() string {
 }
 
 var (
-	nameRe = regexp.MustCompile(`^[a-z0-9-]+$`)
 	// [text](target) and ![alt](target); the target ends at whitespace or ")".
 	inlineLinkRe = regexp.MustCompile(`!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)`)
 	// [label]: target
@@ -153,8 +154,8 @@ func checkFrontmatter(dir string, add addFunc) {
 		if name != base {
 			add("L2", "SKILL.md", "name %q must equal the directory name %q", name, base)
 		}
-		if !nameRe.MatchString(name) {
-			add("L2", "SKILL.md", "name %q may contain only lowercase letters, digits and \"-\"", name)
+		if !skillname.Matches(name) {
+			add("L2", "SKILL.md", "name %q must be %s", name, skillname.Rule)
 		}
 		if n := utf8.RuneCountInString(name); n > MaxNameLen {
 			add("L3", "SKILL.md", "name is %d characters, the limit is %d", n, MaxNameLen)

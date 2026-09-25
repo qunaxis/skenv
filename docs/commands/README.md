@@ -22,6 +22,7 @@ Generated from `skenv --help`. Start with [skenv](skenv.md).
 - [skenv repo apply](skenv_repo_apply.md): Regenerate the managed files of the harness
 - [skenv repo check](skenv_repo_check.md): Compare the managed files with the harness templates
 - [skenv repo init](skenv_repo_init.md): Set up the harness of a skills repository
+- [skenv schema](skenv_schema.md): Print the JSON Schema of the skenv file or the tool config
 - [skenv sync](skenv_sync.md): Pull, vendor and link every skill of the manifest
 - [skenv vendor](skenv_vendor.md): Pin, bump and remove third-party skills
 - [skenv vendor add](skenv_vendor_add.md): Pin a third-party skill in the manifest and sync it

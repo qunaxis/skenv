@@ -20,7 +20,9 @@ import (
 	"text/template"
 
 	"github.com/qunaxis/skenv/internal/atomicfile"
+	"github.com/qunaxis/skenv/internal/docedit"
 	"github.com/qunaxis/skenv/internal/skenvfile"
+	"github.com/qunaxis/skenv/schemas"
 )
 
 // ConfigFile is the skenv file that `repo init` creates when the
@@ -38,11 +40,26 @@ var DefaultRunner = []string{"self-hosted", "linux", "docker"}
 //go:embed templates
 var templates embed.FS
 
-// Config is the [repo] section of the skenv file.
+// Config is the [repo] section of the skenv file: the harness of a skills
+// repository, the tooling that `skenv repo apply` generates.
+//
+// The first paragraph of this comment and the comments of the fields are
+// the descriptions of the JSON Schema (`make schemas`): write them for
+// users.
 type Config struct {
-	Harness    string   `toml:"harness" yaml:"harness" json:"harness"`
-	Visibility string   `toml:"visibility" yaml:"visibility" json:"visibility"`
-	Runner     []string `toml:"runner" yaml:"runner" json:"runner"`
+	// Harness is the version of the harness templates, which is also the
+	// skenv release the generated CI installs. It must not be newer than
+	// the templates of the skenv that reads it; `skenv repo apply` moves it
+	// to the version of the running skenv.
+	Harness string `toml:"harness" yaml:"harness" json:"harness"`
+	// Visibility is the visibility of the repository on GitHub: "private"
+	// or "public". A public repository must not have [environment], and its
+	// CI always runs on ubuntu-latest.
+	Visibility string `toml:"visibility" yaml:"visibility" json:"visibility"`
+	// Runner is the runs-on of the CI jobs, used only when visibility is
+	// "private". Default: ["self-hosted", "linux", "docker"]; use
+	// ["ubuntu-latest"] for GitHub-hosted runners.
+	Runner []string `toml:"runner" yaml:"runner" json:"runner"`
 
 	// File is the skenv file; HasEnvironment reports whether it also
 	// carries the [environment] section (a manifest).
@@ -97,6 +114,33 @@ func Version(root string) (version string, ok bool, err error) {
 	return c.Harness, ok, err
 }
 
+// VersionPattern is the format of repo.harness.
+const VersionPattern = `^[0-9]+\.[0-9]+\.[0-9]+$`
+
+// VersionRe matches VersionPattern.
+var VersionRe = regexp.MustCompile(VersionPattern)
+
+// Parse decodes and validates the [repo] section of a skenv file in the
+// format of ext, with the rule that a public repository has no
+// [environment]. ok is false when there is no [repo].
+func Parse(data []byte, ext string) (c *Config, ok bool, err error) {
+	doc, err := skenvfile.Parse(data, ext)
+	if err != nil || !doc.Has(skenvfile.Repo) {
+		return nil, false, err
+	}
+	c = &Config{File: ConfigFile, HasEnvironment: doc.Has(skenvfile.Environment)}
+	if err := doc.Decode(skenvfile.Repo, c); err != nil {
+		return nil, true, err
+	}
+	if err := c.validate(); err != nil {
+		return nil, true, err
+	}
+	if c.Visibility == "public" && c.HasEnvironment {
+		return nil, true, errors.New(errPublicEnvironment)
+	}
+	return c, true, nil
+}
+
 // errPublicEnvironment explains why a public repository must not carry the
 // manifest.
 const errPublicEnvironment = "a public repository must not carry [environment]: the manifest is personal " +
@@ -118,6 +162,9 @@ func (c *Config) validate() error {
 	}
 	if c.Harness == "" {
 		return fmt.Errorf("%s: repo.harness is required", name)
+	}
+	if !VersionRe.MatchString(c.Harness) {
+		return fmt.Errorf("%s: repo.harness %q must be a version such as %s", name, c.Harness, Latest)
 	}
 	if Compare(c.Harness, Latest) > 0 {
 		return fmt.Errorf("%s: harness %s is newer than %s of this skenv; upgrade skenv", name, c.Harness, Latest)
@@ -473,6 +520,9 @@ func Init(root, visibility string, dryRun, force bool) (*Config, []Change, error
 	if err != nil {
 		return nil, nil, err
 	}
+	if out, err = skenvfile.Stamp(out, filepath.Ext(c.File), true); err != nil {
+		return nil, nil, err
+	}
 	action := "create"
 	if file != "" {
 		action = "add [repo] to"
@@ -487,7 +537,8 @@ func Init(root, visibility string, dryRun, force bool) (*Config, []Change, error
 	return c, append(changes, more...), err
 }
 
-// addRepo returns data with the [repo] section of c appended.
+// addRepo returns data with the [repo] section of c: appended to TOML,
+// at the top of YAML and JSON, as the docs show it.
 func addRepo(data []byte, ext string, c *Config) ([]byte, error) {
 	if ext == ".toml" {
 		var b bytes.Buffer
@@ -501,14 +552,18 @@ func addRepo(data []byte, ext string, c *Config) ([]byte, error) {
 		b.Write(c.encode())
 		return b.Bytes(), nil
 	}
-	return skenvfile.Rewrite(data, ext, func(doc map[string]any) error {
-		repo := map[string]any{"harness": c.Harness, "visibility": c.Visibility}
-		if c.Visibility == "private" {
-			repo["runner"] = c.Runner
-		}
-		doc[skenvfile.Repo] = repo
-		return nil
-	})
+	d, err := docedit.Open(data, ext)
+	if err != nil {
+		return nil, err
+	}
+	repo := docedit.Map{{Key: "harness", Value: c.Harness}, {Key: "visibility", Value: c.Visibility}}
+	if c.Visibility == "private" {
+		repo = append(repo, docedit.Field{Key: "runner", Value: c.Runner})
+	}
+	if err := d.Put(nil, skenvfile.Repo, repo, true); err != nil {
+		return nil, err
+	}
+	return d.Bytes(), nil
 }
 
 var (
@@ -517,61 +572,85 @@ var (
 	harnessKeyRe = regexp.MustCompile(`^(\s*harness\s*=\s*)"[^"]*"(.*)$`)
 )
 
-// SetHarness sets repo.harness in the skenv file of root. TOML keeps the
-// rest of the file as it is; YAML and JSON are rewritten from their data.
-func SetHarness(root, version string, dryRun bool) error {
+// Update sets repo.harness in the skenv file of root to version and moves
+// its schema directive there (adding it when missing). Comments, key order
+// and formatting stay in every format. It reports whether the file
+// changes; with dryRun nothing is written.
+func Update(root, version string, dryRun bool) (bool, error) {
 	file, err := skenvfile.Find(root)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if file == "" {
-		return errNoRepo
+		return false, errNoRepo
 	}
 	data, err := os.ReadFile(file)
 	if err != nil {
-		return err
+		return false, err
 	}
-	var out []byte
-	if filepath.Ext(file) == ".toml" {
-		lines := strings.SplitAfter(string(data), "\n")
-		inRepo, done := false, false
-		for i, l := range lines {
-			trimmed := strings.TrimRight(l, "\r\n")
-			switch {
-			case repoHeaderRe.MatchString(trimmed):
-				inRepo = true
-				continue
-			case tableRe.MatchString(trimmed):
-				inRepo = false
-				continue
-			}
-			if m := harnessKeyRe.FindStringSubmatch(trimmed); inRepo && m != nil {
-				lines[i] = m[1] + strconv.Quote(version) + m[2] + l[len(trimmed):]
-				done = true
-				break
-			}
-		}
-		if !done {
-			return fmt.Errorf("%s: no harness = \"...\" line under [repo]", filepath.Base(file))
-		}
-		out = []byte(strings.Join(lines, ""))
-	} else {
-		out, err = skenvfile.Rewrite(data, filepath.Ext(file), func(doc map[string]any) error {
-			repo, err := skenvfile.Table(doc, skenvfile.Repo)
-			if err != nil {
-				return err
-			}
-			repo["harness"] = version
-			return nil
-		})
-		if err != nil {
-			return err
-		}
+	out, err := setHarness(data, filepath.Ext(file), version)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", filepath.Base(file), err)
+	}
+	if out, err = skenvfile.Stamp(out, filepath.Ext(file), true); err != nil {
+		return false, err
+	}
+	if bytes.Equal(out, data) {
+		return false, nil
 	}
 	if dryRun {
-		return nil
+		return true, nil
 	}
-	return writeKeepMode(file, out)
+	return true, writeKeepMode(file, out)
+}
+
+func setHarness(data []byte, ext, version string) ([]byte, error) {
+	doc, err := skenvfile.Parse(data, ext)
+	if err != nil {
+		return nil, err
+	}
+	if doc.Harness() == version {
+		return data, nil
+	}
+	if ext != ".toml" {
+		d, err := docedit.Open(data, ext)
+		if err != nil {
+			return nil, err
+		}
+		if err := d.SetString([]any{skenvfile.Repo, "harness"}, version); err != nil {
+			return nil, err
+		}
+		return d.Bytes(), nil
+	}
+	lines := strings.SplitAfter(string(data), "\n")
+	inRepo := false
+	for i, l := range lines {
+		trimmed := strings.TrimRight(l, "\r\n")
+		switch {
+		case repoHeaderRe.MatchString(trimmed):
+			inRepo = true
+			continue
+		case tableRe.MatchString(trimmed):
+			inRepo = false
+			continue
+		}
+		if m := harnessKeyRe.FindStringSubmatch(trimmed); inRepo && m != nil {
+			lines[i] = m[1] + strconv.Quote(version) + m[2] + l[len(trimmed):]
+			return []byte(strings.Join(lines, "")), nil
+		}
+	}
+	return nil, errors.New(`no harness = "..." line under [repo]`)
+}
+
+// DirectiveWarning describes a missing or outdated schema directive in the
+// skenv file of c: it should name the schema of repo.harness. It is only a
+// warning, because the directive does not change what skenv does.
+func DirectiveWarning(c *Config) (string, error) {
+	data, err := os.ReadFile(c.File)
+	if err != nil {
+		return "", err
+	}
+	return schemas.Check(data, filepath.Ext(c.File), schemas.Skenv, c.Harness), nil
 }
 
 func writeKeepMode(file string, data []byte) error {

@@ -19,6 +19,7 @@ import (
 	"github.com/qunaxis/skenv/internal/engine"
 	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/paths"
+	"github.com/qunaxis/skenv/schemas"
 )
 
 // Main runs skenv with args (without the program name) and returns the
@@ -104,7 +105,7 @@ Exit codes: 0 success, 1 problems found, 2 error.`,
 	})
 	root.AddCommand(
 		initCmd(a), syncCmd(a, "sync"), syncCmd(a, "link"), doctorCmd(a),
-		vendorCmd(a), autostartCmd(a), lintCmd(a), newCmd(a), repoCmd(a),
+		vendorCmd(a), autostartCmd(a), lintCmd(a), newCmd(a), repoCmd(a), schemaCmd(a),
 		&cobra.Command{
 			Use:   "version",
 			Short: "Print the skenv version",
@@ -340,6 +341,38 @@ func vendorCmd(a *app) *cobra.Command {
 	shared(remove, &rmO)
 
 	return group("vendor", "Pin, bump and remove third-party skills", add, bump, remove)
+}
+
+func schemaCmd(a *app) *cobra.Command {
+	kinds := map[string]string{"skenv": schemas.Skenv, "config": schemas.Config}
+	return &cobra.Command{
+		Use:   "schema [skenv|config]",
+		Short: "Print the JSON Schema of the skenv file or the tool config",
+		Long: `Print the JSON Schema of this skenv version to stdout: "skenv" (default) for
+the skenv file (skenv.toml, .yaml, .yml or .json with [repo] and
+[environment]), "config" for the tool config ~/.config/skenv/config.*.
+
+Files that skenv writes name their schema in a directive, so most editors
+need no setup. Use this for offline work or a custom mapping, for example a
+JSON Schema mapping in JetBrains IDEs or a rule in .taplo.toml. The same
+schemas are published at ` + schemas.Base + `.`,
+		Example:   "skenv schema > skenv.schema.json\nskenv schema config",
+		Args:      cobra.MaximumNArgs(1),
+		ValidArgs: []string{"skenv", "config"},
+		RunE: a.action(func(_ context.Context, env engine.Env, args []string) (int, error) {
+			kind := "skenv"
+			if len(args) == 1 {
+				kind = args[0]
+			}
+			name, ok := kinds[kind]
+			if !ok {
+				return engine.ExitFatal, usageError{fmt.Sprintf("schema: unknown schema %q (skenv or config)", kind)}
+			}
+			data, _ := schemas.Stamped(name, schemas.Running())
+			_, err := env.Stdout.Write(data)
+			return engine.ExitOK, err
+		}),
+	}
 }
 
 func autostartCmd(a *app) *cobra.Command {

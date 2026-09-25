@@ -44,8 +44,8 @@ names, which skills you use).
 skenv repo init --visibility private   # or: public
 ```
 
-Adds `[repo]` (creating `skenv.toml` if there is no skenv file) and every
-managed file, then runs `lefthook install`. Refuses if `[repo]` already
+Adds `[repo]` and the schema directive (creating `skenv.toml` if there is
+no skenv file) and every managed file, then runs `lefthook install`. Refuses if `[repo]` already
 exists. Reference: [skenv repo init](commands/skenv_repo_init.md).
 
 ### `skenv repo apply`
@@ -55,7 +55,10 @@ skenv repo apply
 ```
 
 Regenerates the managed files and blocks from the templates of this skenv,
-moving an older `harness` to it, then runs `lefthook install`. Reference:
+moving an older `harness` to it, then runs `lefthook install`. It also
+points the schema directive of the skenv file at the schema of that
+version, adding the directive when it is missing (see
+[Editor support](editor-support.md)). Reference:
 [skenv repo apply](commands/skenv_repo_apply.md).
 
 ### `skenv repo check`
@@ -66,7 +69,9 @@ skenv repo check
 
 Compares the repository with the templates. Any drift, and a `CLAUDE.md` or
 `.claude/CLAUDE.md` (it disables `AGENTS.md` in Claude Code), is listed with
-exit code 1. Reference: [skenv repo check](commands/skenv_repo_check.md).
+exit code 1. A skenv file without a schema directive, or with one for
+another version than `harness`, is a warning on stderr that does not change
+the exit code; `skenv repo apply` fixes it. Reference: [skenv repo check](commands/skenv_repo_check.md).
 
 ### Common flags
 

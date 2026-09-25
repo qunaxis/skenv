@@ -20,10 +20,21 @@ An empty flag or environment variable counts as not set.
 
 `~/.config/skenv/config.toml`, or `config.yaml`, `config.yml` or
 `config.json` if you prefer. At most one of them may exist: skenv refuses to
-guess between two. Keys are lowercase and case-sensitive in every format.
+guess between two. Keys are lowercase and case-sensitive in every format,
+and an unknown key is an error that names the key and the file. `$schema`,
+the schema URL for editors, is allowed and ignored.
 
-`skenv init` writes it: it creates `config.toml`, or updates an existing
-YAML or JSON file in its own format. Comments in the file are not kept.
+`skenv init` writes it. Without a config file it creates `config.toml` with
+a schema directive for editors (see [Editor support](editor-support.md)):
+
+```toml
+#:schema https://qunaxis.github.io/skenv/schemas/v0.4.0/config.schema.json
+# skenv configuration, written by `skenv init`
+manifest = "~/src/my-skills/skenv.toml"
+```
+
+An existing file keeps its format: `skenv init` changes only `manifest`,
+and comments, other keys and their order stay.
 
 ## Keys
 

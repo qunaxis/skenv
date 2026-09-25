@@ -6,10 +6,10 @@ Set up the harness of a skills repository
 
 ### Synopsis
 
-Set up the harness of a skills repository: the `[repo]` section of `skenv.toml`
-(added to an existing skenv file), `lefthook.yml`, CI workflow, linter configs
-and the managed blocks of `AGENTS.md` and `.gitignore`; then `lefthook install`.
-Refuses if `[repo]` exists.
+Set up the harness of a skills repository: the `[repo]` section and the schema
+directive of `skenv.toml` (added to an existing skenv file), `lefthook.yml`, CI
+workflow, linter configs and the managed blocks of `AGENTS.md` and `.gitignore`;
+then `lefthook install`. Refuses if `[repo]` exists.
 
 ```
 skenv repo init --visibility private|public [flags]

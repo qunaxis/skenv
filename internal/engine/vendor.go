@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
 // VendorAddOptions are the arguments of `skenv vendor add`.
@@ -131,12 +132,13 @@ func (e *Engine) editManifest(edit func([]byte) ([]byte, error)) error {
 	if err != nil {
 		return err
 	}
+	// A skenv schema directive moves to the version of this skenv.
+	if out, err = skenvfile.Stamp(out, filepath.Ext(e.manifestPath), false); err != nil {
+		return err
+	}
 	m, err := manifest.Parse(out, filepath.Ext(e.manifestPath))
 	if err != nil {
 		return err
-	}
-	if filepath.Ext(e.manifestPath) != ".toml" {
-		e.infof("note: %s is rewritten from its data; only TOML keeps comments and key order", e.show(e.manifestPath))
 	}
 	// Name clashes with own skills (M1) are only visible with the own
 	// repositories listed; check before writing so a bad edit never lands.

@@ -8,6 +8,8 @@ Compare the managed files with the harness templates
 
 Compare the managed files and blocks with the templates of this skenv
 (harness 0.4.0). Exit code 0: in sync, 1: drift (files listed), 2: error.
+A missing or outdated schema directive in the skenv file is a warning that
+does not change the exit code.
 
 ```
 skenv repo check [flags]
