@@ -1,0 +1,17 @@
+{
+  "name": "skenv-docs",
+  "private": true,
+  "description": "The skenv documentation site (VitePress). Only needed for `make docs-site` and `make docs-serve`.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4"
+  }
+}

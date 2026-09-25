@@ -4,6 +4,8 @@
 
 **One manifest, the same agent skills on every machine.**
 
+**[Documentation site: qunaxis.github.io/skenv](https://qunaxis.github.io/skenv/)**
+
 [Install](#install) • [Getting started](#getting-started) • [Documentation](#documentation) • [Contribute](#contribute)
 
 [![Latest release](https://img.shields.io/github/v/release/qunaxis/skenv?style=flat-square&label=release)](https://github.com/qunaxis/skenv/releases/latest)
@@ -29,6 +31,7 @@
 
 ## Introduction
 
+<!-- #region introduction -->
 Agent skills pile up fast: some you write yourself, some you borrow from
 other people's repositories, and each agent keeps them in its own
 directory. Copying them by hand between Claude Code, Codex and pi, on a
@@ -63,6 +66,7 @@ Its design is guided by these mantras:
 - **Your layout, your names.** skenv hardcodes neither the name of your
   skills repository nor where you keep it. There is no default manifest
   location: you point skenv at yours once with `skenv init`.
+<!-- #endregion introduction -->
 
 ## Features
 
@@ -104,6 +108,7 @@ Its design is guided by these mantras:
 
 ## Install
 
+<!-- #region install -->
 Pre-built binaries for darwin/linux × amd64/arm64 are attached to every
 [GitHub release](https://github.com/qunaxis/skenv/releases). Archives are
 named `skenv_<version>_<os>_<arch>.tar.gz`, for example
@@ -162,9 +167,11 @@ cloned, point `--path` at it: `skenv init <owner>/<skills-repo> --path ~/src/my-
 > skenv also has no built-in default manifest location: record your
 > checkout once with `skenv init <owner>/<skills-repo> --path <checkout>`;
 > an existing clone is not touched, only its skenv file is recorded.
+<!-- #endregion install -->
 
 ## Getting started
 
+<!-- #region getting-started -->
 The manifest is the `[environment]` section of `skenv.toml` at the root of
 your skills repository ([the skenv file](docs/skenv-file.md) also holds the
 repository harness in `[repo]`). A minimal one lists the repository itself,
@@ -212,8 +219,12 @@ new commit and shows what changed.
 requested visibility; set it up once with
 `skenv repo init --visibility private` (see [docs/harness.md](docs/harness.md)),
 or pass `--dir` to target any git repository.
+<!-- #endregion getting-started -->
 
 ## Documentation
+
+The same pages, with search, are published at
+<https://qunaxis.github.io/skenv/>.
 
 - [Commands](docs/commands.md): every command and flag, `--dry-run` and
   `--adopt`, `doctor` classes, lint rules and the publication check.
@@ -253,6 +264,7 @@ Being considered next, in no particular order and with no dates:
 
 ## Contribute
 
+<!-- #region contribute -->
 Issues and pull requests are welcome.
 
 - Commits follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
@@ -266,3 +278,4 @@ Issues and pull requests are welcome.
 - Coding agents: read [AGENTS.md](AGENTS.md).
 - Releases are cut with `make release` only; `CHANGELOG.md` is generated.
   See [docs/releasing.md](docs/releasing.md).
+<!-- #endregion contribute -->

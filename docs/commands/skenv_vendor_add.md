@@ -7,7 +7,7 @@ Pin a third-party skill in the manifest and sync it
 ### Synopsis
 
 Pin a third-party skill in the manifest (HEAD of the default branch unless
---rev) and sync it. The manifest change is not committed.
+`--rev`) and sync it. The manifest change is not committed.
 
 ```
 skenv vendor add <owner/repo> [flags]

@@ -40,6 +40,19 @@ release: ## tag and publish the next version (needs GITHUB_TOKEN)
 snapshot: ## local goreleaser build without publishing
 	goreleaser release --snapshot --clean
 
+# The documentation site (VitePress) needs Node (.nvmrc); nothing else does.
+.PHONY: docs-site docs-serve
+
+node_modules: package.json package-lock.json
+	npm ci
+	@touch node_modules
+
+docs-site: docs node_modules ## build the documentation site into docs/.vitepress/dist
+	npm run docs:build
+
+docs-serve: docs node_modules ## serve the documentation site with live reload
+	npm run docs:dev
+
 demo: ## re-record docs/demo/demo.gif with vhs (sandbox in /tmp)
 	vhs docs/demo/demo.tape
 

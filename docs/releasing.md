@@ -26,6 +26,11 @@ for GitHub (`example-org/…`, `example-vendor/…`), so the recording needs no
 network and pins the same commits every time. Re-record it with `make demo`
 when the output of the commands it shows changes.
 
+The [documentation site](https://qunaxis.github.io/skenv/) is built from
+`docs/` with VitePress. Node (the version in `.nvmrc`) is needed only for
+`make docs-serve` (local preview) and `make docs-site`; see
+[the documentation site](contributing.md#the-documentation-site).
+
 ## Commits
 
 Commits follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):

@@ -6,9 +6,9 @@ Clone the manifest repository and sync
 
 ### Synopsis
 
-Clone the manifest repository into --path (default ./<repo> in the current
-directory, like git clone), record its skenv file as "manifest" in the config
-file (~/.config/skenv/config.toml unless a YAML or JSON one exists) and run
+Clone the manifest repository into `--path` (default `./<repo>` in the current
+directory, like git clone), record its skenv file as `manifest` in the config
+file (`~/.config/skenv/config.toml` unless a YAML or JSON one exists) and run
 sync. If the repository is already cloned, only the path is recorded.
 
 ```

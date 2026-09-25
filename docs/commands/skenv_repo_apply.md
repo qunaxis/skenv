@@ -7,7 +7,7 @@ Regenerate the managed files of the harness
 ### Synopsis
 
 Regenerate the managed files and blocks from the templates of this skenv
-(harness 0.4.0; an older repo.harness is moved to it); then
+(harness 0.4.0; an older `repo.harness` is moved to it); then
 `lefthook install`.
 
 ```
