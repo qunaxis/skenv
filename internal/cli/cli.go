@@ -14,32 +14,10 @@ import (
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/autostart"
-	"github.com/qunaxis/skenv/internal/buildinfo"
 	"github.com/qunaxis/skenv/internal/engine"
 	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/paths"
 )
-
-const usage = `skenv keeps agent skills (Claude Code, Codex, pi) in sync with a manifest.
-
-Usage:
-  skenv init <owner/repo> [--path P]      clone the manifest repository and sync
-  skenv sync [--adopt] [--dry-run] [--quiet]
-  skenv link [--adopt] [--dry-run]
-  skenv doctor [--json]                   exit 0: in sync, 1: discrepancies, 2: error
-  skenv vendor add <owner/repo> [--path P] [--name N] [--rev SHA] [--dry-run]
-  skenv vendor bump <name> [--rev SHA] [--dry-run]
-  skenv vendor remove <name> [--dry-run]
-  skenv autostart enable|disable|status
-  skenv lint [path...] [--staged] [--publish]  check skills (L1-L6, P1)
-  skenv new <name> [--repo private|public]      scaffold a skill
-  skenv repo init --visibility private|public | apply [--upgrade] | check
-  skenv version
-
-Every command that reads the manifest accepts --manifest FILE (also
-$SKENV_MANIFEST or "manifest" in ~/.config/skenv/config.toml).
-Run "skenv <command> --help" for details.
-`
 
 // Main runs skenv with args (without the program name) and returns the
 // exit code.
@@ -68,43 +46,7 @@ type usageError struct{ msg string }
 func (u usageError) Error() string { return u.msg }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) (int, error) {
-	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
-		return engine.ExitFatal, nil
-	}
-	cmd, rest := args[0], args[1:]
-	switch cmd {
-	case "-h", "--help", "help":
-		fmt.Fprint(stdout, usage)
-		return engine.ExitOK, nil
-	case "version", "--version":
-		fmt.Fprintln(stdout, buildinfo.Get())
-		return engine.ExitOK, nil
-	}
-	env, err := newEnv(stdout, stderr)
-	if err != nil {
-		return engine.ExitFatal, err
-	}
-	switch cmd {
-	case "init":
-		return cmdInit(ctx, env, rest)
-	case "sync", "link":
-		return cmdSync(ctx, env, cmd, rest)
-	case "doctor":
-		return cmdDoctor(ctx, env, rest)
-	case "vendor":
-		return cmdVendor(ctx, env, rest)
-	case "autostart":
-		return cmdAutostart(ctx, env, rest)
-	case "lint":
-		return cmdLint(ctx, env, rest)
-	case "repo":
-		return cmdRepo(ctx, env, rest)
-	case "new":
-		return cmdNew(ctx, env, rest)
-	}
-	fmt.Fprint(stderr, usage)
-	return engine.ExitFatal, fmt.Errorf("unknown command %q", cmd)
+	return runKong(ctx, args, stdout, stderr)
 }
 
 // parse parses flags that may appear before or after positional arguments.
@@ -165,37 +107,6 @@ func cmdInit(ctx context.Context, env engine.Env, args []string) (int, error) {
 	return engine.Init(ctx, env, pos[0], dir, o)
 }
 
-func cmdSync(ctx context.Context, env engine.Env, name string, args []string) (int, error) {
-	var o engine.Options
-	synopsis := "skenv sync [--adopt] [--dry-run] [--quiet] [--manifest FILE]\n\nPull own repositories, vendor pinned skills, link everything into the store\nand agent directories, and remove managed paths that left the manifest."
-	if name == "link" {
-		synopsis = "skenv link [--adopt] [--dry-run] [--manifest FILE]\n\nCreate store links for own skills and agent links for every skill."
-	}
-	fs := newFlags(env, name, synopsis)
-	manifestFlag(fs, &o)
-	fs.BoolVar(&o.DryRun, "dry-run", false, "print the plan, change nothing")
-	fs.BoolVar(&o.Adopt, "adopt", false, "move conflicting unmanaged paths to ~/.local/state/skenv/backup/<ts>/ and replace them")
-	if name == "sync" {
-		fs.BoolVar(&o.Quiet, "quiet", false, "print only warnings and errors")
-	}
-	pos, err := parse(fs, args)
-	if err != nil {
-		return engine.ExitFatal, err
-	}
-	if err := wantArgs(fs, pos, 0); err != nil {
-		return engine.ExitFatal, err
-	}
-	e, err := engine.Open(ctx, env, o)
-	if err != nil {
-		return engine.ExitFatal, err
-	}
-	defer e.Close()
-	if name == "link" {
-		return e.Link()
-	}
-	return e.Sync()
-}
-
 func cmdDoctor(ctx context.Context, env engine.Env, args []string) (int, error) {
 	var o engine.Options
 	var asJSON bool
@@ -216,59 +127,6 @@ func cmdDoctor(ctx context.Context, env engine.Env, args []string) (int, error) 
 	}
 	defer e.Close()
 	return e.Doctor(asJSON)
-}
-
-func cmdVendor(ctx context.Context, env engine.Env, args []string) (int, error) {
-	if len(args) == 0 {
-		fmt.Fprint(env.Stderr, "Usage: skenv vendor add|bump|remove ...\n")
-		return engine.ExitFatal, usageError{"vendor: missing subcommand"}
-	}
-	sub, args := args[0], args[1:]
-	var o engine.Options
-	var va engine.VendorAddOptions
-	var synopsis string
-	n := 1
-	switch sub {
-	case "add":
-		synopsis = "skenv vendor add <owner/repo> [--path P] [--name N] [--rev SHA] [--dry-run]\n\nPin a third-party skill in the manifest (HEAD of the default branch unless\n--rev) and sync it. The manifest change is not committed."
-	case "bump":
-		synopsis = "skenv vendor bump <name> [--rev SHA] [--dry-run]\n\nMove a vendored skill to a new commit (default: HEAD), show the log, sync."
-	case "remove":
-		synopsis = "skenv vendor remove <name> [--dry-run]\n\nRemove a vendored skill from the manifest and its managed paths."
-	default:
-		return engine.ExitFatal, usageError{fmt.Sprintf("vendor: unknown subcommand %q (add, bump, remove)", sub)}
-	}
-	fs := newFlags(env, "vendor "+sub, synopsis)
-	manifestFlag(fs, &o)
-	fs.BoolVar(&o.DryRun, "dry-run", false, "print the plan, change nothing")
-	fs.BoolVar(&o.Adopt, "adopt", false, "move conflicting unmanaged paths to the backup directory and replace them")
-	if sub == "add" {
-		fs.StringVar(&va.Path, "path", "", "directory with SKILL.md inside the repository (\".\" for the root)")
-		fs.StringVar(&va.Name, "name", "", "skill name (default: last element of --path)")
-	}
-	if sub != "remove" {
-		fs.StringVar(&va.Rev, "rev", "", "commit to pin (default: HEAD of the default branch)")
-	}
-	pos, err := parse(fs, args)
-	if err != nil {
-		return engine.ExitFatal, err
-	}
-	if err := wantArgs(fs, pos, n); err != nil {
-		return engine.ExitFatal, err
-	}
-	e, err := engine.Open(ctx, env, o)
-	if err != nil {
-		return engine.ExitFatal, err
-	}
-	defer e.Close()
-	switch sub {
-	case "add":
-		va.Repo = pos[0]
-		return e.VendorAdd(va)
-	case "bump":
-		return e.VendorBump(pos[0], va.Rev)
-	}
-	return e.VendorRemove(pos[0])
 }
 
 func cmdAutostart(ctx context.Context, env engine.Env, args []string) (int, error) {

@@ -158,85 +158,54 @@ func gitRoot(ctx context.Context, dir string) (string, error) {
 	return root, nil
 }
 
-func cmdRepo(ctx context.Context, env engine.Env, args []string) (int, error) {
-	if len(args) == 0 {
-		fmt.Fprint(env.Stderr, "Usage: skenv repo init|apply|check [--dir D]\n")
-		return engine.ExitFatal, usageError{"repo: missing subcommand"}
-	}
-	sub, args := args[0], args[1:]
-	var dir, visibility string
-	var dryRun, upgrade, force bool
-	var synopsis string
-	switch sub {
-	case "init":
-		synopsis = "skenv repo init --visibility private|public [--dir D] [--dry-run]\n\nSet up the harness of a skills repository: skenv.toml, lefthook.yml, CI\nworkflow, linter configs and the managed blocks of AGENTS.md and .gitignore;\nthen `lefthook install`. Refuses if skenv.toml exists."
-	case "apply":
-		synopsis = "skenv repo apply [--upgrade] [--dir D] [--dry-run]\n\nRegenerate the managed files and blocks for the harness version in skenv.toml\n(--upgrade moves it to " + harness.Latest + " first); then `lefthook install`."
-	case "check":
-		synopsis = "skenv repo check [--dir D]\n\nCompare the managed files and blocks with the templates of the harness version.\nExit code 0: in sync, 1: drift (files listed), 2: error."
-	default:
-		return engine.ExitFatal, usageError{fmt.Sprintf("repo: unknown subcommand %q (init, apply, check)", sub)}
-	}
-	fs := newFlags(env, "repo "+sub, synopsis)
-	fs.StringVar(&dir, "dir", ".", "repository (any directory inside it)")
-	if sub == "init" {
-		fs.StringVar(&visibility, "visibility", "", "private or public (required)")
-	}
-	if sub != "check" {
-		fs.BoolVar(&dryRun, "dry-run", false, "print the plan, change nothing")
-		fs.BoolVar(&force, "force", false, "replace existing files that skenv does not manage yet")
-	}
-	if sub == "apply" {
-		fs.BoolVar(&upgrade, "upgrade", false, "move harness to "+harness.Latest+" (the templates of this skenv)")
-	}
-	pos, err := parse(fs, args)
-	if err != nil {
-		return engine.ExitFatal, err
-	}
-	if err := wantArgs(fs, pos, 0); err != nil {
-		return engine.ExitFatal, err
-	}
+func repoInit(ctx context.Context, env engine.Env, dir, visibility string, dryRun, force bool) (int, error) {
 	root, err := gitRoot(ctx, dir)
 	if err != nil {
 		return engine.ExitFatal, err
 	}
-	switch sub {
-	case "init":
-		if visibility == "" {
-			fs.Usage()
-			return engine.ExitFatal, usageError{"repo init: --visibility private|public is required"}
-		}
-		c, changes, err := harness.Init(root, visibility, dryRun, force)
-		printChanges(env, changes, dryRun)
-		if err != nil {
+	c, changes, err := harness.Init(root, visibility, dryRun, force)
+	printChanges(env, changes, dryRun)
+	if err != nil {
+		return engine.ExitFatal, err
+	}
+	fmt.Fprintf(env.Stdout, "harness %s (%s) set up in %s\n", c.Harness, c.Visibility, root)
+	return lefthookInstall(ctx, env, root, dryRun), nil
+}
+
+func repoApply(ctx context.Context, env engine.Env, dir string, upgrade, dryRun, force bool) (int, error) {
+	root, err := gitRoot(ctx, dir)
+	if err != nil {
+		return engine.ExitFatal, err
+	}
+	c, err := harness.LoadConfig(root)
+	if err != nil {
+		return engine.ExitFatal, err
+	}
+	switch cmp := harness.Compare(c.Harness, harness.Latest); {
+	case upgrade && cmp < 0:
+		if err := harness.SetHarness(root, harness.Latest, dryRun); err != nil {
 			return engine.ExitFatal, err
 		}
-		fmt.Fprintf(env.Stdout, "harness %s (%s) set up in %s\n", c.Harness, c.Visibility, root)
-		return lefthookInstall(ctx, env, root, dryRun), nil
-	case "apply":
-		c, err := harness.LoadConfig(root)
-		if err != nil {
-			return engine.ExitFatal, err
-		}
-		switch cmp := harness.Compare(c.Harness, harness.Latest); {
-		case upgrade && cmp < 0:
-			if err := harness.SetHarness(root, harness.Latest, dryRun); err != nil {
-				return engine.ExitFatal, err
-			}
-			fmt.Fprintf(env.Stdout, "harness %s → %s\n", c.Harness, harness.Latest)
-			c.Harness = harness.Latest
-		case cmp < 0:
-			fmt.Fprintf(env.Stderr, "note: this skenv has harness %s, the repository uses %s; `skenv repo apply --upgrade` moves to it\n", harness.Latest, c.Harness)
-		}
-		changes, err := harness.Apply(root, c, dryRun, force)
-		printChanges(env, changes, dryRun)
-		if err != nil {
-			return engine.ExitFatal, err
-		}
-		if len(changes) == 0 {
-			fmt.Fprintln(env.Stdout, "repo apply: up to date")
-		}
-		return lefthookInstall(ctx, env, root, dryRun), nil
+		fmt.Fprintf(env.Stdout, "harness %s → %s\n", c.Harness, harness.Latest)
+		c.Harness = harness.Latest
+	case cmp < 0:
+		fmt.Fprintf(env.Stderr, "note: this skenv has harness %s, the repository uses %s; `skenv repo apply --upgrade` moves to it\n", harness.Latest, c.Harness)
+	}
+	changes, err := harness.Apply(root, c, dryRun, force)
+	printChanges(env, changes, dryRun)
+	if err != nil {
+		return engine.ExitFatal, err
+	}
+	if len(changes) == 0 {
+		fmt.Fprintln(env.Stdout, "repo apply: up to date")
+	}
+	return lefthookInstall(ctx, env, root, dryRun), nil
+}
+
+func repoCheck(ctx context.Context, env engine.Env, dir string) (int, error) {
+	root, err := gitRoot(ctx, dir)
+	if err != nil {
+		return engine.ExitFatal, err
 	}
 	drift, err := harness.Check(root)
 	if err != nil {
