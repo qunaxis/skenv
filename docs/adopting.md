@@ -1,4 +1,4 @@
-# Adopting an existing setup
+# Adopt existing skills
 
 A machine that already has skills, installed with `npx skills add -g`,
 linked by hand from a clone, or copied in, can move to skenv with one
@@ -35,12 +35,33 @@ into it, and runs `skenv sync --adopt` as `skenv import --sync` does: the
 skills pinned without a matching commit stay as installed (see
 [Unmatched skills](#unmatched-skills-and---sync)). The repository itself
 becomes an own repository, written from its `origin` as with `skenv init`
-(see [Git hosts](git-hosts.md#starting-a-manifest-with-skenv-init)). Commit the
-manifest afterwards:
+(see [Git hosts](git-hosts.md#starting-a-manifest-with-skenv-init)).
+
+The output is the import report (see [Reading the report](#reading-the-report)),
+the manifest diff, then the sync. It ends with what was recorded and what
+was taken over:
+
+```text
+sync: 8 changes, 1 warnings, 0 errors
+recorded in ~/src/<skills-repo>/skenv.toml: release-notes
+taken over: release-notes
+```
+
+A warning `~/src/<skills-repo> has uncommitted changes; not pulling` is
+expected here: the new manifest is not committed yet. Then verify:
+
+```sh
+skenv list     # the imported skills: installed (unmatched ones: conflict)
+skenv doctor   # exit 0, or the skills left for you to decide
+```
+
+Commit the manifest and push it, so that other machines can
+[use it](another-machine.md):
 
 ```sh
 git -C ~/src/<skills-repo> add skenv.toml
 git -C ~/src/<skills-repo> commit -m "chore(manifest): import installed skills"
+git -C ~/src/<skills-repo> push
 ```
 
 ## Step by step
@@ -93,7 +114,7 @@ earlier `import` has nothing unmatched to hold back, and its
 - **Nothing installed**: the installed copies and links stay until
   `skenv sync --adopt`, which moves each one it replaces to
   `~/.local/state/skenv/backup/<timestamp>/` (see
-  [`--adopt`](commands.md#--dry-run-and---adopt)). `--sync` and
+  [`--adopt`](conflicts.md#take-over-with---adopt)). `--sync` and
   `init --import` run it for you, except for the unmatched skills.
 
 `--dry-run` prints the same report, diff and lock changes and writes

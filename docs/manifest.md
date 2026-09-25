@@ -281,7 +281,7 @@ so a manifest can be translated if skenv is ever replaced by it:
 
 The other direction, from the global lock `~/.agents/.skill-lock.json` to
 the manifest, is `skenv import`; see
-[Adopting an existing setup](adopting.md#what-import-reads).
+[Adopt existing skills](adopting.md#what-import-reads).
 
 `[[environment.own]]` has no equivalent: the `skills` CLI does not manage
 working copies. A translation would list each skill an own entry selects

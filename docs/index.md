@@ -13,7 +13,7 @@ hero:
       text: Getting started
       link: /getting-started
     - theme: alt
-      text: Commands
+      text: Commands by task
       link: /commands
     - theme: alt
       text: GitHub

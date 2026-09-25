@@ -62,9 +62,11 @@ Its design is guided by these mantras:
   links and skenv file alone and tell you what `sync` would do. They may
   still use the network: `doctor` runs `git fetch` in own repositories, and
   a `--dry-run` that resolves commits fetches into the clone cache.
-- **Only `git` at runtime.** No daemon, no service, no registry. skenv uses
-  your normal git authentication (ssh key or credential helper) for private
-  repositories.
+- **Only `git` at runtime.** Managing and syncing skills needs nothing but
+  `git`: no daemon, no service, no registry. skenv uses your normal git
+  authentication (ssh key or credential helper) for private repositories.
+  The optional tooling for skill authors (repository hooks and CI, the
+  publication check) uses a few more tools, listed where you set it up.
 - **Your layout, your names.** skenv hardcodes neither the name of your
   skills repository nor where you keep it. There is no default manifest
   location: you point skenv at yours once with `skenv init`, `skenv clone`
@@ -75,6 +77,10 @@ Its design is guided by these mantras:
 
 - Sync own skills (git working copies) and vendored skills (pinned copies)
   from one manifest into Claude Code, Codex and pi.
+- `skenv init` starts a manifest, `skenv init --import` takes over the
+  skills already installed, and `skenv clone <repo>` (or `skenv use .` in a
+  checkout) connects another machine; none of them syncs until you run
+  `skenv sync`.
 - `skenv list` shows every skill of the manifest, editable or pinned, its
   source and version, and whether it is installed on this machine.
 - `skenv doctor` compares the machine with the manifest and classifies every
@@ -93,12 +99,13 @@ Its design is guided by these mantras:
   skips, custom agent directories, and ignore patterns for skills owned by
   other tools.
 - `skenv autostart` runs `sync` at login and hourly via launchd or systemd.
-- `skenv lint` checks skills against the Agent Skills rules (L1–L6) and,
-  with `--publish`, runs a publication check before a skill goes public.
-- `skenv new` scaffolds a skill in the right repository and lints it.
-- `skenv repo` generates and verifies a versioned harness for skills
-  repositories: lefthook hooks, a CI workflow, linter configs and a Claude
-  Code hook that lints skills as the agent edits them.
+- `skenv new` scaffolds a skill and lints it; `skenv lint` checks skills
+  against the Agent Skills rules and, with `--publish`, runs a publication
+  check before a skill goes public.
+- Optional for skill authors: `skenv repo` generates and verifies a
+  versioned harness for skills repositories (lefthook hooks, a CI
+  workflow, linter configs and a Claude Code hook that lints skills as the
+  agent edits them). Nothing else needs it.
 
 ## Prerequisites
 
@@ -114,10 +121,13 @@ Its design is guided by these mantras:
 - **Optional:**
   - [`gh`](https://cli.github.com), logged in, for the install one-liner
   - Go 1.27.1 or newer, for `go install`
-  - [lefthook](https://github.com/evilmartians/lefthook), for
-    `skenv repo init|apply`, and
-    [gitleaks](https://github.com/gitleaks/gitleaks), for
+  - [gitleaks](https://github.com/gitleaks/gitleaks), for
     `skenv lint --publish`
+  - for the repository checks of `skenv repo init|apply` only:
+    [lefthook](https://github.com/evilmartians/lefthook),
+    [gitleaks](https://github.com/gitleaks/gitleaks) and
+    [uv](https://docs.astral.sh/uv/), which the generated hooks run
+    (`skenv repo init` says which of them are missing)
 
 ## Install
 
@@ -158,26 +168,26 @@ rm -rf "$tmp"
 
 From a checkout, `make man` writes the same pages into `man/`.
 
-Then bootstrap the machine from your skills repository, the one whose
-`skenv.toml` has the `[environment]` section:
+### Shell completion
+
+`skenv completion bash|zsh|fish` prints a completion script for commands,
+flags and the names of pinned skills. For zsh, for example:
 
 ```sh
-cd ~/src                        # any directory; the clone lands in ./<skills-repo>
-skenv clone <owner>/<skills-repo>
-skenv sync --dry-run            # what sync would change here
-skenv sync
-skenv autostart enable          # sync at login and hourly
+skenv completion zsh > "${fpath[1]}/_skenv"
 ```
 
-`skenv clone` clones the repository into the current directory (like
-`git clone`) or into the directory you name
-(`skenv clone <owner>/<skills-repo> ~/src/my-skills`) and records the
-manifest location in `~/.config/skenv/config.toml`; it never syncs.
-Already have a checkout? `skenv use ~/src/my-skills` (or `skenv use .`
-inside it) records it without the repository address.
-`<owner>/<skills-repo>` is on GitHub; for GitLab (`gitlab:group/sub/repo`),
-Codeberg (`codeberg:owner/repo`) or a self-hosted server see
-[Git hosts](docs/git-hosts.md).
+`skenv completion <shell> --help` says where each shell looks for it.
+
+### Check the installation
+
+```sh
+skenv version
+skenv --help
+```
+
+`skenv --help` starts with the first command for each situation. Nothing
+is set up yet: continue with [Getting started](docs/getting-started.md).
 
 > [!WARNING]
 > **Upgrading from v0.3.0 or earlier:** `env.toml` and the old
@@ -192,75 +202,61 @@ Codeberg (`codeberg:owner/repo`) or a self-hosted server see
 ## Getting started
 
 <!-- #region getting-started -->
-The manifest is the `[environment]` section of `skenv.toml` at the root of
-your skills repository ([the skenv file](docs/skenv-file.md) also holds the
-repository harness in `[repo]`). No manifest yet? Start one in your skills
-repository; skenv writes the section and records the file as your manifest:
+skenv needs a **manifest**: the `[environment]` section of `skenv.toml` in
+a git repository you own, usually a private skills repository. It lists
+your own skills (git repositories you edit, kept as working copies) and
+third-party skills (copies pinned to a commit). Start from the situation
+that fits; each guide shows the expected output.
+
+**Starting from scratch**: no manifest yet, no installed skills to keep.
+See [Create your first environment](docs/first-environment.md).
+
+```sh
+cd ~/src/<skills-repo>                               # a git repository you own
+skenv init                                           # adds [environment] to skenv.toml
+skenv vendor add <owner>/<repo> --path <skill-dir>   # pin and install a skill
+skenv sync                                           # link the skills of the manifest
+skenv list                                           # every skill: installed
+skenv doctor                                         # exit 0: the machine matches
+git add skenv.toml && git commit -m "chore(manifest): start the manifest" && git push
+```
+
+**Adopting skills already installed** with `npx skills add -g`, by hand or
+as links into clones. See [Adopt existing skills](docs/adopting.md).
 
 ```sh
 cd ~/src/<skills-repo>
-skenv init                 # or: skenv init --format yaml (json)
-```
-
-Skills already installed on the machine (with `npx skills add -g` or by
-hand)? `skenv init --import` also writes them into the new manifest and
-takes over those whose installed commit it finds; one it cannot match stays
-as installed until you decide. See
-[Adopting an existing setup](docs/adopting.md).
-
-A minimal manifest lists the repository itself, so skenv keeps its working
-copy up to date (`skenv init` adds this entry from the repository's
-`origin`; GitLab, Codeberg and self-hosted servers are covered in
-[Git hosts](docs/git-hosts.md)):
-
-```toml
-[[environment.own]]
-repo = "<owner>/<skills-repo>"
-path = "~/src/<skills-repo>"
-```
-
-> [!IMPORTANT]
-> Set `path` to where the repository is cloned (`skenv clone` from `~/src`
-> puts it in `~/src/<skills-repo>`). Otherwise `sync` clones a second
-> working copy at `path` and links the skills from there; `skenv clone` and
-> `skenv use` warn when the two differ.
-
-The full format is in [docs/manifest.md](docs/manifest.md). A typical first
-session on a machine:
-
-```sh
-# 1. Clone the repository and point skenv at its manifest.
-skenv clone <owner>/<skills-repo>
-
-# 2. Apply it. The machine already had skills? --adopt backs up the
-#    conflicting ones and takes over (skills the manifest lacks: `skenv import`
-#    adds them first).
-skenv sync --dry-run
-skenv sync --adopt
-
-# 3. See what is installed, and check that the machine matches (exit 0: in sync).
+skenv init --import --dry-run   # what becomes managed, what is not imported
+skenv init --import             # record them, back up and take them over
 skenv list
 skenv doctor
-
-# 4. Pin a third-party skill; skenv edits skenv.toml and prints the commit command.
-skenv vendor add <owner>/<repo> --path <skill-dir>
-
-# 5. Scaffold your own skill in the skills repository, then link it for your agents.
-skenv new my-skill
-skenv link
+git add skenv.toml && git commit -m "chore(manifest): import installed skills" && git push
 ```
 
-Commit the changes to `skenv.toml` and your new skill and push them: skenv
-never commits or pushes for you. Every other machine picks them up on its
-next `skenv sync` (or within the hour, with
-autostart). Later, `skenv vendor update` moves your vendored skills to new
-commits and shows what changed.
+A skill whose installed commit skenv cannot find is recorded but left as
+installed until you decide; the report says how.
 
-`skenv new` needs no harness. `skenv new my-skill --dir .` creates the
-skill in the git repository of the current directory; without `--dir` it
-goes to the only own repository of the manifest, or, with several, to the
-one whose `[repo]` has `--visibility` (default `private`, set up with
-`skenv repo init`, see [docs/harness.md](docs/harness.md)).
+**Connecting another machine** to a manifest you have pushed. See
+[Connect another machine](docs/another-machine.md).
+
+```sh
+cd ~/src
+skenv clone <owner>/<skills-repo>   # clone it and record its manifest; no sync
+skenv sync --dry-run                # what sync would change here
+skenv sync                          # or: skenv sync --adopt, if skills are installed here already
+skenv list
+skenv doctor
+```
+
+Already have a checkout? `skenv use .` inside it records it without the
+repository address.
+
+skenv never commits or pushes. A change reaches your other machines after
+you commit **and push** it and they run `skenv sync`. Once manual syncs
+work, [`skenv autostart enable`](docs/autostart.md) runs `sync` at login
+and hourly. To write a skill of your own, `skenv new my-skill --dir .` in
+the skills repository, then `skenv link` (see
+[Create a skill](docs/create-skill.md)); it needs no hooks or CI.
 <!-- #endregion getting-started -->
 
 ## Documentation
@@ -268,37 +264,69 @@ one whose `[repo]` has `--visibility` (default `private`, set up with
 The same pages, with search, are published at
 <https://qunaxis.github.io/skenv/>.
 
-- [Commands](docs/commands.md): every command and flag, `--dry-run` and
-  `--adopt`, `doctor` classes, lint rules and the publication check.
-- [Command reference](docs/commands/README.md): one page per command,
-  generated from the command definitions by `make docs`.
-- [Adopting an existing setup](docs/adopting.md): `skenv import` and
-  `skenv init --import` for a machine with skills installed by `npx skills`
-  or by hand, and `skenv import --project` for a project's
-  `skills-lock.json`.
+**Getting started**
+
+- [Getting started](docs/getting-started.md): the three situations above.
+- [Install](docs/install.md): binaries, `go install`, man pages and shell
+  completion.
+- [Create your first environment](docs/first-environment.md): `skenv init`,
+  a first skill, `sync`, verify, commit and push.
+- [Adopt existing skills](docs/adopting.md): `skenv init --import` and
+  `skenv import` for skills installed with `npx skills` or by hand, the
+  import report, and `skenv import --project`.
+- [Connect another machine](docs/another-machine.md): `skenv clone`,
+  `skenv use`, the first sync and how to verify it.
+
+**Everyday tasks**
+
+- [Commands by task](docs/commands.md): which command does what, and exit
+  codes.
+- [List installed skills](docs/list-skills.md): `skenv list`,
+  `skenv doctor` and its classes.
+- [Add, update and remove skills](docs/manage-skills.md): `skenv vendor`
+  and own repositories.
+- [Create a skill](docs/create-skill.md): `skenv new`, `skenv link`.
+- [Resolve conflicts and restore backups](docs/conflicts.md): `--adopt`,
+  backups, `--dry-run` limits.
+- [Enable automatic sync](docs/autostart.md): `skenv autostart`.
+
+**Reference**
+
+- [Command reference](docs/commands/README.md): one page per command with
+  every flag, generated from the command definitions by `make docs`.
+- [Manifest format](docs/manifest.md): `[environment]`, where it is found,
+  the layout on disk, and the mapping to `skills-lock.json`.
 - [The skenv file](docs/skenv-file.md): `skenv.toml` with its `[repo]`,
   `[environment]` and `[project]` sections, formats, and moving from
   `env.toml`.
-- [Editor support](docs/editor-support.md): JSON Schemas of the skenv file
-  and the tool config, and editor setup.
-- [Manifest](docs/manifest.md): the `[environment]` format, where it is found,
-  the layout on disk, and the mapping to `skills-lock.json`.
-- [Git hosts](docs/git-hosts.md): `repo` forms for GitHub, GitLab, Codeberg
-  and self-hosted servers, host aliases, ssh and authentication.
+- [Machine configuration](docs/configuration.md): the tool config and
+  precedence of flags, environment and file.
+- [Git hosts and authentication](docs/git-hosts.md): `repo` forms for
+  GitHub, GitLab, Codeberg and self-hosted servers, host aliases, ssh and
+  authentication.
 - [Project skills](docs/project-skills.md): `[project]`, skills committed
   with a project, mirrors, `doctor` in CI.
-- [Harness](docs/harness.md): `skenv repo init|apply|check`, `[repo]`,
-  the managed files, the GitHub Actions and GitLab CI pipelines and harness
-  versions.
+- [Editor support](docs/editor-support.md): JSON Schemas of the skenv file
+  and the tool config, and editor setup.
+
+**For skill authors**
+
+- [Validation and publication](docs/lint.md): `skenv lint`, its rules and
+  the publication check.
+- [Repository checks and CI](docs/harness.md): the optional harness of
+  `skenv repo init|apply|check`: hooks, the GitHub Actions and GitLab CI
+  pipelines, runners and prerequisites.
 - [Claude Code hook](docs/claude-code-hook.md): how skills are linted while
   an agent edits them.
+
+**Contributing**
+
 - [Development and releases](docs/releasing.md): `make` targets, commit
   rules, versioning and cutting a release.
 - [Changelog](CHANGELOG.md).
 
-`skenv --help` and `skenv <command> --help` print the same reference in the
-terminal. `skenv completion bash|zsh|fish` prints a shell completion
-script (for example `skenv completion zsh > "${fpath[1]}/_skenv"`).
+`skenv --help` and `skenv <command> --help` print the command reference in
+the terminal.
 
 ## Roadmap
 

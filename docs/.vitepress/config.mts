@@ -78,23 +78,39 @@ function commandItems(): DefaultTheme.SidebarItem[] {
   }))
 }
 
-const guide: DefaultTheme.SidebarItem[] = [
+// The sidebar follows the situations of a new user first, then everyday
+// tasks, then reference; tooling for skill authors comes last.
+const gettingStarted: DefaultTheme.SidebarItem[] = [
+  { text: 'Overview', link: '/getting-started' },
   { text: 'Install', link: '/install' },
-  { text: 'Getting started', link: '/getting-started' },
-  { text: 'Adopting an existing setup', link: '/adopting' },
-  { text: 'The skenv file', link: '/skenv-file' },
-  { text: 'Editor support', link: '/editor-support' },
-  { text: 'Manifest', link: '/manifest' },
-  { text: 'Git hosts', link: '/git-hosts' },
-  { text: 'Project skills', link: '/project-skills' },
-  { text: 'Harness', link: '/harness' },
-  { text: 'Claude Code hook', link: '/claude-code-hook' },
+  { text: 'Create your first environment', link: '/first-environment' },
+  { text: 'Adopt existing skills', link: '/adopting' },
+  { text: 'Connect another machine', link: '/another-machine' },
+]
+
+const everyday: DefaultTheme.SidebarItem[] = [
+  { text: 'Commands by task', link: '/commands' },
+  { text: 'List installed skills', link: '/list-skills' },
+  { text: 'Add, update and remove skills', link: '/manage-skills' },
+  { text: 'Create a skill', link: '/create-skill' },
+  { text: 'Resolve conflicts and restore backups', link: '/conflicts' },
+  { text: 'Enable automatic sync', link: '/autostart' },
 ]
 
 const reference: DefaultTheme.SidebarItem[] = [
-  { text: 'Commands', link: '/commands' },
-  { text: 'Configuration', link: '/configuration' },
-  { text: 'Command reference', link: '/commands/README', collapsed: true, items: commandItems() },
+  { text: 'Commands', link: '/commands/README', collapsed: true, items: commandItems() },
+  { text: 'Manifest format', link: '/manifest' },
+  { text: 'The skenv file', link: '/skenv-file' },
+  { text: 'Machine configuration', link: '/configuration' },
+  { text: 'Git hosts and authentication', link: '/git-hosts' },
+  { text: 'Project skills', link: '/project-skills' },
+  { text: 'Editor support', link: '/editor-support' },
+]
+
+const authors: DefaultTheme.SidebarItem[] = [
+  { text: 'Validation and publication', link: '/lint' },
+  { text: 'Repository checks and CI', link: '/harness' },
+  { text: 'Claude Code hook', link: '/claude-code-hook' },
 ]
 
 const contributing: DefaultTheme.SidebarItem[] = [
@@ -155,14 +171,26 @@ export default defineConfig({
   },
   themeConfig: {
     nav: [
-      { text: 'Guide', link: '/install', activeMatch: '^/(install|getting-started|skenv-file|editor-support|manifest|git-hosts|harness|claude-code-hook)' },
-      { text: 'Reference', link: '/commands', activeMatch: '^/(commands|configuration)' },
+      {
+        text: 'Guide',
+        link: '/getting-started',
+        activeMatch:
+          '^/(getting-started|install|first-environment|adopting|another-machine|commands$|list-skills|manage-skills|create-skill|conflicts|autostart)',
+      },
+      {
+        text: 'Reference',
+        link: '/commands/README',
+        activeMatch: '^/(commands/|manifest|skenv-file|configuration|git-hosts|project-skills|editor-support)',
+      },
+      { text: 'Skill authors', link: '/lint', activeMatch: '^/(lint|harness|claude-code-hook)' },
       { text: 'Contributing', link: '/contributing', activeMatch: '^/(contributing|releasing)' },
       { text: 'Releases', link: `${repo}/releases` },
     ],
     sidebar: [
-      { text: 'Guide', items: guide },
+      { text: 'Getting started', items: gettingStarted },
+      { text: 'Everyday tasks', items: everyday },
       { text: 'Reference', items: reference },
+      { text: 'For skill authors', items: authors },
       { text: 'Contributing', items: contributing },
     ],
     outline: { level: [2, 3] },
