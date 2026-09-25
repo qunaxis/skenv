@@ -14,7 +14,7 @@ import (
 
 // The editing helpers below work on the TOML text rather than on the
 // decoded structure so that comments, ordering and formatting survive
-// `skenv vendor add|bump|remove`. YAML and JSON skenv files are edited with
+// `skenv vendor add|update|remove`. YAML and JSON skenv files are edited with
 // internal/docedit, which keeps comments and key order as well.
 
 var (

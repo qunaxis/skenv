@@ -67,7 +67,7 @@ skip = ["bpmn-process-modeler"]
 > [!IMPORTANT]
 > `rev` must be a full 40-character commit SHA; branches, tags and short
 > SHAs are rejected. A vendored skill never follows a branch: it changes
-> only when you run `skenv vendor bump` (or edit `rev`) and commit the
+> only when you run `skenv vendor update` (or edit `rev`) and commit the
 > manifest.
 
 - Skill names (a vendor `name`, a skill directory in an own repository)
@@ -84,7 +84,7 @@ skip = ["bpmn-process-modeler"]
   the `peon-ping` Homebrew package). `doctor` does not report them as
   `unmanaged`, and `sync`/`link` never touch them, not even with
   `--adopt`. A manifest skill whose name matches a pattern is an error.
-- `vendor add|bump|remove` edit the skenv file in place, keeping comments
+- `vendor add|update|remove` edit the skenv file in place, keeping comments
   and order in every format. In TOML, keep `[[environment.vendor]]` tables
   in the multi-line form above with double-quoted `name` and `rev`; in
   YAML, write `vendor` as a block list (see

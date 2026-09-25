@@ -200,7 +200,7 @@
       "additionalProperties": false
     },
     "vendor": {
-      "description": "A third-party skill pinned to a commit; `skenv vendor add|bump|remove` edit these entries.",
+      "description": "A third-party skill pinned to a commit; `skenv vendor add|update|remove` edit these entries.",
       "type": "object",
       "properties": {
         "name": {
@@ -227,7 +227,7 @@
           "patternErrorMessage": "A relative path inside the repository (\".\" for its root), without \"..\", empty segments or a trailing \"/\"."
         },
         "rev": {
-          "description": "The full 40-character lowercase commit SHA. Branches, tags and short SHAs are rejected: a vendored skill changes only when you bump it.",
+          "description": "The full 40-character lowercase commit SHA. Branches, tags and short SHAs are rejected: a vendored skill changes only when you update it.",
           "type": "string",
           "pattern": "^[0-9a-f]{40}$",
           "patternErrorMessage": "A full 40-character lowercase commit SHA; branches, tags and short SHAs are not allowed."

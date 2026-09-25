@@ -24,8 +24,8 @@ Generated from `skenv --help`. Start with [skenv](skenv.md).
 - [skenv repo init](skenv_repo_init.md): Set up the harness of a skills repository
 - [skenv schema](skenv_schema.md): Print the JSON Schema of the skenv file or the tool config
 - [skenv sync](skenv_sync.md): Pull, vendor and link every skill of the manifest
-- [skenv vendor](skenv_vendor.md): Pin, bump and remove third-party skills
+- [skenv vendor](skenv_vendor.md): Pin, update and remove third-party skills
 - [skenv vendor add](skenv_vendor_add.md): Pin a third-party skill in the manifest and sync it
-- [skenv vendor bump](skenv_vendor_bump.md): Move a vendored skill to a new commit
 - [skenv vendor remove](skenv_vendor_remove.md): Remove a vendored skill and its managed paths
+- [skenv vendor update](skenv_vendor_update.md): Move vendored skills to a new commit
 - [skenv version](skenv_version.md): Print the skenv version

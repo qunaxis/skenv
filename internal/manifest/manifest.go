@@ -145,7 +145,7 @@ func quoteAll(names []string) string {
 }
 
 // Vendor is a third-party skill pinned to a commit; `skenv vendor
-// add|bump|remove` edit these entries.
+// add|update|remove` edit these entries.
 type Vendor struct {
 	// Name is the skill name: 1 to 64 lowercase letters, digits and single
 	// hyphens, with no hyphen at the start or end; "synced" is reserved.
@@ -156,7 +156,7 @@ type Vendor struct {
 	// to its root; "." for the root. Default: ".".
 	Path string `toml:"path" yaml:"path" json:"path"`
 	// Rev is the full 40-character lowercase commit SHA. Branches, tags and
-	// short SHAs are rejected: a vendored skill changes only when you bump
+	// short SHAs are rejected: a vendored skill changes only when you update
 	// it.
 	Rev string `toml:"rev" yaml:"rev" json:"rev"`
 }

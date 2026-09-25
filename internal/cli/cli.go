@@ -353,19 +353,27 @@ func vendorCmd(a *app) *cobra.Command {
 	add.Flags().StringVar(&va.Name, "name", "", "skill name (default: last element of --path)")
 	add.Flags().StringVar(&va.Rev, "rev", "", revUsage)
 
-	var bumpO engine.Options
+	var updateO engine.Options
 	var rev string
-	bump := &cobra.Command{
-		Use:   "bump <name>",
-		Short: "Move a vendored skill to a new commit",
-		Long:  "Move a vendored skill to a new commit (default: HEAD), show the log, sync.",
-		Args:  nArgs(1),
-		RunE: withEngine(&bumpO, func(e *engine.Engine, args []string) (int, error) {
-			return e.VendorBump(args[0], rev)
+	update := &cobra.Command{
+		Use:     "update [name...]",
+		Aliases: []string{"upgrade"},
+		Short:   "Move vendored skills to a new commit",
+		Long: `Move vendored skills to a new commit and sync them: the named ones, or every
+vendored skill without names. Each goes to HEAD of its default branch;
+--rev pins a single named skill. Shows the log of the skill's path.`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if rev != "" && len(args) != 1 {
+				return usageError{fmt.Sprintf("%s: --rev needs exactly 1 name, got %d (see `%s --help`)", cmdName(cmd), len(args), cmd.CommandPath())}
+			}
+			return nil
+		},
+		RunE: withEngine(&updateO, func(e *engine.Engine, args []string) (int, error) {
+			return e.VendorUpdate(args, rev)
 		}),
 	}
-	shared(bump, &bumpO)
-	bump.Flags().StringVar(&rev, "rev", "", revUsage)
+	shared(update, &updateO)
+	update.Flags().StringVar(&rev, "rev", "", revUsage)
 
 	var rmO engine.Options
 	remove := &cobra.Command{
@@ -379,7 +387,7 @@ func vendorCmd(a *app) *cobra.Command {
 	}
 	shared(remove, &rmO)
 
-	return group("vendor", "Pin, bump and remove third-party skills", add, bump, remove)
+	return group("vendor", "Pin, update and remove third-party skills", add, update, remove)
 }
 
 func schemaCmd(a *app) *cobra.Command {

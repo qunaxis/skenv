@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -49,34 +50,73 @@ func (e *Engine) VendorAdd(o VendorAddOptions) (int, error) {
 		return ExitFatal, fmt.Errorf("%w; pass --name", err)
 	}
 	if _, ok := e.m.FindVendor(name); ok {
-		return ExitFatal, fmt.Errorf("vendor %q is already in the manifest; use `skenv vendor bump %s`", name, name)
+		return ExitFatal, fmt.Errorf("vendor %q is already in the manifest; use `skenv vendor update %s`", name, name)
 	}
 	v := manifest.Vendor{Name: name, Repo: o.Repo, Path: skillPath, Rev: rev}
 	if err := e.editManifest(func(data []byte) ([]byte, error) { return manifest.AppendVendor(data, filepath.Ext(e.manifestPath), v) }); err != nil {
 		return ExitFatal, err
 	}
 	e.changef("add vendor %s (%s@%.12s, %s) to %s", name, o.Repo, rev, skillPath, e.show(e.manifestPath))
-	return e.syncOne(name, fmt.Sprintf("add vendor skill %s", name))
+	return e.syncNames([]string{name}, fmt.Sprintf("add vendor skill %s", name))
 }
 
-// VendorBump moves a vendored skill to a new commit (HEAD of the default
-// branch unless rev is given) and syncs it.
-func (e *Engine) VendorBump(name, rev string) (int, error) {
-	v, ok := e.m.FindVendor(name)
-	if !ok {
-		return ExitFatal, fmt.Errorf("vendor %q is not in the manifest %s", name, e.show(e.manifestPath))
+// VendorUpdate moves vendored skills to a new commit and syncs them: the
+// named ones, or every vendored skill when names is empty. Each goes to
+// HEAD of its default branch; rev pins a single named skill instead.
+func (e *Engine) VendorUpdate(names []string, rev string) (int, error) {
+	if len(names) == 0 {
+		for _, v := range e.m.Vendor {
+			names = append(names, v.Name)
+		}
+		if len(names) == 0 {
+			e.infof("no vendored skills in %s", e.show(e.manifestPath))
+			return e.finish("vendor")
+		}
 	}
+	for _, name := range names {
+		if _, ok := e.m.FindVendor(name); !ok {
+			return ExitFatal, fmt.Errorf("vendor %q is not in the manifest %s", name, e.show(e.manifestPath))
+		}
+	}
+	names = slices.Compact(slices.Sorted(slices.Values(names)))
+	var updated []string
+	for _, name := range names {
+		newRev, err := e.updateRev(name, rev)
+		switch {
+		case err != nil:
+			e.errorf("update vendor %s: %v", name, err)
+		case newRev != "":
+			updated = append(updated, fmt.Sprintf("%s to %.12s", name, newRev))
+		}
+	}
+	hint := ""
+	switch len(updated) {
+	case 0:
+	case 1:
+		hint = "update vendor skill " + updated[0]
+	default:
+		hint = "update vendor skills " + strings.Join(updated, ", ")
+	}
+	return e.syncNames(names, hint)
+}
+
+// updateRev moves the vendored skill name to rev (default: HEAD of the
+// default branch), shows the log of its path and writes the new rev into
+// the manifest. It returns the new rev, or "" when the skill is already
+// there.
+func (e *Engine) updateRev(name, rev string) (string, error) {
+	v, _ := e.m.FindVendor(name)
 	cache, err := e.ensureCache(v.Repo, "")
 	if err != nil {
-		return ExitFatal, err
+		return "", err
 	}
 	newRev, err := e.resolveRev(cache, v.Repo, rev)
 	if err != nil {
-		return ExitFatal, err
+		return "", err
 	}
 	if newRev == v.Rev {
 		e.infof("vendor %s is already at %.12s", name, newRev)
-		return e.syncOne(name, "")
+		return "", nil
 	}
 	if e.hasCommit(cache, v.Rev) {
 		args := []string{"log", "--oneline", v.Rev + ".." + newRev}
@@ -94,10 +134,10 @@ func (e *Engine) VendorBump(name, rev string) (int, error) {
 	if err := e.editManifest(func(data []byte) ([]byte, error) {
 		return manifest.SetVendorRev(data, filepath.Ext(e.manifestPath), name, newRev)
 	}); err != nil {
-		return ExitFatal, err
+		return "", err
 	}
-	e.changef("bump vendor %s %.12s → %.12s in %s", name, old, newRev, e.show(e.manifestPath))
-	return e.syncOne(name, fmt.Sprintf("bump vendor skill %s to %.12s", name, newRev))
+	e.changef("update vendor %s %.12s → %.12s in %s", name, old, newRev, e.show(e.manifestPath))
+	return newRev, nil
 }
 
 // VendorRemove drops a vendored skill from the manifest and removes its
@@ -157,27 +197,31 @@ func (e *Engine) editManifest(edit func([]byte) ([]byte, error)) error {
 	return nil
 }
 
-// syncOne vendors and links a single skill after a manifest edit.
-func (e *Engine) syncOne(name, hint string) (int, error) {
+// syncNames vendors and links the named skills after a manifest edit.
+func (e *Engine) syncNames(names []string, hint string) (int, error) {
 	skills, err := e.skills()
 	if err != nil {
 		return ExitFatal, err
 	}
-	var one []Skill
-	for _, s := range skills {
-		if s.Name == name {
-			one = append(one, s)
+	var sel []Skill
+	for _, name := range names {
+		found := false
+		for _, s := range skills {
+			if s.Name == name {
+				sel = append(sel, s)
+				found = true
+			}
+		}
+		if !found {
+			e.infof("skill %s is skipped on host %s", name, e.env.Hostname)
 		}
 	}
-	if len(one) == 0 {
-		e.infof("skill %s is skipped on host %s", name, e.env.Hostname)
-	}
-	for _, s := range one {
+	for _, s := range sel {
 		if s.Vendor != nil {
 			e.syncVendor(s)
 		}
 	}
-	e.linkAll(one)
+	e.linkAll(sel)
 	if hint != "" {
 		e.commitHint(hint)
 	}

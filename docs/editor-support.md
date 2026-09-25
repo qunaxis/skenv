@@ -47,7 +47,7 @@ Who writes or updates the directive:
   version of `repo.harness`. `skenv repo check` warns when it is missing or
   points at another version; the warning does not change the exit code,
   because the directive does not change what skenv does.
-- `skenv vendor add|bump|remove` keep the directive, like every comment,
+- `skenv vendor add|update|remove` keep the directive, like every comment,
   and move a skenv directive to the version described below.
 
 A directive with a URL outside `https://qunaxis.github.io/skenv/schemas/`

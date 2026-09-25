@@ -120,7 +120,7 @@ func (m *mismatch) Error() string { return m.what + " = " + m.got + ", want " + 
 
 // Invariant (#20): no write changes the format of a file. Every write path
 // (init recording the manifest in the tool config, init starting a
-// manifest, repo init adding [repo], repo apply, vendor add|bump|remove)
+// manifest, repo init adding [repo], repo apply, vendor add|update|remove)
 // runs on a file in each format (and skenv.yml, config.yml, which are
 // read but never created); the file keeps its name and extension,
 // reads back to the expected data, and keeps its comments and its schema
@@ -179,11 +179,11 @@ func TestWritesKeepFormat(t *testing.T) {
 				{"vendor add", func() {
 					w.mustRun(0, "vendor", "add", "ext/tools", "--path", "tools/other")
 				}, own, "skenv", comments(format), vendorsAre("archify", "other")},
-				{"vendor bump", func() {
+				{"vendor update", func() {
 					next := w.push("ext/tools", map[string]string{"tools/other/SKILL.md": skillMD("other", "v2")}, "fix: other v2")
-					w.mustRun(0, "vendor", "bump", "other", "--rev", next)
+					w.mustRun(0, "vendor", "update", "other", "--rev", next)
 					if !strings.Contains(readFile(t, filepath.Join(own, "skenv."+format)), next) {
-						t.Error("rev not bumped")
+						t.Error("rev not updated")
 					}
 				}, own, "skenv", comments(format), vendorsAre("archify", "other")},
 				{"vendor remove", func() {
