@@ -32,6 +32,10 @@ const DefaultSkillsDir = "skills"
 type Manifest struct {
 	// Layout is where skills are stored and linked.
 	Layout Layout `toml:"layout" yaml:"layout" json:"layout"`
+	// Hosts declares git servers by alias, usually self-hosted ones:
+	// "<alias>:group/repo" in repo is a repository on that server. They
+	// live in the manifest so it resolves the same on every machine.
+	Hosts Hosts `toml:"hosts" yaml:"hosts" json:"hosts"`
 	// Own lists your skills repositories, kept as git working copies: every
 	// skill directory in them is linked.
 	Own []Own `toml:"own" yaml:"own" json:"own"`
@@ -74,8 +78,9 @@ func (l Layout) Ignored(name string) bool {
 // Own is a skills repository of yours, kept as a git working copy so that
 // edits show up immediately.
 type Own struct {
-	// Repo is the repository to clone: "owner/repo" on github.com or a full
-	// git URL.
+	// Repo is the repository to clone: "owner/repo" on github.com,
+	// "gitlab:group/sub/repo", "codeberg:owner/repo", "<alias>:path" of a
+	// host in hosts, or a full git URL.
 	Repo string `toml:"repo" yaml:"repo" json:"repo"`
 	// Path is where the working copy lives ("~" allowed). Point it at the
 	// existing clone, or sync clones a second one there.
@@ -150,7 +155,9 @@ type Vendor struct {
 	// Name is the skill name: 1 to 64 lowercase letters, digits and single
 	// hyphens, with no hyphen at the start or end; "synced" is reserved.
 	Name string `toml:"name" yaml:"name" json:"name"`
-	// Repo is the repository: "owner/repo" on github.com or a full git URL.
+	// Repo is the repository: "owner/repo" on github.com,
+	// "gitlab:group/sub/repo", "codeberg:owner/repo", "<alias>:path" of a
+	// host in hosts, or a full git URL.
 	Repo string `toml:"repo" yaml:"repo" json:"repo"`
 	// Path is the directory with SKILL.md inside the repository, relative
 	// to its root; "." for the root. Default: ".".
@@ -233,6 +240,12 @@ func Parse(data []byte, ext string) (*Manifest, error) {
 			m.Own[i].SkillsDir = DefaultSkillsDir
 		}
 	}
+	for a, h := range m.Hosts {
+		if h.Type == "" {
+			h.Type = TypeGeneric
+			m.Hosts[a] = h
+		}
+	}
 	for i := range m.Vendor {
 		if m.Vendor[i].Path == "" {
 			m.Vendor[i].Path = "."
@@ -255,9 +268,12 @@ func (m *Manifest) Validate() error {
 			errs = append(errs, fmt.Errorf("layout.ignore: %q must be a glob over entry names (no \"/\")", pat))
 		}
 	}
+	errs = append(errs, m.Hosts.validate()...)
 	for i, o := range m.Own {
 		if o.Repo == "" {
 			errs = append(errs, fmt.Errorf("own[%d]: repo is required", i))
+		} else if _, err := m.Hosts.Resolve(o.Repo); err != nil {
+			errs = append(errs, fmt.Errorf("own[%d]: %w", i, err))
 		}
 		if o.Path == "" {
 			errs = append(errs, fmt.Errorf("own[%d] (%s): path is required", i, o.Repo))
@@ -294,6 +310,8 @@ func (m *Manifest) Validate() error {
 		}
 		if v.Repo == "" {
 			errs = append(errs, fmt.Errorf("%s: repo is required", where))
+		} else if _, err := m.Hosts.Resolve(v.Repo); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", where, err))
 		}
 		if !cleanRel(v.Path) {
 			errs = append(errs, fmt.Errorf("%s: path %q must be a relative path inside the repository (\".\" for the root)", where, v.Path))

@@ -92,6 +92,25 @@
           "$ref": "#/$defs/layout",
           "description": "Where skills are stored and linked."
         },
+        "hosts": {
+          "description": "Declares git servers by alias, usually self-hosted ones: \"<alias>:group/repo\" in repo is a repository on that server. They live in the manifest so it resolves the same on every machine.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/gitHost"
+          },
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "not": {
+              "enum": [
+                "github",
+                "gitlab",
+                "codeberg"
+              ],
+              "errorMessage": "This prefix is built in and cannot be declared."
+            },
+            "patternErrorMessage": "An alias is lowercase letters, digits and \"-\", starting with a letter."
+          }
+        },
         "own": {
           "description": "Lists your skills repositories, kept as git working copies: every skill directory in them is linked.",
           "type": "array",
@@ -151,7 +170,7 @@
       "type": "object",
       "properties": {
         "repo": {
-          "description": "The repository to clone: \"owner/repo\" on github.com or a full git URL.",
+          "description": "The repository to clone: \"owner/repo\" on github.com, \"gitlab:group/sub/repo\", \"codeberg:owner/repo\", \"<alias>:path\" of a host in hosts, or a full git URL.",
           "type": "string",
           "minLength": 1
         },
@@ -215,7 +234,7 @@
           "patternErrorMessage": "A skill name is lowercase letters, digits and single hyphens, with no hyphen at the start or end."
         },
         "repo": {
-          "description": "The repository: \"owner/repo\" on github.com or a full git URL.",
+          "description": "The repository: \"owner/repo\" on github.com, \"gitlab:group/sub/repo\", \"codeberg:owner/repo\", \"<alias>:path\" of a host in hosts, or a full git URL.",
           "type": "string",
           "minLength": 1
         },
@@ -252,6 +271,43 @@
           }
         }
       },
+      "additionalProperties": false
+    },
+    "gitHost": {
+      "description": "A git server declared in the manifest, usually a self-hosted one: \"<alias>:group/repo\" is a repository on it. It lives in the manifest rather than in the tool config, so the manifest resolves the same on every machine.",
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "The https base of the server, such as \"https://git.example.com\": \"<alias>:group/repo\" is cloned from <url>/group/repo.git. It must not carry credentials; use a git credential helper.",
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^/@?#]+(/[^?#]*)?$",
+          "examples": [
+            "https://git.example.com"
+          ],
+          "patternErrorMessage": "A base URL such as \"https://git.example.com\", without credentials."
+        },
+        "type": {
+          "description": "The software of the server: \"github\", \"gitlab\" (subgroups of any depth), \"gitea\" (Gitea, Forgejo) or \"generic\" (any path, cloned as written, \".git\" is not added). It sets the accepted paths and is recorded for CI templates and imports. Default: \"generic\".",
+          "type": "string",
+          "enum": [
+            "github",
+            "gitlab",
+            "gitea",
+            "generic"
+          ],
+          "default": "generic"
+        },
+        "ssh": {
+          "description": "The ssh address of the server, such as \"git@git.example.com\" or \"ssh://git@git.example.com:2222\"; add the path prefix of repositories over ssh when it differs from the one in url. skenv clones over https; this address is recognised in remotes and named in the url.insteadOf hint when access fails. Default: git@<host of url>.",
+          "type": "string",
+          "examples": [
+            "git@git.example.com"
+          ]
+        }
+      },
+      "required": [
+        "url"
+      ],
       "additionalProperties": false
     }
   }

@@ -163,7 +163,7 @@ func lockRepo(le lockEntry) (string, error) {
 		if manifest.IsShortRepo(le.Source) {
 			return le.Source, nil
 		}
-		if repo, ok := manifest.GitHubRepo(le.SourceURL); ok {
+		if repo, ok := manifest.Hosts(nil).ShortForm(le.SourceURL); ok && manifest.IsShortRepo(repo) {
 			return repo, nil
 		}
 	case "git", "gitlab":

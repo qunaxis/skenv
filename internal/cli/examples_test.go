@@ -93,6 +93,27 @@ rev = "`+f.git(filepath.Join(f.work, "example-vendor__tools"), "rev-parse", "HEA
 		f.remove(".claude/skills/code-review")
 	},
 	"skenv vendor add/1": func(f *exampleWorld) { f.initialized() },
+	"skenv vendor add/2": func(f *exampleWorld) {
+		f.initialized()
+		f.mapHost("https://gitlab.com/", "gitlab.com")
+		f.push("gitlab.com/example-org/team/tools", map[string]string{
+			"release-notes/SKILL.md": exampleSkill("release-notes", "Write release notes from the commits since the last tag.", "Group the commits by type."),
+		}, "feat: release-notes")
+	},
+	"skenv vendor add/3": func(f *exampleWorld) {
+		f.initialized()
+		manifest := f.path("src/skills/skenv.toml")
+		writeFile(f.t, manifest, readFile(f.t, manifest)+`
+[environment.hosts.work]
+url = "https://git.example.com"
+type = "gitlab"
+`)
+		f.git(f.path("src/skills"), "commit", "--quiet", "-am", "feat: declare the work host")
+		f.mapHost("https://git.example.com/", "git.example.com")
+		f.push("git.example.com/platform/skills", map[string]string{
+			"deploy/SKILL.md": exampleSkill("deploy", "Deploy a service to the staging cluster.", "Check the rollout before you leave."),
+		}, "feat: deploy")
+	},
 	"skenv vendor update/1": func(f *exampleWorld) {
 		f.initialized()
 		f.newVendorCommits()

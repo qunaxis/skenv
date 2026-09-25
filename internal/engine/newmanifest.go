@@ -3,8 +3,10 @@ package engine
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/qunaxis/skenv/internal/config"
 	"github.com/qunaxis/skenv/internal/fileformat"
@@ -46,9 +48,14 @@ func NewManifest(ctx context.Context, env Env, dir, format string, dryRun bool) 
 	if p.own == nil {
 		fmt.Fprintf(env.Stdout, "  - list your skills repositories under environment.own in %s\n", filepath.Base(p.file))
 	}
-	fmt.Fprintf(env.Stdout, "  - skenv vendor add <owner/repo> --path <dir>   pin a third-party skill\n")
+	fmt.Fprintf(env.Stdout, "  - skenv vendor add <repo> --path <dir>         pin a third-party skill\n")
 	fmt.Fprintf(env.Stdout, "  - skenv sync                                  link the skills of the manifest\n")
-	fmt.Fprintf(env.Stdout, "  - commit %s; on another machine: skenv init <owner>/<repo>\n", filepath.Base(p.file))
+	// The own entry is a built-in short form or a URL: both work there.
+	again := "<repo>"
+	if p.own != nil {
+		again = p.own.Repo
+	}
+	fmt.Fprintf(env.Stdout, "  - commit %s; on another machine: skenv init %s\n", filepath.Base(p.file), again)
 	return ExitOK, nil
 }
 
@@ -103,17 +110,18 @@ func planManifest(ctx context.Context, env Env, dir, format string) (*manifestPl
 			return nil, fmt.Errorf("%s: %w", show(existing), err)
 		}
 		if doc.Has(skenvfile.Environment) {
-			return nil, fmt.Errorf("%s has [environment] already; `skenv init` without <owner/repo> only starts a new manifest "+
-				"(to use this one on a machine: `skenv init <owner>/<repo>`, or --manifest)", show(existing))
+			return nil, fmt.Errorf("%s has [environment] already; `skenv init` without <repo> only starts a new manifest "+
+				"(to use this one on a machine: `skenv init <repo>`, or --manifest)", show(existing))
 		}
 		if err := refusePublic(p.data, filepath.Ext(existing), show(existing)); err != nil {
 			return nil, err
 		}
 	}
 
-	// The repository itself is the first own entry when it is on GitHub.
+	// The repository itself is the first own entry when its origin is on a
+	// network host.
 	if remote, err := env.Git.Run(ctx, root, "config", "--get", "remote.origin.url"); err == nil {
-		if repo, ok := manifest.GitHubRepo(remote); ok {
+		if repo, ok := ownRepo(remote); ok {
 			p.own = &manifest.Own{Repo: repo, Path: show(root)}
 		}
 	}
@@ -212,4 +220,29 @@ func (p *manifestPlan) write(env Env, out []byte, own *manifest.Own) error {
 	}
 	fmt.Fprintf(env.Stdout, "manifest %s recorded in %s\n", p.show(p.file), p.show(cfgFile))
 	return nil
+}
+
+// ownRepo is the repo value for the origin remote of a new manifest: the
+// short form on github.com, gitlab.com and codeberg.org, the URL without
+// credentials on any other network host, ok false for a local path. A new
+// manifest declares no hosts yet.
+func ownRepo(remote string) (string, bool) {
+	remote = strings.TrimSpace(remote)
+	if repo, ok := manifest.Hosts(nil).ShortForm(remote); ok {
+		return repo, true
+	}
+	if strings.HasPrefix(manifest.NormalizeURL(remote), "/") {
+		return "", false
+	}
+	if strings.Contains(remote, "://") {
+		u, err := url.Parse(remote)
+		if err != nil {
+			return "", false // it may hold credentials that cannot be removed
+		}
+		if _, pw := u.User.Password(); u.User != nil && (pw || u.Scheme != "ssh") {
+			u.User = nil
+		}
+		remote = u.String()
+	}
+	return remote, true
 }

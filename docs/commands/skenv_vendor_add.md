@@ -9,8 +9,13 @@ Pin a third-party skill in the manifest and sync it
 Pin a third-party skill in the manifest (HEAD of the default branch unless
 `--rev`) and sync it. The manifest change is not committed.
 
+`<repo>` is written to the manifest as given: owner/repo on `github.com`,
+gitlab:group/sub/repo, codeberg:owner/repo, `<alias>:path` of a host declared
+under `[environment.hosts.<alias>]`, or a full git URL. An unknown prefix is
+an error. See https://qunaxis.github.io/skenv/git-hosts
+
 ```
-skenv vendor add <owner/repo> [flags]
+skenv vendor add <repo> [flags]
 ```
 
 ### Examples
@@ -25,6 +30,32 @@ link ~/.claude/skills/release-notes → ../../.agents/skills/release-notes
 link ~/.pi/agent/skills/release-notes → ../../../.agents/skills/release-notes
 manifest changed but not committed; to commit:
   git -C ~/src/skills commit -m "chore(manifest): add vendor skill release-notes" -- skenv.toml
+vendor: 4 changes, 0 warnings, 0 errors
+```
+
+A skill from a GitLab subgroup:
+
+```console
+$ skenv vendor add gitlab:example-org/team/tools --path release-notes
+add vendor release-notes (gitlab:example-org/team/tools@db393f044b07, release-notes) to ~/src/skills/skenv.toml
+vendor release-notes from gitlab:example-org/team/tools@db393f044b07 (release-notes)
+link ~/.claude/skills/release-notes → ../../.agents/skills/release-notes
+link ~/.pi/agent/skills/release-notes → ../../../.agents/skills/release-notes
+manifest changed but not committed; to commit:
+  git -C ~/src/skills commit -m "chore(manifest): add vendor skill release-notes" -- skenv.toml
+vendor: 4 changes, 0 warnings, 0 errors
+```
+
+A skill from a self-hosted host declared as `work` in the manifest:
+
+```console
+$ skenv vendor add work:platform/skills --path deploy
+add vendor deploy (work:platform/skills@343046eaee2f, deploy) to ~/src/skills/skenv.toml
+vendor deploy from work:platform/skills@343046eaee2f (deploy)
+link ~/.claude/skills/deploy → ../../.agents/skills/deploy
+link ~/.pi/agent/skills/deploy → ../../../.agents/skills/deploy
+manifest changed but not committed; to commit:
+  git -C ~/src/skills commit -m "chore(manifest): add vendor skill deploy" -- skenv.toml
 vendor: 4 changes, 0 warnings, 0 errors
 ```
 

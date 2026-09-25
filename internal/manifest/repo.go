@@ -9,21 +9,6 @@ import (
 	"strings"
 )
 
-var shortRepoRe = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
-
-// IsShortRepo reports whether repo is an "owner/repo" shorthand.
-func IsShortRepo(repo string) bool { return shortRepoRe.MatchString(repo) }
-
-// RepoURL turns "owner/repo" into a github.com clone URL and leaves full git
-// URLs (https://, ssh://, git@host:path, file://, local paths) unchanged.
-// Users who prefer ssh can map the https prefix with git's url.insteadOf.
-func RepoURL(repo string) string {
-	if IsShortRepo(repo) {
-		return "https://github.com/" + strings.TrimSuffix(repo, ".git") + ".git"
-	}
-	return repo
-}
-
 // RepoName returns the last path element of repo without ".git".
 func RepoName(repo string) string {
 	_, name := ownerRepo(repo)
@@ -61,18 +46,6 @@ var slugRe = regexp.MustCompile(`[^A-Za-z0-9._]+`)
 
 var defaultPorts = map[string]string{"https": "443", "http": "80", "ssh": "22", "git": "9418"}
 
-// CloneURL is the URL skenv clones repo from: RepoURL with a relative local
-// path made absolute, so git resolves it the same from any directory.
-func CloneURL(repo string) string {
-	s := RepoURL(repo)
-	if isLocal(s) && !filepath.IsAbs(s) {
-		if abs, err := filepath.Abs(s); err == nil {
-			return abs
-		}
-	}
-	return s
-}
-
 // isLocal reports whether a clone URL is a local path: neither
 // scheme://... nor scp-like [user@]host:path.
 func isLocal(s string) bool {
@@ -88,9 +61,9 @@ func isLocal(s string) bool {
 // scheme, credentials, surrounding slashes or ".git". So "git@host:o/r",
 // "ssh://git@host/o/r" and "https://user:token@HOST/o/r.git" are all
 // "host/o/r". Local paths and file:// URLs become absolute slash paths.
-// "owner/repo" shorthands are expanded with RepoURL first.
+// Resolve a repo value of the manifest first (Hosts.Resolve).
 func NormalizeURL(raw string) string {
-	s := RepoURL(strings.TrimSpace(raw))
+	s := strings.TrimSpace(raw)
 	if isLocal(s) {
 		return localPath(s)
 	}

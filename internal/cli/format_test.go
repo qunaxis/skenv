@@ -481,7 +481,7 @@ func TestInitStartsManifestInExistingFile(t *testing.T) {
 		"init --dir " + pub: `visibility = "public"`,
 		"init --dir " + w.path("yaml") + " --format json": "skenv.yaml exists and is YAML; --format json does not convert it",
 		"init --dir " + w.path(".config"):                 "is not inside a git repository",
-		"init --path x":                                   "--path and --adopt need <owner/repo>",
+		"init --path x":                                   "--path and --adopt need <repo>",
 		"init me/skills --dir " + repo:                    "--dir is for starting a manifest",
 	} {
 		if _, errOut := w.mustRun(2, strings.Fields(args)...); !strings.Contains(errOut, want) {

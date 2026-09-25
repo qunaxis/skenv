@@ -6,17 +6,22 @@ Clone the manifest repository and sync, or start a manifest
 
 ### Synopsis
 
-With `<owner/repo>`: clone the manifest repository into `--path` (default
+With `<repo>`: clone the manifest repository into `--path` (default
 `./<repo>` in the current directory, like git clone), record its skenv file as
 `manifest` in the config file (`~/.config/skenv/config.toml` unless a YAML or
 JSON one exists; a new one is YAML or JSON with `--format`) and run sync. If the
-repository is already cloned, only the path is recorded.
+repository is already cloned, only the path is recorded. `<repo>` is
+owner/repo on `github.com`, gitlab:group/sub/repo, codeberg:owner/repo or a
+full git URL; hosts declared in the manifest are not known before it is
+cloned, so a self-hosted repository takes its URL.
 
-Without `<owner/repo>`: start a manifest in the git repository of the current
+Without `<repo>`: start a manifest in the git repository of the current
 directory (or `--dir`). Its skenv file gets an `[environment]` section with a
 commented skeleton, or `skenv.toml` is created with one (`skenv.yaml` or
 `skenv.json` with `--format`); the repository itself becomes its first own
-repository when its origin is on GitHub. The file is recorded
+repository: owner/repo for an origin on `github.com`, gitlab:... on
+`gitlab.com`, codeberg:... on `codeberg.org`, the URL (without credentials) on
+any other host; a local origin is left out. The file is recorded
 as `manifest` in the config file (a new one in the same format), and nothing
 is synced. It refuses when the file has `[environment]` already or its `[repo]`
 is public.
@@ -29,7 +34,7 @@ An existing file keeps its format: `--format` that disagrees with it is an
 error (exit code 2), and nothing is written.
 
 ```
-skenv init [<owner/repo>] [flags]
+skenv init [<repo>] [flags]
 ```
 
 ### Examples
@@ -59,9 +64,9 @@ $ skenv init
 create ~/src/my-skills/skenv.toml with [environment], example-org/my-skills as its first own repository
 manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
 next steps:
-  - skenv vendor add <owner/repo> --path <dir>   pin a third-party skill
+  - skenv vendor add <repo> --path <dir>         pin a third-party skill
   - skenv sync                                  link the skills of the manifest
-  - commit skenv.toml; on another machine: skenv init <owner>/<repo>
+  - commit skenv.toml; on another machine: skenv init example-org/my-skills
 ```
 
 Start one with the skills already installed here, and take them over:
@@ -126,7 +131,7 @@ sync: 8 changes, 1 warnings, 0 errors
 
 ```
       --adopt           back up and replace unmanaged paths that conflict with the manifest
-      --dir string      without <owner/repo>: the repository to start the manifest in (default: the current one)
+      --dir string      without <repo>: the repository to start the manifest in (default: the current one)
       --dry-run         print the plan, change nothing
       --format string   format of a new file: toml, yaml or json (default toml; an existing file keeps its format)
   -h, --help            help for init

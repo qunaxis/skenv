@@ -239,19 +239,24 @@ func initCmd(a *app) *cobra.Command {
 	var dir, here, format string
 	var imp bool
 	c := &cobra.Command{
-		Use:   "init [<owner/repo>]",
+		Use:   "init [<repo>]",
 		Short: "Clone the manifest repository and sync, or start a manifest",
-		Long: `With <owner/repo>: clone the manifest repository into --path (default
+		Long: `With <repo>: clone the manifest repository into --path (default
 ./<repo> in the current directory, like git clone), record its skenv file as
 "manifest" in the config file (~/.config/skenv/config.toml unless a YAML or
 JSON one exists; a new one is YAML or JSON with --format) and run sync. If the
-repository is already cloned, only the path is recorded.
+repository is already cloned, only the path is recorded. <repo> is
+owner/repo on github.com, gitlab:group/sub/repo, codeberg:owner/repo or a
+full git URL; hosts declared in the manifest are not known before it is
+cloned, so a self-hosted repository takes its URL.
 
-Without <owner/repo>: start a manifest in the git repository of the current
+Without <repo>: start a manifest in the git repository of the current
 directory (or --dir). Its skenv file gets an [environment] section with a
 commented skeleton, or skenv.toml is created with one (skenv.yaml or
 skenv.json with --format); the repository itself becomes its first own
-repository when its origin is on GitHub. The file is recorded
+repository: owner/repo for an origin on github.com, gitlab:... on
+gitlab.com, codeberg:... on codeberg.org, the URL (without credentials) on
+any other host; a local origin is left out. The file is recorded
 as "manifest" in the config file (a new one in the same format), and nothing
 is synced. It refuses when the file has [environment] already or its [repo]
 is public.
@@ -280,7 +285,7 @@ skenv init --import`,
 			}
 			if len(args) == 0 {
 				if dir != "" || o.Adopt {
-					return engine.ExitFatal, usageError{"init: --path and --adopt need <owner/repo>; without it, --dir names the repository"}
+					return engine.ExitFatal, usageError{"init: --path and --adopt need <repo>; without it, --dir names the repository"}
 				}
 				if imp {
 					return engine.InitImport(ctx, env, here, format, o.DryRun)
@@ -291,13 +296,13 @@ skenv init --import`,
 				return engine.ExitFatal, usageError{"init: --import starts a new manifest, without <owner/repo>; after cloning one, run `skenv import`"}
 			}
 			if here != "" {
-				return engine.ExitFatal, usageError{"init: --dir is for starting a manifest without <owner/repo>; use --path"}
+				return engine.ExitFatal, usageError{"init: --dir is for starting a manifest without <repo>; use --path"}
 			}
 			return engine.Init(ctx, env, args[0], dir, format, o)
 		}),
 	}
 	c.Flags().StringVar(&dir, "path", "", "where to clone the repository (default ./<repo>)")
-	c.Flags().StringVar(&here, "dir", "", "without <owner/repo>: the repository to start the manifest in (default: the current one)")
+	c.Flags().StringVar(&here, "dir", "", "without <repo>: the repository to start the manifest in (default: the current one)")
 	formatFlag(c, &format, "format of a new file: toml, yaml or json (default toml; an existing file keeps its format)")
 	dryRunFlag(c.Flags(), &o.DryRun)
 	c.Flags().BoolVar(&o.Adopt, "adopt", false, "back up and replace unmanaged paths that conflict with the manifest")
@@ -441,12 +446,21 @@ func vendorCmd(a *app) *cobra.Command {
 	var addO engine.Options
 	var va engine.VendorAddOptions
 	add := &cobra.Command{
-		Use:   "add <owner/repo>",
+		Use:   "add <repo>",
 		Short: "Pin a third-party skill in the manifest and sync it",
 		Long: `Pin a third-party skill in the manifest (HEAD of the default branch unless
---rev) and sync it. The manifest change is not committed.`,
+--rev) and sync it. The manifest change is not committed.
+
+<repo> is written to the manifest as given: owner/repo on github.com,
+gitlab:group/sub/repo, codeberg:owner/repo, <alias>:path of a host declared
+under [environment.hosts.<alias>], or a full git URL. An unknown prefix is
+an error. See https://qunaxis.github.io/skenv/git-hosts`,
 		Example: `# Pin the skill in tools/release-notes/ at HEAD of the default branch
-skenv vendor add example-vendor/tools --path tools/release-notes`,
+skenv vendor add example-vendor/tools --path tools/release-notes
+# A skill from a GitLab subgroup
+skenv vendor add gitlab:example-org/team/tools --path release-notes
+# A skill from a self-hosted host declared as "work" in the manifest
+skenv vendor add work:platform/skills --path deploy`,
 		Args: nArgs(1),
 		RunE: withEngine(&addO, func(e *engine.Engine, args []string) (int, error) {
 			va.Repo = args[0]

@@ -57,8 +57,8 @@ func TestInitOnCleanHome(t *testing.T) {
 	}
 	assertStandardLayout(t, w)
 	marker := readFile(t, w.path(".agents/skills/archify/.skenv"))
-	if !strings.Contains(marker, rev) || !strings.Contains(marker, `repo = "ext/tools"`) {
-		t.Errorf("marker = %q", marker)
+	if !strings.Contains(marker, rev) || !strings.Contains(marker, `repo = "https://github.com/ext/tools.git"`) {
+		t.Errorf("marker (canonical URL) = %q", marker)
 	}
 	out, _ := w.mustRun(0, "doctor")
 	if !strings.HasPrefix(out, "ok: 3 skills") {

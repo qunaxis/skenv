@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -130,32 +129,4 @@ func commentYAMLKey(data []byte, key, comment string) ([]byte, error) {
 		return []byte(out), nil
 	}
 	return data, nil
-}
-
-// GitHubRepo returns "owner/repo" for a github.com remote URL (https,
-// ssh or scp-like git@github.com:owner/repo), ok false for anything else.
-func GitHubRepo(remote string) (string, bool) {
-	remote = strings.TrimSpace(remote)
-	var p string
-	if u, err := url.Parse(remote); err == nil && u.Scheme != "" {
-		if !strings.EqualFold(u.Hostname(), "github.com") {
-			return "", false
-		}
-		p = u.Path
-	} else if host, rest, found := strings.Cut(remote, ":"); found && !strings.Contains(host, "/") {
-		if i := strings.LastIndex(host, "@"); i >= 0 {
-			host = host[i+1:]
-		}
-		if !strings.EqualFold(host, "github.com") {
-			return "", false
-		}
-		p = rest
-	} else {
-		return "", false
-	}
-	p = strings.TrimSuffix(strings.Trim(p, "/"), ".git")
-	if !IsShortRepo(p) {
-		return "", false
-	}
-	return p, true
 }
