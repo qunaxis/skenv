@@ -207,28 +207,52 @@ func dryRunFlag(fs *pflag.FlagSet, p *bool) {
 
 func initCmd(a *app) *cobra.Command {
 	var o engine.Options
-	var dir, format string
+	var dir, here, format string
 	c := &cobra.Command{
-		Use:   "init <owner/repo>",
-		Short: "Clone the manifest repository and sync",
-		Long: `Clone the manifest repository into --path (default ./<repo> in the current
-directory, like git clone), record its skenv file as "manifest" in the config
-file (~/.config/skenv/config.toml unless a YAML or JSON one exists; a new one
-is YAML or JSON with --format) and run sync. If the repository is already
-cloned, only the path is recorded.
+		Use:   "init [<owner/repo>]",
+		Short: "Clone the manifest repository and sync, or start a manifest",
+		Long: `With <owner/repo>: clone the manifest repository into --path (default
+./<repo> in the current directory, like git clone), record its skenv file as
+"manifest" in the config file (~/.config/skenv/config.toml unless a YAML or
+JSON one exists; a new one is YAML or JSON with --format) and run sync. If the
+repository is already cloned, only the path is recorded.
 
-An existing config file keeps its format: --format that disagrees with it is
-an error (exit code 2), raised before anything is cloned or written.`,
-		Args: nArgs(1),
+Without <owner/repo>: start a manifest in the git repository of the current
+directory (or --dir). Its skenv file gets an [environment] section with a
+commented skeleton, or skenv.toml is created with one (skenv.yaml or
+skenv.json with --format); the repository itself becomes its first own
+repository when its origin is on GitHub. The file is recorded
+as "manifest" in the config file (a new one in the same format), and nothing
+is synced. It refuses when the file has [environment] already or its [repo]
+is public.
+
+An existing file keeps its format: --format that disagrees with it is an
+error (exit code 2), and nothing is written.`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 1 {
+				return usageError{fmt.Sprintf("init: expected at most 1 argument, got %d (see `%s --help`)", len(args), cmd.CommandPath())}
+			}
+			return nil
+		},
 		RunE: a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
 			if err := fileformat.Valid(format); err != nil {
 				return engine.ExitFatal, usageError{"init: " + err.Error()}
+			}
+			if len(args) == 0 {
+				if dir != "" || o.Adopt {
+					return engine.ExitFatal, usageError{"init: --path and --adopt need <owner/repo>; without it, --dir names the repository"}
+				}
+				return engine.NewManifest(ctx, env, here, format, o.DryRun)
+			}
+			if here != "" {
+				return engine.ExitFatal, usageError{"init: --dir is for starting a manifest without <owner/repo>; use --path"}
 			}
 			return engine.Init(ctx, env, args[0], dir, format, o)
 		}),
 	}
 	c.Flags().StringVar(&dir, "path", "", "where to clone the repository (default ./<repo>)")
-	formatFlag(c, &format, "format of a new config file: toml, yaml or json (default toml; an existing file keeps its format)")
+	c.Flags().StringVar(&here, "dir", "", "without <owner/repo>: the repository to start the manifest in (default: the current one)")
+	formatFlag(c, &format, "format of a new file: toml, yaml or json (default toml; an existing file keeps its format)")
 	dryRunFlag(c.Flags(), &o.DryRun)
 	c.Flags().BoolVar(&o.Adopt, "adopt", false, "back up and replace unmanaged paths that conflict with the manifest")
 	return c
