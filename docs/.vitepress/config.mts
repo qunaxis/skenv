@@ -22,10 +22,15 @@ function githubSlug(s: string): string {
 
 const toPosix = (p: string) => p.split(sep).join('/')
 
+// Directories of docs/ that are not site pages: the ADRs stay in the
+// repository only, docs/public is copied as is (JSON Schemas, see
+// public/schemas/README.md), and the demo sources are not documentation.
+const excluded = ['adr/', 'public/', 'demo/']
+
 // A relative link is resolved against the page, then against the repository
 // root (README sections included into pages link to `docs/...`). A Markdown
-// page inside docs/ stays a site link; any other file in the repository
-// (CHANGELOG.md, AGENTS.md, docs/demo/demo.tape, ...) points to GitHub.
+// page of the site stays a site link; any other file in the repository
+// (CHANGELOG.md, AGENTS.md, an ADR, docs/demo/demo.tape, ...) points to GitHub.
 // Unknown targets are left alone, so the dead-link check reports them.
 function rewriteHref(href: string, page: string): string {
   if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('#') || href.startsWith('/')) {
@@ -37,8 +42,10 @@ function rewriteHref(href: string, page: string): string {
   if (!path) return href
   for (const target of [resolve(dirname(page), path), resolve(repoRoot, path)]) {
     if (!existsSync(target)) continue
-    const inDocs = !relative(docsDir, target).startsWith('..') && !isAbsolute(relative(docsDir, target))
-    if (inDocs && target.endsWith('.md')) {
+    const inDocs = toPosix(relative(docsDir, target))
+    const isPage =
+      !inDocs.startsWith('..') && !isAbsolute(inDocs) && !excluded.some((dir) => inDocs.startsWith(dir))
+    if (isPage && target.endsWith('.md')) {
       let rel = toPosix(relative(dirname(page), target))
       if (!rel.startsWith('.')) rel = './' + rel
       return rel + suffix
@@ -86,10 +93,6 @@ const reference: DefaultTheme.SidebarItem[] = [
   { text: 'Command reference', link: '/commands/README', collapsed: true, items: commandItems() },
 ]
 
-const decisions: DefaultTheme.SidebarItem[] = [
-  { text: 'ADR 0001: CLI, configuration and the skenv file', link: '/adr/0001-cli-and-config-framework' },
-]
-
 const contributing: DefaultTheme.SidebarItem[] = [
   { text: 'Contributing', link: '/contributing' },
   { text: 'Development and releases', link: '/releasing' },
@@ -104,8 +107,7 @@ export default defineConfig({
   cleanUrls: true,
   // A link to a page that does not exist fails the build (the CI check).
   ignoreDeadLinks: false,
-  // docs/public is copied as is (JSON Schemas, see public/schemas/README.md).
-  srcExclude: ['public/**', 'demo/**'],
+  srcExclude: excluded.map((dir) => `${dir}**`),
   head: [['meta', { name: 'theme-color', content: '#3c8772' }]],
   markdown: {
     anchor: { slugify: githubSlug },
@@ -151,14 +153,12 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/install', activeMatch: '^/(install|getting-started|skenv-file|manifest|harness|claude-code-hook)' },
       { text: 'Reference', link: '/commands', activeMatch: '^/(commands|configuration)' },
-      { text: 'Decisions', link: '/adr/0001-cli-and-config-framework', activeMatch: '^/adr/' },
       { text: 'Contributing', link: '/contributing', activeMatch: '^/(contributing|releasing)' },
       { text: 'Releases', link: `${repo}/releases` },
     ],
     sidebar: [
       { text: 'Guide', items: guide },
       { text: 'Reference', items: reference },
-      { text: 'Decisions', items: decisions },
       { text: 'Contributing', items: contributing },
     ],
     outline: { level: [2, 3] },
