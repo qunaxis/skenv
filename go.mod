@@ -9,4 +9,8 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4
 )
 
-require github.com/inconshreveable/mousetrap v1.1.0 // indirect
+require (
+	github.com/cpuguy83/go-md2man/v2 v2.0.6 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/russross/blackfriday/v2 v2.1.0 // indirect
+)
