@@ -240,6 +240,7 @@ func TestSchemaAndParserAgree(t *testing.T) {
 	vendor := func(fields string) string {
 		return "[[environment.vendor]]\n" + fields
 	}
+	ownEntry := "[[environment.own]]\nrepo = \"a/b\"\npath = \"~/x\"\n"
 	full := `name = "archify"` + "\n" + `repo = "a/b"` + "\n" + `rev = "` + sha + `"` + "\n"
 	cases := []struct {
 		name, ext, text string
@@ -280,6 +281,12 @@ func TestSchemaAndParserAgree(t *testing.T) {
 		{"null host", ".json", `{"environment": {"host": {"mac": null}}}`, false, "want object"},
 		{"number in runner", ".yaml", "repo: {harness: 0.4.0, visibility: private, runner: [1]}\n", false, "want string"},
 		{"unquoted numeric rev", ".yaml", "environment:\n  vendor:\n    - {name: a, repo: a/b, rev: " + strings.Repeat("1", 40) + "}\n", false, "want string"},
+		{"own selection", ".toml", ownEntry + "skills = [\"alpha\", \"beta\"]\nexclude = [\"exp-*\"]\n", true, ""},
+		{"empty skills", ".toml", ownEntry + "skills = []\n", false, "minItems"},
+		{"duplicate skills", ".toml", ownEntry + "skills = [\"a\", \"a\"]\n", false, "items at 0 and 1 are equal"},
+		{"bad skills name", ".toml", ownEntry + "skills = [\"a_b\"]\n", false, "does not match pattern"},
+		{"exclude with a slash", ".toml", ownEntry + "exclude = [\"a/*\"]\n", false, "does not match pattern"},
+		{"null skills", ".yaml", "environment:\n  own:\n    - {repo: a/b, path: ~/x, skills: }\n", false, "want array"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -54,6 +54,8 @@ type Schema struct {
 	MinLength            int      `json:"minLength,omitempty"`
 	MaxLength            int      `json:"maxLength,omitempty"`
 	Items                *Schema  `json:"items,omitempty"`
+	MinItems             int      `json:"minItems,omitempty"`
+	UniqueItems          bool     `json:"uniqueItems,omitempty"`
 	Properties           Props    `json:"properties,omitempty"`
 	Required             []string `json:"required,omitempty"`
 	AdditionalProperties any      `json:"additionalProperties,omitempty"` // false or *Schema
@@ -176,13 +178,19 @@ func (g *gen) skenv() *Schema {
 	skillsDir.Pattern = RelPathPattern
 	skillsDir.PatternErrorMessage = relPathMessage
 	skillsDir.Default = manifest.DefaultSkillsDir
+	skills := own.Properties.get("skills")
+	skills.MinItems = 1
+	skills.UniqueItems = true
+	skills.Items = skillName()
+	exclude := own.Properties.get("exclude").Items
+	exclude.Pattern = `^[^/]+$`
+	exclude.PatternErrorMessage = `A glob over skill names, without "/".`
 
 	vendor.Required = []string{"name", "repo", "rev"}
 	name := vendor.Properties.get("name")
-	name.Pattern = skillname.Pattern
-	name.MaxLength = skillname.MaxLen
-	name.PatternErrorMessage = "A skill name is " + skillname.Rule + "."
-	name.Not = &Schema{Const: manifest.Reserved, ErrorMessage: `"` + manifest.Reserved + `" is reserved: ~/.claude/skills/` + manifest.Reserved + ` is managed by Claude.`}
+	desc := name.Description
+	*name = *skillName()
+	name.Description = desc
 	vendor.Properties.get("repo").MinLength = 1
 	path := vendor.Properties.get("path")
 	path.Pattern = RelPathPattern
@@ -232,6 +240,18 @@ func (g *gen) skenv() *Schema {
 			{"vendor", vendor},
 			{"host", host},
 		},
+	}
+}
+
+// skillName is the schema of a skill name in the manifest.
+func skillName() *Schema {
+	return &Schema{
+		Type:                "string",
+		Pattern:             skillname.Pattern,
+		MaxLength:           skillname.MaxLen,
+		PatternErrorMessage: "A skill name is " + skillname.Rule + ".",
+		Not: &Schema{Const: manifest.Reserved, ErrorMessage: `"` + manifest.Reserved + `" is reserved: ~/.claude/skills/` +
+			manifest.Reserved + ` is managed by Claude.`},
 	}
 }
 

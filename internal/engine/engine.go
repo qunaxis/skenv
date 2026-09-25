@@ -68,6 +68,10 @@ type Engine struct {
 	// ownUnavailable is set when an own repository could not be listed;
 	// pruning is skipped then so its links are not mistaken for stale ones.
 	ownUnavailable bool
+	// unselected says why a skill that exists is not installed here: not
+	// selected by skills/exclude of its own repository, or skipped on this
+	// host. Set by skills.
+	unselected map[string]string
 }
 
 // ErrNoManifest means no manifest location is configured. skenv does not
@@ -158,6 +162,7 @@ func (e *Engine) ownPath(o *manifest.Own) string { return paths.Expand(e.env.Hom
 func (e *Engine) skills() ([]Skill, error) {
 	own := map[int][]string{}
 	e.ownUnavailable = false
+	e.unselected = map[string]string{}
 	for i := range e.m.Own {
 		o := &e.m.Own[i]
 		dir := filepath.Join(e.ownPath(o), filepath.FromSlash(o.SkillsDir))
@@ -166,6 +171,7 @@ func (e *Engine) skills() ([]Skill, error) {
 			e.ownUnavailable = true
 			continue
 		}
+		var found []string
 		for _, de := range entries {
 			if strings.HasPrefix(de.Name(), ".") || !de.IsDir() {
 				continue
@@ -173,11 +179,26 @@ func (e *Engine) skills() ([]Skill, error) {
 			if _, err := os.Stat(filepath.Join(dir, de.Name(), "SKILL.md")); err != nil {
 				continue
 			}
-			if err := manifest.ValidName(de.Name()); err != nil {
-				e.warnf("skipping %s: %v", e.show(filepath.Join(dir, de.Name())), err)
+			found = append(found, de.Name())
+		}
+		// skills and exclude select from the repository; M1 is checked on
+		// the selection, before host.skip, so the manifest is valid or not
+		// the same way on every host.
+		selected, err := o.Select(found)
+		if err != nil {
+			return nil, fmt.Errorf("manifest %s: %w", e.show(e.manifestPath), err)
+		}
+		for _, name := range selected {
+			if err := manifest.ValidName(name); err != nil {
+				e.warnf("skipping %s: %v", e.show(filepath.Join(dir, name)), err)
 				continue
 			}
-			own[i] = append(own[i], de.Name())
+			own[i] = append(own[i], name)
+		}
+		for _, name := range found {
+			if !o.Selects(name) {
+				e.unselected[name] = fmt.Sprintf("not selected by own %s (skills/exclude)", o.Repo)
+			}
 		}
 	}
 	refs, err := e.m.CheckNames(own)
@@ -188,6 +209,7 @@ func (e *Engine) skills() ([]Skill, error) {
 	var out []Skill
 	for _, r := range refs {
 		if skip[r.Name] {
+			e.unselected[r.Name] = "skipped on this host (host." + e.env.Hostname + ".skip)"
 			continue
 		}
 		s := Skill{Name: r.Name, Vendor: r.Vendor}
@@ -312,6 +334,7 @@ type OwnDir struct {
 	Repo      string
 	Path      string // expanded working copy path
 	SkillsDir string
+	Own       manifest.Own
 }
 
 // OwnDirs lists the own repositories of the manifest.
@@ -319,7 +342,7 @@ func (e *Engine) OwnDirs() []OwnDir {
 	out := make([]OwnDir, 0, len(e.m.Own))
 	for i := range e.m.Own {
 		o := &e.m.Own[i]
-		out = append(out, OwnDir{Repo: o.Repo, Path: e.ownPath(o), SkillsDir: o.SkillsDir})
+		out = append(out, OwnDir{Repo: o.Repo, Path: e.ownPath(o), SkillsDir: o.SkillsDir, Own: *o})
 	}
 	return out
 }

@@ -98,7 +98,12 @@ func (e *Engine) Doctor(asJSON bool) (int, error) {
 			continue
 		}
 		if _, err := os.Lstat(p); err == nil {
-			add(ClassExtraManaged, e.st.Managed[p].Skill, p, "managed by skenv but no longer in the manifest; `skenv sync` removes it")
+			skill := e.st.Managed[p].Skill
+			detail := "managed by skenv but no longer in the manifest; `skenv sync` removes it"
+			if why, ok := e.unselected[skill]; ok {
+				detail = why + "; `skenv sync` removes it"
+			}
+			add(ClassExtraManaged, skill, p, detail)
 		}
 	}
 

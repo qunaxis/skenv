@@ -174,7 +174,11 @@ func (e *Engine) removeManaged(p string, entry state.Entry) {
 		}
 		return
 	}
-	e.changef("remove %s (skill %q is no longer in the manifest)", e.show(p), entry.Skill)
+	why := "is no longer in the manifest"
+	if r, ok := e.unselected[entry.Skill]; ok {
+		why = "is " + r
+	}
+	e.changef("remove %s (skill %q %s)", e.show(p), entry.Skill, why)
 	if e.opts.DryRun {
 		return
 	}

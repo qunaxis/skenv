@@ -166,6 +166,31 @@
           "pattern": "^(\\.|([^/.][^/]*|\\.[^/.][^/]*|\\.\\.[^/]+)(/([^/.][^/]*|\\.[^/.][^/]*|\\.\\.[^/]+))*)?$",
           "default": "skills",
           "patternErrorMessage": "A relative path inside the repository (\".\" for its root), without \"..\", empty segments or a trailing \"/\"."
+        },
+        "skills": {
+          "description": "Lists the skills of this repository to install; without it every skill is installed, and a skill added to the repository later is too. A name that is not a skill of the repository is an error. It must not be empty: remove the entry instead.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "maxLength": 64,
+            "not": {
+              "const": "synced",
+              "errorMessage": "\"synced\" is reserved: ~/.claude/skills/synced is managed by Claude."
+            },
+            "patternErrorMessage": "A skill name is lowercase letters, digits and single hyphens, with no hyphen at the start or end."
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "exclude": {
+          "description": "Lists glob patterns over skill names (no \"/\") that are not installed, applied after skills; host.<name>.skip applies after both. A pattern that matches nothing is fine.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[^/]+$",
+            "patternErrorMessage": "A glob over skill names, without \"/\"."
+          }
         }
       },
       "required": [

@@ -49,7 +49,7 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, repo st
 		return engine.ExitFatal, usageError{fmt.Sprintf("new: --repo must be private or public, got %q", repo)}
 	}
 
-	var root, skillsDir string
+	var root, skillsDir, note string
 	if dir != "" {
 		if root, err = gitRoot(ctx, dir); err != nil {
 			return engine.ExitFatal, err
@@ -97,6 +97,10 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, repo st
 			return engine.ExitFatal, errors.New(msg)
 		case 1:
 			root, skillsDir = matches[0].Path, matches[0].SkillsDir
+			if o := matches[0].Own; !o.Selects(name) {
+				note = fmt.Sprintf("note: [[environment.own]] %s selects its skills with skills/exclude and does not select %s; "+
+					"add it to skills in the manifest to install it", o.Repo, name)
+			}
 		default:
 			var names []string
 			for _, m := range matches {
@@ -128,6 +132,9 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, repo st
 		}
 	}
 	fmt.Fprintf(env.Stdout, "created %s (SKILL.md, references/notes.md)\n", paths.Collapse(env.Home, skill))
+	if note != "" {
+		fmt.Fprintln(env.Stderr, note)
+	}
 	if findings := lint.Skill(skill); len(findings) > 0 {
 		for _, f := range findings {
 			fmt.Fprintln(env.Stderr, f)
