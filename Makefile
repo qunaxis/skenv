@@ -3,7 +3,7 @@ GO            ?= go
 STATICCHECK   ?= $(GO) run honnef.co/go/tools/cmd/staticcheck@2026.2.1
 GOLANGCI_LINT ?= golangci-lint
 
-.PHONY: help build test lint check check-commits hooks release snapshot clean
+.PHONY: help build test lint check check-commits hooks release snapshot demo clean
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -33,6 +33,9 @@ release: ## tag and publish the next version (needs GITHUB_TOKEN)
 
 snapshot: ## local goreleaser build without publishing
 	goreleaser release --snapshot --clean
+
+demo: ## re-record docs/demo/demo.gif with vhs (sandbox in /tmp)
+	vhs docs/demo/demo.tape
 
 clean:
 	rm -rf skenv dist
