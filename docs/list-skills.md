@@ -83,6 +83,7 @@ project it checks the project instead. Reference:
 | ----------------------------- | --------------------------------------------------------------------------------------------------- |
 | `missing`                     | a skill is not in the store, or not linked for any agent; an own repository is not cloned           |
 | `agent-mismatch`              | a skill is linked for some agents but not all                                                       |
+| `manifest-checkout`           | the manifest is not in the working copy its own entry names, so `sync` never pulls it: `skenv use` that working copy, or clone the repository there |
 | `extra-managed`               | a path skenv created is no longer in the manifest, not selected, or skipped on this host (`sync` removes it) |
 | `unmanaged`                   | something in the store or an agent directory that is not from the manifest                          |
 | `conflict`                    | a path the manifest needs is taken by something skenv did not create                                |

@@ -217,8 +217,8 @@ skenv init                                           # adds [environment] to ske
 skenv vendor add <owner>/<repo> --path <skill-dir>   # pin and install a skill
 skenv sync                                           # link the skills of the manifest
 skenv list                                           # every skill: installed
-skenv doctor                                         # exit 0: the machine matches
 git add skenv.toml && git commit -m "chore(manifest): start the manifest" && git push
+skenv doctor                                         # exit 0: the machine matches
 ```
 
 **Adopting skills already installed** with `npx skills add -g`, by hand or
@@ -229,8 +229,8 @@ cd ~/src/<skills-repo>
 skenv init --import --dry-run   # what becomes managed, what is not imported
 skenv init --import             # record them, back up and take them over
 skenv list
-skenv doctor
 git add skenv.toml && git commit -m "chore(manifest): import installed skills" && git push
+skenv doctor
 ```
 
 A skill whose installed commit skenv cannot find is recorded but left as

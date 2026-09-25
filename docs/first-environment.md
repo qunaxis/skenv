@@ -8,8 +8,9 @@ the machine, and push the manifest so other machines can use it.
 - [1. Pick the repository](#1-pick-the-repository)
 - [2. Start the manifest](#2-start-the-manifest)
 - [3. Add a skill](#3-add-a-skill)
-- [4. Apply and verify](#4-apply-and-verify)
+- [4. Apply](#4-apply)
 - [5. Commit and push](#5-commit-and-push)
+- [6. Verify](#6-verify)
 - [Next steps](#next-steps)
 
 ## 1. Pick the repository
@@ -103,20 +104,17 @@ last element of `--path`. More in
 [Add, update and remove skills](manage-skills.md). To write a skill of your
 own instead, see [Create a skill](create-skill.md).
 
-## 4. Apply and verify
+## 4. Apply
 
 ```sh
 skenv sync
 skenv list
-skenv doctor
 ```
 
 `skenv sync` links the skills of your own repository and anything else the
 manifest lists. `skenv list` shows each skill with its state, `installed`
 when it is in the store and linked into every agent directory found on
-this machine. `skenv doctor` exits 0 with
-`ok: N skills match ~/src/<skills-repo>/skenv.toml ...` when the machine
-matches the manifest. Start a new agent session to pick up new skills.
+this machine. Start a new agent session to pick up new skills.
 
 ## 5. Commit and push
 
@@ -128,6 +126,19 @@ git -C ~/src/<skills-repo> add skenv.toml
 git -C ~/src/<skills-repo> commit -m "chore(manifest): start the manifest"
 git -C ~/src/<skills-repo> push -u origin HEAD
 ```
+
+## 6. Verify
+
+```sh
+skenv doctor
+```
+
+`skenv doctor` exits 0 with
+`ok: N skills match ~/src/<skills-repo>/skenv.toml ...` when the machine
+matches the manifest. It also checks the own repositories against their
+upstream, so run it after the push: before it, the uncommitted
+`skenv.toml` is reported as `dirty` and a branch without upstream as a
+warning.
 
 ## Next steps
 

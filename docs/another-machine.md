@@ -51,10 +51,18 @@ next steps:
 `codeberg:owner/repo` or a full git URL for other hosts (see
 [Git hosts](git-hosts.md)).
 
-A warning `sync would clone a second working copy` means the manifest lists
-its own repository at another `path` than where you cloned it. Either clone
-to that path, or set `path` of that `[[environment.own]]` entry to the
-checkout, commit and push it (see [the manifest format](manifest.md#format)).
+The manifest usually lists its own repository as an own entry, and its
+`path` is the working copy `sync` keeps up to date. Without a directory
+argument, `skenv clone` puts a new clone at that `path` when nothing is
+there yet (the output says `moved it to ...`). If you clone elsewhere,
+`clone` warns: `sync` would keep a second working copy at `path` and never
+pull the checkout that holds your manifest, so manifest changes pushed from
+other machines would not arrive. Follow the advice in the warning: clone to
+that path (`skenv clone <owner>/<skills-repo> <path>`), or `skenv use <path>`
+when a working copy is already there. Until then `sync` warns and
+`skenv doctor` reports `manifest-checkout` (exit 1). Changing `path` in the
+manifest moves it on every machine, so do that only if every machine
+should use the new location.
 
 ## 2. Preview and apply
 
@@ -144,7 +152,9 @@ current directory by itself; `skenv use` is the only switch.
   and they run `skenv sync` (or autostart runs it within the hour).
 - `skenv sync` pulls own repositories with `--ff-only`. A working copy with
   uncommitted changes or a diverged branch is left alone with a warning;
-  `skenv doctor` reports it as `dirty`, `unpushed` or `behind`.
+  `skenv doctor` reports it as `dirty`, `unpushed` or `behind`, and a
+  manifest outside the working copy that `sync` pulls as
+  `manifest-checkout`.
 - `skenv sync --dry-run` does not pull, so it cannot show changes pushed
   from another machine that are not in the local working copy yet; the
   output marks such repositories.

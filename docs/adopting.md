@@ -25,7 +25,7 @@ skills repository):
 cd ~/src/<skills-repo>
 skenv init --import --dry-run   # the plan: new manifest, entries, lock changes
 skenv init --import
-skenv doctor
+skenv list
 ```
 
 `skenv init --import` does what `skenv init` does
@@ -52,7 +52,7 @@ expected here: the new manifest is not committed yet. Then verify:
 
 ```sh
 skenv list     # the imported skills: installed (unmatched ones: conflict)
-skenv doctor   # exit 0, or the skills left for you to decide
+skenv doctor   # after you commit and push skenv.toml: exit 0, or the skills left for you to decide
 ```
 
 Commit the manifest and push it, so that other machines can
@@ -81,7 +81,7 @@ skenv import
 skenv sync --dry-run --adopt
 skenv sync --adopt
 
-# 4. The machine matches the manifest (exit 0).
+# 4. Commit and push skenv.toml; then the machine matches the manifest (exit 0).
 skenv doctor
 ```
 
