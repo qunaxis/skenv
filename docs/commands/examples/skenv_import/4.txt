@@ -1,0 +1,25 @@
+exit 0
+becomes managed: 1 entry in ~/src/web-app/skenv.toml
+  exact: the commit has the hash recorded in the lock
+    release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
+project-own skill .agents/skills/deploy: kept as it is; sync mirrors it
+add [project] to ~/src/web-app/skenv.toml
+remove release-notes from skills-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/src/web-app/skills-lock.json)
+--- ~/src/web-app/skenv.toml
++++ ~/src/web-app/skenv.toml
++#:schema https://qunaxis.github.io/skenv/schemas/skenv.schema.json
++# The skills this project carries, committed with it: `skenv sync` copies the
++# pinned ones into dir and mirrors dir. Reference: https://qunaxis.github.io/skenv/project-skills
++[project]
++mirrors = [".claude/skills"]
++
++[[project.vendor]]
++name = "release-notes"
++repo = "example-vendor/tools"
++path = "tools/release-notes"
++rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
+import: 1 [project] entry (1 exact), 1 removed from skills-lock.json, 1 project-own skills, 0 differing duplicates, 0 warnings, 0 errors
+next: `skenv sync --adopt` replaces the installed copies with managed ones (the old ones go to ~/.local/state/skenv/backup)
+the project skills changed; to commit them:
+  git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
+  git -C ~/src/web-app commit -m "chore(skills): import project skills"

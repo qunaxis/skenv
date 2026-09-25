@@ -1,24 +1,27 @@
 exit 0
-import vendor release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
-  its computedHash 652cdbb69a71 is the sha256 of the files of tools/release-notes at that commit
-project-own skill .agents/skills/deploy: kept as it is; sync mirrors it
---- ~/src/web-app/skenv.toml
-+++ ~/src/web-app/skenv.toml
-+#:schema https://qunaxis.github.io/skenv/schemas/skenv.schema.json
-+# The skills this project carries, committed with it: `skenv sync` copies the
-+# pinned ones into dir and mirrors dir. Reference: https://qunaxis.github.io/skenv/project-skills
-+[project]
-+mirrors = [".claude/skills"]
+becomes managed: 1 entry in ~/src/skills/skenv.toml
+  unmatched: no commit matched, pinned to the tip of the branch; the installed copy may differ
+    release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4: skillFolderHash 000000000000 is not in the history of the default branch, and no commit has the files of the installed copy; HEAD of the default branch
+not imported: 1
+  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
+remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
+--- ~/src/skills/skenv.toml
++++ ~/src/skills/skenv.toml
+ path = "tools/diagrams"
+ rev = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
 +
-+[[project.vendor]]
++[[environment.vendor]]
 +name = "release-notes"
 +repo = "example-vendor/tools"
 +path = "tools/release-notes"
 +rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
-add [project] to ~/src/web-app/skenv.toml
-remove release-notes from skills-lock.json (a copy goes to ~/.local/state/skenv/backup/<timestamp>/src/web-app/skills-lock.json)
-import: 1 [project] entry, 1 removed from skills-lock.json, 1 project-own skills, 0 differing duplicates, 0 warnings, 0 errors
-next: `skenv sync --adopt` replaces the installed copies with the pinned ones (the old ones go to ~/.local/state/skenv/backup)
-the project skills changed; to commit them:
-  git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
-  git -C ~/src/web-app commit -m "chore(skills): import project skills"
+import: 1 manifest entry (1 unmatched), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
+manifest changed but not committed; to commit:
+  git -C ~/src/skills commit -m "chore(manifest): import installed skills" -- skenv.toml
+warning: ~/src/skills has uncommitted changes; not pulling (commit or stash, then rerun sync)
+leave ~/.agents/skills/release-notes as it is: release-notes was pinned without a matching commit, so it is not taken over
+sync: 0 changes, 1 warnings, 0 errors
+recorded in ~/src/skills/skenv.toml: release-notes
+taken over: none
+left as installed (unmatched): release-notes; decide for each:
+  release-notes: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to ~/.local/state/skenv/backup), or `skenv vendor remove release-notes` drops the entry and leaves the copy to neither skenv nor the skills CLI (its lock entry is in the backup of the lock)

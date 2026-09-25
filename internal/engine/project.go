@@ -31,6 +31,8 @@ type ProjectEngine struct {
 	removed map[string]bool
 	// hintPaths are more paths for the commit hint.
 	hintPaths []string
+	// kept are the skills of opts.Keep that sync leaves as installed.
+	kept map[string]bool
 }
 
 // FindProject returns the skenv file at the root of the git repository
@@ -146,11 +148,40 @@ func (e *ProjectEngine) rel(p string) string {
 // its rev, remove copies whose entry is gone, and give every skill of dir
 // to each mirror.
 func (e *ProjectEngine) Sync() (int, error) {
+	e.keep()
 	e.syncCopies()
 	e.syncMirrors()
 	e.warnIgnored()
 	e.commitHint("")
 	return e.summary("project sync"), nil
+}
+
+// keep sets kept: the skills of opts.Keep whose copy in dir has no
+// marker, or whose mirror entry skenv did not place.
+func (e *ProjectEngine) keep() {
+	e.kept = map[string]bool{}
+	for _, name := range e.opts.Keep {
+		if _, ok := e.p.Skill(name); !ok {
+			continue
+		}
+		var found []string
+		p := e.abs(e.p.Dir, name)
+		if _, err := os.Lstat(p); err == nil {
+			if _, err := readMarker(p); err != nil {
+				found = append(found, p)
+			}
+		}
+		for _, m := range e.p.Mirrors {
+			p := e.abs(m, name)
+			if _, err := os.Lstat(p); err == nil && !e.isMirrorEntry(p, name) {
+				found = append(found, p)
+			}
+		}
+		if len(found) > 0 {
+			e.infof("leave %s as it is: %s was pinned without a matching commit, so it is not taken over", e.rel(found[0]), name)
+			e.kept[name] = true
+		}
+	}
 }
 
 // syncCopies brings the copies in dir in line with the entries of
@@ -160,7 +191,9 @@ func (e *ProjectEngine) syncCopies() {
 	want := map[string]bool{}
 	for _, s := range e.p.Skills() {
 		want[s.Name] = true
-		e.syncCopy(s, filepath.Join(dir, s.Name))
+		if !e.kept[s.Name] {
+			e.syncCopy(s, filepath.Join(dir, s.Name))
+		}
 	}
 	entries, _ := os.ReadDir(dir)
 	for _, de := range entries {
@@ -317,7 +350,9 @@ func (e *ProjectEngine) syncMirrors() {
 		in := map[string]bool{}
 		for _, name := range names {
 			in[name] = true
-			e.syncMirror(mdir, name)
+			if !e.kept[name] {
+				e.syncMirror(mdir, name)
+			}
 		}
 		entries, _ := os.ReadDir(mdir)
 		for _, de := range entries {

@@ -27,7 +27,8 @@ To use an existing manifest on this machine: `skenv clone <repo>`, or
 
 With `--import`: start the manifest, import the skills already installed on
 this machine into it (see `skenv import`) and run `skenv sync --adopt`: one
-command to adopt an existing setup.
+command to adopt an existing setup. Skills pinned without a matching commit
+are recorded but left as installed.
 
 An existing file keeps its format: `--format` that disagrees with it is an
 error (exit code 2), and nothing is written.
@@ -39,7 +40,8 @@ error (exit code 2), and nothing is written.
   the lock of the skills CLI and what `skenv sync --adopt` changes.
 - Network: none; `--import` fetches the repositories of the installed skills.
 - Conflicts: with `--import`, installed copies are moved to
-  `~/.local/state/skenv/backup/<ts>/` and replaced.
+  `~/.local/state/skenv/backup/<ts>/` and replaced, except skills pinned
+  without a matching commit, which stay as installed.
 - Preview: `--dry-run` writes nothing except, with `--import`, the clone cache.
 - Next: commit and push the skenv file, then `skenv clone <repo>` on your other
   machines.
@@ -66,10 +68,16 @@ Start one with the skills already installed here, and take them over:
 
 ```console
 $ skenv init --import
-import vendor release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
-  its skillFolderHash 2e46bd8f52d2 is the tree of tools/release-notes at that commit
-unmanaged ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
-add own example-org/my-skills at ~/src/my-skills (the repository of the manifest)
+becomes managed: 2 entries in ~/src/my-skills/skenv.toml
+  exact: the commit has the hash recorded in the lock
+    release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
+  own: repositories kept as git working copies
+    example-org/my-skills at ~/src/my-skills (the repository of the manifest)
+not imported: 1
+  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
+create ~/src/my-skills/skenv.toml with [environment]
+manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
+remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/my-skills/skenv.toml
 +++ ~/src/my-skills/skenv.toml
 +#:schema https://qunaxis.github.io/skenv/schemas/skenv.schema.json
@@ -102,10 +110,7 @@ add own example-org/my-skills at ~/src/my-skills (the repository of the manifest
 +# repo = "<owner>/<repo>"
 +# path = "<directory of the skill in the repository>"
 +# rev  = "<full 40-character commit SHA>"
-create ~/src/my-skills/skenv.toml with [environment]
-manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
-remove release-notes from ~/.agents/.skill-lock.json (a copy goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
-import: 1 manifest entry, 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
+import: 2 manifest entries (1 exact, 1 own), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
 manifest changed but not committed; to commit:
   git -C ~/src/my-skills commit -m "chore(manifest): import installed skills" -- skenv.toml
 warning: ~/src/my-skills has uncommitted changes; not pulling (commit or stash, then rerun sync)
@@ -118,6 +123,8 @@ adopt ~/.claude/skills/release-notes (old content → ~/.local/state/skenv/backu
 link ~/.claude/skills/release-notes → ../../.agents/skills/release-notes
 link ~/.pi/agent/skills/release-notes → ../../../.agents/skills/release-notes
 sync: 8 changes, 1 warnings, 0 errors
+recorded in ~/src/my-skills/skenv.toml: release-notes
+taken over: release-notes
 ```
 
 Start one in a repository without an origin yet, to be pushed to `gitlab.com`:

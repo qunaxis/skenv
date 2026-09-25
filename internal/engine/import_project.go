@@ -25,7 +25,8 @@ var agentDirs = []string{manifest.DefaultProjectDir, ".claude/skills", ".pi/skil
 // duplicates among the agent directories, and removes the imported
 // entries from the lock. A skenv file without [project] gets one, a
 // repository without a skenv file a skenv.toml. With sync, `skenv sync
-// --adopt` follows in the project.
+// --adopt` follows in the project, leaving the skills pinned without a
+// matching commit as installed.
 func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) (int, error) {
 	if err := gitx.Available(); err != nil {
 		return ExitFatal, err
@@ -105,13 +106,21 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 		return code, nil
 	}
 	e.Close()
-	s, err := OpenProject(ctx, env, Options{Adopt: true}, file)
+	s, err := OpenProject(ctx, env, Options{Adopt: true, Keep: r.unmatched}, file)
 	if err != nil {
 		return ExitFatal, err
 	}
 	defer s.Close()
 	s.hintPaths = e.hintPaths
-	return s.Sync()
+	code, err = s.Sync()
+	if err != nil {
+		return code, err
+	}
+	s.reportTakeover(&r.imported, s.show(file), " --project", func(name string) bool {
+		_, err := readMarker(s.abs(s.p.Dir, name))
+		return err == nil
+	})
+	return code, nil
 }
 
 // projectImport is the outcome of importLock.
@@ -145,13 +154,15 @@ func (e *ProjectEngine) importLock(before, start []byte, fresh bool) (*projectIm
 			continue
 		}
 		if _, err := lockRepo(le, e.hosts); err != nil {
-			e.infof("skip %s of %s: %v; it stays in the lock", name, projectLockName, err)
+			r.skipped = append(r.skipped, fmt.Sprintf("%s, in %s: %v; it stays in the lock", name, projectLockName, err))
 			continue
 		}
-		v, ok := e.lockVendor(name, le, e.installedCopy(name))
-		if !ok {
+		v, how, note, err := e.lockVendor(name, le, e.installedCopy(name))
+		if err != nil {
+			r.failed = append(r.failed, fmt.Sprintf("cannot import %s: %v", name, err))
 			continue
 		}
+		r.addVendor(v, how, note)
 		if out, err = manifest.AppendVendor(out, ext, skenvfile.Project, v); err != nil {
 			return nil, err
 		}
@@ -169,10 +180,9 @@ func (e *ProjectEngine) importLock(before, start []byte, fresh bool) (*projectIm
 	}
 	e.p = p
 	r.out = out
+	r.diff = strings.TrimSuffix(lineDiff(e.show(e.file), before, out), "\n")
+	e.report(&r.imported, e.show(e.file))
 	e.reportOwn(r, lock)
-	if d := lineDiff(e.show(e.file), before, out); d != "" {
-		e.infof("%s", strings.TrimSuffix(d, "\n"))
-	}
 	return r, nil
 }
 
@@ -342,9 +352,12 @@ func fileList(paths []string) string {
 	return fmt.Sprintf("%s (%s)", n, list)
 }
 
-// finishProjectImport prints the summary and the next step and returns
-// the exit code. sync says `skenv sync --adopt` follows.
+// finishProjectImport prints the diff, the summary and the next step and
+// returns the exit code. sync says `skenv sync --adopt` follows.
 func (e *ProjectEngine) finishProjectImport(r *projectImport, sync bool) int {
+	if r.diff != "" {
+		e.infof("%s", r.diff)
+	}
 	switch {
 	case r.entries == 0 && len(r.unlock) == 0 && !r.changed():
 		fmt.Fprintf(e.env.Stdout, "import: nothing to import")
@@ -357,20 +370,16 @@ func (e *ProjectEngine) finishProjectImport(r *projectImport, sync bool) int {
 		if r.entries == 1 {
 			entries = "entry"
 		}
-		fmt.Fprintf(e.env.Stdout, "import: %s%d [project] %s, %d removed from %s", verb, r.entries, entries, len(r.unlock), projectLockName)
+		fmt.Fprintf(e.env.Stdout, "import: %s%d [project] %s%s, %d removed from %s", verb, r.entries, entries, r.groups(), len(r.unlock), projectLockName)
 	}
 	fmt.Fprintf(e.env.Stdout, ", %d project-own skills, %d differing duplicates, %d warnings, %d errors\n", r.own, r.duplicates, e.warnings, e.errs)
 	pending := r.changed() || len(r.unlock) > 0
 	blocked := sync && (e.errs > 0 || r.duplicates > 0)
 	switch {
-	case sync && e.errs > 0:
-		e.infof("not running skenv sync --adopt: fix the errors above, then run it")
-	case sync && r.duplicates > 0:
+	case sync && e.errs == 0 && r.duplicates > 0:
 		e.infof("not running skenv sync --adopt: resolve the differing duplicates above, then run it")
-	case sync && e.opts.DryRun:
-		e.infof("would run skenv sync --adopt")
-	case !sync && pending && !e.opts.DryRun:
-		e.infof("next: `skenv sync --adopt` replaces the installed copies with the pinned ones (the old ones go to %s)", e.show(e.layout.Backup()))
+	case sync || pending:
+		e.nextAfterImport(&r.imported, sync, " --project")
 	}
 	if pending && (!sync || blocked) {
 		e.commitHint("import project skills")

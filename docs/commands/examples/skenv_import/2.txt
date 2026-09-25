@@ -1,7 +1,10 @@
 exit 0
-import vendor release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
-  its skillFolderHash 2e46bd8f52d2 is the tree of tools/release-notes at that commit
-unmanaged ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
+becomes managed: 1 entry in ~/src/skills/skenv.toml
+  exact: the commit has the hash recorded in the lock
+    release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
+not imported: 1
+  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
+remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/skills/skenv.toml
 +++ ~/src/skills/skenv.toml
  path = "tools/diagrams"
@@ -12,8 +15,7 @@ unmanaged ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a li
 +repo = "example-vendor/tools"
 +path = "tools/release-notes"
 +rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
-remove release-notes from ~/.agents/.skill-lock.json (a copy goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
-import: 1 manifest entry, 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
-next: `skenv sync --adopt` replaces the copies and links found with managed ones (the old ones go to ~/.local/state/skenv/backup)
+import: 1 manifest entry (1 exact), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
+next: `skenv sync --adopt` replaces the installed copies with managed ones (the old ones go to ~/.local/state/skenv/backup)
 manifest changed but not committed; to commit:
   git -C ~/src/skills commit -m "chore(manifest): import installed skills" -- skenv.toml

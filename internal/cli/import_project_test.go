@@ -147,10 +147,11 @@ func TestImportProject(t *testing.T) {
 	out, errOut := w.mustRun(0, "import", "--project", "--dry-run")
 	assertUnchanged(t, before, dirs...)
 	for _, want := range []string{
-		"would import vendor archify from ext/tools (tools/archify) at " + revs["archify"][:12],
+		"would become managed: 4 entries in ~/src/app/skenv.toml\n  exact: the commit has the hash recorded in the lock\n" +
+			"    archify from ext/tools (tools/archify) at " + revs["archify"][:12] + "\n",
 		"+[project]\n+mirrors = [\".claude/skills\"]\n",
 		"would remove archify, drifted, lost, notes from skills-lock.json",
-		"import: planned: 4 [project] entries, 4 removed from skills-lock.json, 4 project-own skills, 1 differing duplicates",
+		"import: planned: 4 [project] entries (2 exact, 1 same files, 1 unmatched), 4 removed from skills-lock.json, 4 project-own skills, 1 differing duplicates",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dry run lacks %q:\n%s%s", want, out, errOut)
@@ -173,10 +174,15 @@ func TestImportProject(t *testing.T) {
 		t.Errorf("skenv.toml:\n%s", text)
 	}
 	for _, want := range []string{
-		"import vendor archify from ext/tools (tools/archify) at " + revs["archify"][:12] +
-			"\n  its computedHash da0cf8317c7a is the sha256 of the files of tools/archify at that commit",
-		"import vendor notes from gitlab:grp/sub/tools (notes) at " + revs["notes"][:12] + "\n  its computedHash",
-		`skip local-one of skills-lock.json: installed from a "local" source, not a git repository`,
+		"    archify from ext/tools (tools/archify) at " + revs["archify"][:12] + "\n" +
+			"    notes from gitlab:grp/sub/tools (notes) at " + revs["notes"][:12] + "\n" +
+			"  same files: the commit has the files of the installed copy (no commit has the hash in the lock)\n" +
+			"    lost from ext/tools (tools/lost) at " + revs["lost"][:12] + ": computedHash 000000000000 is not in the history of the default branch\n" +
+			"  unmatched: no commit matched, pinned to the tip of the branch; the installed copy may differ\n" +
+			"    drifted from ext/tools (tools/drifted) at " + revs["drifted"][:12] + ": computedHash 111111111111 is not in the history of the default branch, " +
+			"and no commit has the files of the installed copy; HEAD of the default branch\n" +
+			"not imported: 1\n",
+		`  local-one, in skills-lock.json: installed from a "local" source, not a git repository`,
 		"project-own skill .agents/skills/deploy: kept as it is",
 		"project-own skill same is in .agents/skills/same, .claude/skills/same with the same files",
 		"add [project] to ~/src/app/skenv.toml",
@@ -188,8 +194,6 @@ func TestImportProject(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"vendor lost: computedHash 000000000000 is not in the history of the default branch; pinned " + revs["lost"][:12] + ", whose files match the installed copy",
-		"vendor drifted: computedHash 111111111111 is not in the history of the default branch, and no commit has the files of the installed copy; pinned HEAD " + revs["drifted"][:12],
 		"project-own skill solo is only in .claude/skills/solo: move it to .agents/skills/solo",
 		"project-own skill dup is in .agents/skills/dup, .claude/skills/dup, and the copies differ (.agents/skills/dup and .claude/skills/dup differ: " +
 			"1 file (SKILL.md) changed, 1 file (notes.md) only in .agents/skills/dup)",
@@ -235,6 +239,56 @@ func TestImportProject(t *testing.T) {
 		}
 	}
 	w.mustRun(0, "doctor", "--project")
+}
+
+// #38, project level: import --project --sync copies the skills pinned to
+// the commit of the lock hash or of the installed files, and leaves the
+// unmatched one as installed until the owner decides; `skenv vendor
+// remove --project` drops its entry and keeps the copy.
+func TestImportProjectSyncKeepsUnmatched(t *testing.T) {
+	w, revs := importProjectWorld(t)
+	for _, p := range []string{".claude/skills/dup", ".claude/skills/solo"} {
+		if err := os.RemoveAll(w.pp(p)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dirs := []string{w.path(projectDir), w.path(".local"), w.path(".config")}
+	before := snapshot(t, dirs...)
+	out, _ := w.mustRun(0, "import", "--project", "--sync", "--dry-run")
+	assertUnchanged(t, before, dirs...)
+	if !strings.Contains(out, "would run skenv sync --adopt, leaving the unmatched as installed: drifted; then decide for each:\n  drifted: ") ||
+		!strings.Contains(out, "`skenv vendor remove --project drifted`") {
+		t.Errorf("dry run:\n%s", out)
+	}
+
+	out, _ = w.mustRun(0, "import", "--project", "--sync")
+	for _, want := range []string{
+		"leave .agents/skills/drifted as it is: drifted was pinned without a matching commit, so it is not taken over\n",
+		"recorded in ~/src/app/skenv.toml: archify, drifted, lost, notes\ntaken over: archify, lost, notes\n" +
+			"left as installed (unmatched): drifted; decide for each:\n" +
+			"  drifted: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to ~/.local/state/skenv/backup), " +
+			"or `skenv vendor remove --project drifted` drops the entry and leaves the copy to neither skenv nor the skills CLI (its lock entry is in the backup of the lock)\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("import --project --sync lacks %q:\n%s", want, out)
+		}
+	}
+	for _, name := range []string{"archify", "lost", "notes"} {
+		if !strings.Contains(w.projectMarker(name), `rev = "`+revs[name]+`"`) {
+			t.Errorf("%s is not copied at %.12s", name, revs[name])
+		}
+	}
+	if w.exists(projectDir+"/.agents/skills/drifted/.skenv") || readFile(t, w.pp(".agents/skills/drifted/SKILL.md")) != skillMD("drifted", "edited here") ||
+		w.readlink(projectDir+"/.claude/skills/drifted") != "../../.agents/skills/drifted" {
+		t.Error("the installed copy of drifted changed")
+	}
+
+	// Deciding for it: vendor remove keeps the copy as a project-own skill.
+	w.mustRun(1, "doctor", "--project")
+	w.mustRun(0, "vendor", "remove", "--project", "drifted")
+	if strings.Contains(readFile(t, w.pp("skenv.toml")), "drifted") || readFile(t, w.pp(".agents/skills/drifted/SKILL.md")) != skillMD("drifted", "edited here") {
+		t.Error("vendor remove --project drifted")
+	}
 }
 
 // A skenv file without [project] gets one in its own format, comments
@@ -302,7 +356,7 @@ func TestImportGitLabSource(t *testing.T) {
 	out, errOut := w.mustRun(0, "import")
 	text := readFile(t, w.path("src/skills/skenv.toml"))
 	if !strings.Contains(text, "repo = \"gitlab:grp/sub/tools\"\npath = \"notes\"\nrev  = \""+rev+"\"") || errOut != "" ||
-		!strings.Contains(out, "its skillFolderHash 7bc654c8392e is the sha256 of the files of notes at that commit") {
+		!strings.Contains(out, "  exact: the commit has the hash recorded in the lock\n    notes from gitlab:grp/sub/tools (notes) at "+rev[:12]+"\n") {
 		t.Errorf("skenv.toml:\n%s\n%s%s", text, out, errOut)
 	}
 }

@@ -187,23 +187,29 @@ func TestImport(t *testing.T) {
 	if !strings.Contains(text, "[[environment.own]]\nrepo = \"me/mine\"\npath = \"~/src/mine\"\nskills = [\"a\", \"b\"]\n") {
 		t.Errorf("own me/mine with a selection is missing:\n%s", text)
 	}
-	for _, want := range []string{
-		"vendor lost: skillFolderHash 000000000000 is not in the history of the default branch; pinned " + revs["lost"][:12] + ", whose files match the installed copy",
-		"vendor drifted: skillFolderHash 111111111111 is not in the history of the default branch, and no commit has the files of the installed copy; pinned HEAD " + revs["drifted"][:12] + " of the default branch",
-	} {
-		if !strings.Contains(errOut, want) {
-			t.Errorf("missing warning %q:\n%s", want, errOut)
-		}
+	if strings.Contains(errOut, "pinned without a matching commit") {
+		t.Errorf("the unmatched group is repeated as a warning:\n%s", errOut)
 	}
 	for _, want := range []string{
-		"import own me/mine at ~/src/mine (skills a, b)",
-		"import vendor archify from ext/tools (tools/archify) at " + revs["archify"][:12] + "\n  its skillFolderHash",
-		"import vendor other from ext/tools (tools/other) at " + revs["other"][:12] + "\n  its skillFolderHash",
-		"unmanaged ~/.claude/skills/handmade: not in ~/.agents/.skill-lock.json and not a link into a git working copy",
+		"becomes managed: 5 entries in ~/src/skills/skenv.toml\n" +
+			"  exact: the commit has the hash recorded in the lock\n" +
+			"    archify from ext/tools (tools/archify) at " + revs["archify"][:12] + "\n" +
+			"    other from ext/tools (tools/other) at " + revs["other"][:12] + "\n" +
+			"  same files: the commit has the files of the installed copy (no commit has the hash in the lock)\n" +
+			"    lost from ext/tools (tools/lost) at " + revs["lost"][:12] + ": skillFolderHash 000000000000 is not in the history of the default branch\n" +
+			"  unmatched: no commit matched, pinned to the tip of the branch; the installed copy may differ\n" +
+			"    drifted from ext/tools (tools/drifted) at " + revs["drifted"][:12] + ": skillFolderHash 111111111111 is not in the history of the default branch, " +
+			"and no commit has the files of the installed copy; HEAD of the default branch\n" +
+			"  own: repositories kept as git working copies\n" +
+			"    me/mine at ~/src/mine (skills a, b)\n" +
+			"not imported: 3\n",
+		"  ~/.claude/skills/handmade: not in ~/.agents/.skill-lock.json and not a link into a git working copy",
 		`add "handmade" to layout.ignore`,
-		`unmanaged ~/.agents/skills/local-one: in ~/.agents/.skill-lock.json, but installed from a "local" source`,
-		"skip removed of ~/.agents/.skill-lock.json: not installed",
-		"next: `skenv sync --adopt`",
+		`  ~/.agents/skills/local-one: in ~/.agents/.skill-lock.json, but installed from a "local" source`,
+		"  removed, in ~/.agents/.skill-lock.json: not installed",
+		"remove alpha, archify, drifted, lost, other from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over",
+		"import: 5 manifest entries (2 exact, 1 same files, 1 unmatched, 1 own), 5 removed from the skills lock, 2 unmanaged, 0 warnings, 0 errors\n",
+		"next: `skenv sync --adopt` replaces the installed copies with managed ones, the unmatched drifted included",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q:\n%s", want, out)
@@ -229,7 +235,8 @@ func TestImport(t *testing.T) {
 		t.Errorf("second import:\n%s", out)
 	}
 
-	// --sync adopts the copies; without the unmanaged ones doctor passes.
+	// --sync after an import that added nothing adopts every copy; without
+	// the unmanaged ones doctor passes.
 	for _, p := range []string{".claude/skills/handmade", ".agents/skills/local-one", ".claude/skills/local-one", ".claude/skills/plug"} {
 		if err := os.RemoveAll(w.path(p)); err != nil {
 			t.Fatal(err)
@@ -250,23 +257,38 @@ func TestImport(t *testing.T) {
 	w.mustRun(0, "doctor")
 }
 
-// Acceptance (#26): init --import starts the manifest in the repository,
-// imports and syncs, so the machine passes doctor in one command.
+// Acceptance (#26, #38): init --import starts the manifest in the
+// repository, imports and syncs, so the machine passes doctor in one
+// command, except for a skill pinned without a matching commit: its
+// installed copy stays until `skenv sync --adopt`.
 func TestInitImport(t *testing.T) {
 	w := newWorld(t)
-	rev := w.push("ext/tools", map[string]string{"tools/archify/SKILL.md": skillMD("archify", "v1")}, "feat: archify")
+	rev := w.push("ext/tools", map[string]string{
+		"tools/archify/SKILL.md": skillMD("archify", "v1"), "tools/drifted/SKILL.md": skillMD("drifted", "v1"),
+	}, "feat: archify")
 	tools := filepath.Join(w.work, "ext__tools")
 	w.push("me/skills", map[string]string{"skills/alpha/SKILL.md": skillMD("alpha", ""), "skills/beta/SKILL.md": skillMD("beta", "")}, "feat: skills")
 	mustMkdir(t, w.path("src"))
 	w.git(w.path("src"), "clone", "--quiet", "https://github.com/me/skills.git")
 	w.installed("archify", map[string]string{"SKILL.md": skillMD("archify", "v1")})
-	w.writeLock(map[string]lockEntry{"archify": githubEntry("ext/tools", "tools/archify/SKILL.md", w.git(tools, "rev-parse", rev+":tools/archify"))})
+	w.installed("drifted", map[string]string{"SKILL.md": skillMD("drifted", "edited here")})
+	w.writeLock(map[string]lockEntry{
+		"archify": githubEntry("ext/tools", "tools/archify/SKILL.md", w.git(tools, "rev-parse", rev+":tools/archify")),
+		"drifted": githubEntry("ext/tools", "tools/drifted/SKILL.md", strings.Repeat("1", 40)),
+	})
 
 	dirs := []string{w.path(".agents"), w.path(".claude"), w.path("src"), w.path(".config")}
 	before := snapshot(t, dirs...)
 	out, _ := w.mustRun(0, "init", "--import", "--dir", w.path("src/skills"), "--dry-run")
 	assertUnchanged(t, before, dirs...)
-	for _, want := range []string{"would create ~/src/skills/skenv.toml", "would add own me/skills", "would import vendor archify", "would run skenv sync --adopt"} {
+	for _, want := range []string{
+		"would create ~/src/skills/skenv.toml",
+		"    me/skills at ~/src/skills (the repository of the manifest)",
+		"    archify from ext/tools (tools/archify) at " + rev[:12],
+		"would run skenv sync --adopt, leaving the unmatched as installed: drifted; then decide for each:\n" +
+			"  drifted: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to ~/.local/state/skenv/backup), " +
+			"or `skenv vendor remove drifted` drops the entry and leaves the copy to neither skenv nor the skills CLI (its lock entry is in the backup of the lock)\n",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dry run lacks %q:\n%s", want, out)
 		}
@@ -281,11 +303,26 @@ func TestInitImport(t *testing.T) {
 		t.Error("the manifest is not recorded")
 	}
 	if len(w.lockSkills()) != 0 {
-		t.Error("archify stays in the lock")
+		t.Error("archify and drifted stay in the lock")
+	}
+	for _, want := range []string{
+		"leave ~/.agents/skills/drifted as it is: drifted was pinned without a matching commit, so it is not taken over\n",
+		"recorded in ~/src/skills/skenv.toml: archify, drifted\ntaken over: archify\nleft as installed (unmatched): drifted; decide for each:\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("init --import lacks %q:\n%s", want, out)
+		}
+	}
+	if !w.exists(".agents/skills/archify/.skenv") || w.exists(".agents/skills/drifted/.skenv") ||
+		readFile(t, w.path(".agents/skills/drifted/SKILL.md")) != skillMD("drifted", "edited here") ||
+		w.readlink(".claude/skills/drifted") != "../../.agents/skills/drifted" {
+		t.Errorf("archify must be taken over, drifted left as installed:\n%s", out)
 	}
 	w.git(w.path("src/skills"), "add", "-A")
 	w.git(w.path("src/skills"), "commit", "--quiet", "-m", "chore(manifest): import")
 	w.git(w.path("src/skills"), "push", "--quiet")
+	w.mustRun(1, "doctor")
+	w.mustRun(0, "sync", "--adopt")
 	w.mustRun(0, "doctor")
 
 	for args, want := range map[string]string{
@@ -296,6 +333,62 @@ func TestInitImport(t *testing.T) {
 			t.Errorf("skenv %s: %s", args, errOut)
 		}
 	}
+}
+
+// #38: import --sync takes over the skills pinned to the commit of the
+// lock hash or of the installed files, and leaves the unmatched ones as
+// installed, reported with the two ways to settle them; the dry run says
+// so and changes nothing.
+func TestImportSyncKeepsUnmatched(t *testing.T) {
+	w, revs := importWorld(t)
+	for _, p := range []string{".claude/skills/handmade", ".agents/skills/local-one", ".claude/skills/local-one", ".claude/skills/plug"} {
+		if err := os.RemoveAll(w.path(p)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dirs := []string{w.path(".agents"), w.path(".claude"), w.path(".pi"), w.path("src"), w.path(".local/state"), w.path(".config")}
+	before := snapshot(t, dirs...)
+	out, _ := w.mustRun(0, "import", "--sync", "--dry-run")
+	assertUnchanged(t, before, dirs...)
+	if !strings.Contains(out, "would run skenv sync --adopt, leaving the unmatched as installed: drifted; then decide for each:\n  drifted: ") {
+		t.Errorf("dry run:\n%s", out)
+	}
+
+	out, _ = w.mustRun(0, "import", "--sync")
+	for _, want := range []string{
+		"leave ~/.agents/skills/drifted as it is: drifted was pinned without a matching commit, so it is not taken over\n",
+		"recorded in ~/src/skills/skenv.toml: a, archify, b, drifted, lost, other\n" +
+			"taken over: a, archify, b, lost, other\n" +
+			"left as installed (unmatched): drifted; decide for each:\n" +
+			"  drifted: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to ~/.local/state/skenv/backup), " +
+			"or `skenv vendor remove drifted` drops the entry and leaves the copy to neither skenv nor the skills CLI (its lock entry is in the backup of the lock)\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("import --sync lacks %q:\n%s", want, out)
+		}
+	}
+	for _, name := range []string{"archify", "lost", "other"} {
+		if !strings.Contains(readFile(t, w.path(".agents/skills/"+name+"/.skenv")), revs[name]) {
+			t.Errorf("%s is not taken over at %.12s", name, revs[name])
+		}
+	}
+	if w.exists(".agents/skills/drifted/.skenv") || readFile(t, w.path(".agents/skills/drifted/SKILL.md")) != skillMD("drifted", "edited here") ||
+		w.readlink(".claude/skills/drifted") != "../../.agents/skills/drifted" || w.exists(".pi/agent/skills/drifted") {
+		t.Error("the installed copy of drifted changed")
+	}
+	if backups, _ := filepath.Glob(w.path(".local/state/skenv/backup/*/.agents/skills/drifted")); len(backups) != 0 {
+		t.Errorf("drifted went to the backup: %v", backups)
+	}
+
+	// Deciding for it: sync --adopt replaces it with the pinned commit.
+	w.git(w.path("src/skills"), "commit", "--quiet", "-am", "chore(manifest): import")
+	w.git(w.path("src/skills"), "push", "--quiet")
+	w.mustRun(1, "doctor")
+	w.mustRun(0, "sync", "--adopt")
+	if !strings.Contains(readFile(t, w.path(".agents/skills/drifted/.skenv")), revs["drifted"]) {
+		t.Error("sync --adopt did not take drifted over")
+	}
+	w.mustRun(0, "doctor")
 }
 
 // Without a configured manifest import points at init --import.

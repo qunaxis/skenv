@@ -4,13 +4,16 @@ A machine that already has skills, installed with `npx skills add -g`,
 linked by hand from a clone, or copied in, can move to skenv with one
 command: `skenv import` writes what is installed into the manifest, and
 `skenv sync --adopt` then replaces the installed copies with managed ones.
+A skill whose installed commit `import` cannot find is recorded too, but
+`--sync` leaves it as installed until you decide what to do with it.
 
 - [In one command: `init --import`](#in-one-command-init---import)
 - [Step by step](#step-by-step)
+- [What `import` changes](#what-import-changes)
+- [Reading the report](#reading-the-report)
+- [Unmatched skills and `--sync`](#unmatched-skills-and---sync)
 - [What `import` reads](#what-import-reads)
 - [How the commit of a skill is found](#how-the-commit-of-a-skill-is-found)
-- [What `import` writes](#what-import-writes)
-- [Reading the output](#reading-the-output)
 - [Project skills: `import --project`](#project-skills-import---project)
 
 ## In one command: `init --import`
@@ -28,9 +31,11 @@ skenv doctor
 `skenv init --import` does what `skenv init` does
 (adds `[environment]` to the skenv file of the repository or creates
 `skenv.toml`, and records it as your manifest), imports the installed skills
-into it, and runs `skenv sync --adopt`. The repository itself becomes an own
-repository, written from its `origin` as with `skenv init` (see
-[Git hosts](git-hosts.md#starting-a-manifest-with-skenv-init)). Commit the
+into it, and runs `skenv sync --adopt` as `skenv import --sync` does: the
+skills pinned without a matching commit stay as installed (see
+[Unmatched skills](#unmatched-skills-and---sync)). The repository itself
+becomes an own repository, written from its `origin` as with `skenv init`
+(see [Git hosts](git-hosts.md#starting-a-manifest-with-skenv-init)). Commit the
 manifest afterwards:
 
 ```sh
@@ -45,7 +50,7 @@ With a manifest already configured (`skenv clone <repo>`,
 steps you can inspect:
 
 ```sh
-# 1. Preview: the manifest diff and the lock entries that would be removed.
+# 1. Preview: what becomes managed, the manifest diff, the lock changes.
 skenv import --dry-run
 
 # 2. Write the manifest and clean the lock of the skills CLI.
@@ -59,13 +64,120 @@ skenv sync --adopt
 skenv doctor
 ```
 
-`skenv import --sync` runs step 3 right after step 2. A skenv file that has
-no `[environment]` yet gets one first, as `skenv init` adds it (and a
-public `[repo]` is refused, as there). Without any manifest, `skenv import`
-stops and points at `skenv init --import`.
+`skenv import --sync` runs step 3 right after step 2, for every skill it
+imported except the unmatched ones. Run step 3 yourself and it replaces
+those too: that is the decision. A skenv file that has no `[environment]`
+yet gets one first, as `skenv init` adds it (and a public `[repo]` is
+refused, as there). Without any manifest, `skenv import` stops and points
+at `skenv init --import`.
 
 Running `skenv import` again imports nothing: everything it added is in the
-manifest now, and it skips skills that are.
+manifest now, and it skips skills that are. So `import --sync` after an
+earlier `import` has nothing unmatched to hold back, and its
+`sync --adopt` takes over every installed copy.
+
+## What `import` changes
+
+- **The manifest**: new `[[environment.own]]` and `[[environment.vendor]]`
+  entries at the end of `[environment]`, in the format of the file, with
+  its comments and order kept. The diff is printed; the change is not
+  committed, and `import` prints the commit command.
+- **The lock of the `skills` CLI: ownership moves to skenv.** Every skill
+  that is in the manifest now is removed from
+  `~/.agents/.skill-lock.json`, so `npx skills update -g` no longer
+  overwrites a directory skenv manages; updates go through
+  `skenv vendor update` from now on. Other entries and keys stay. The lock
+  as it was goes to `~/.local/state/skenv/backup/<timestamp>/` first, under
+  its path relative to your home (`.agents/.skill-lock.json`); copy it back
+  to undo.
+- **Nothing installed**: the installed copies and links stay until
+  `skenv sync --adopt`, which moves each one it replaces to
+  `~/.local/state/skenv/backup/<timestamp>/` (see
+  [`--adopt`](commands.md#--dry-run-and---adopt)). `--sync` and
+  `init --import` run it for you, except for the unmatched skills.
+
+`--dry-run` prints the same report, diff and lock changes and writes
+nothing (it may fetch into the clone cache `~/.cache/skenv/repos` to search
+the history).
+
+## Reading the report
+
+The report leads with what becomes managed, then what is not imported, then
+the lock change and the diff:
+
+```text
+becomes managed: 4 entries in ~/src/<skills-repo>/skenv.toml
+  exact: the commit has the hash recorded in the lock
+    archify from <owner>/<repo> (skills/archify) at 6616c70c36e4
+  same files: the commit has the files of the installed copy (no commit has the hash in the lock)
+    lost from <owner>/<repo> (skills/lost) at 6616c70c36e4: skillFolderHash 000000000000 is not in the history of the default branch
+  unmatched: no commit matched, pinned to the tip of the branch; the installed copy may differ
+    drifted from <owner>/<repo> (skills/drifted) at 5d0e1f2a3b4c: skillFolderHash 111111111111 is not in the history of the default branch, and no commit has the files of the installed copy; HEAD of the default branch
+  own: repositories kept as git working copies
+    <owner>/<skills-repo> at ~/src/<skills-repo> (skills alpha, beta)
+not imported: 2
+  ~/.claude/skills/handmade: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "handmade" to layout.ignore
+  removed, in ~/.agents/.skill-lock.json: not installed in ~/.agents/skills or an agent directory; it stays in the lock
+remove archify, drifted, lost from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
+--- ~/src/<skills-repo>/skenv.toml
++++ ~/src/<skills-repo>/skenv.toml
+...
+import: 4 manifest entries (1 exact, 1 same files, 1 unmatched, 1 own), 3 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
+```
+
+- **`exact`**: the vendored skill will be what the `skills` CLI installed
+  (local edits of the copy aside: they are not in the hash).
+- **`same files`**: no commit has the hash, but one has the same files as
+  the copy on disk. Usually right; pin another commit with
+  `skenv vendor update <name> --rev <sha>` if not.
+- **`unmatched`**: nothing matched, so the entry is pinned to HEAD, which
+  may differ from what you have. See
+  [Unmatched skills](#unmatched-skills-and---sync).
+- **`own`**: an own repository, from links into its working copy (or the
+  repository of the manifest, with `init --import`).
+- **`not imported`**: with the reason and a hint. Typical ones: a
+  directory installed by hand (move it into an own repository, or add its
+  name to `layout.ignore` to leave it alone), a skill of the lock that was
+  not installed from a git repository, a link under another name than its
+  directory, an own skill that `skills` or `exclude` of its entry does not
+  select, or a lock entry that is not installed (it stays in the lock).
+  A skill that cannot be fetched is an `error:` there and exits 1; the
+  rest is imported.
+
+## Unmatched skills and `--sync`
+
+An unmatched skill is recorded in the manifest (and leaves the lock) like
+any other, but `import --sync` and `init --import` do not take it over:
+its installed copy and links stay as they are, and `doctor` reports them
+as a conflict until you decide. The exact and same-files skills and the
+own repositories are taken over as usual. After the sync the report says
+which skills it recorded and which it took over:
+
+```text
+leave ~/.agents/skills/drifted as it is: drifted was pinned without a matching commit, so it is not taken over
+...
+sync: 12 changes, 1 warnings, 0 errors
+recorded in ~/src/<skills-repo>/skenv.toml: alpha, archify, beta, drifted, lost
+taken over: alpha, archify, beta, lost
+left as installed (unmatched): drifted; decide for each:
+  drifted: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to ~/.local/state/skenv/backup), or `skenv vendor remove drifted` drops the entry and leaves the copy to neither skenv nor the skills CLI (its lock entry is in the backup of the lock)
+```
+
+Compare the installed copy with the skill at the pinned commit first (the
+`rev` of its entry, in a clone or the repository's web view), then:
+
+- **Keep the pinned commit**: `skenv sync --adopt` backs up the installed
+  copy and replaces it. To pin another commit first:
+  `skenv vendor update <name> --rev <sha>`.
+- **Keep your copy, unmanaged**: `skenv vendor remove <name>` drops the
+  entry; the copy stays where it is and `doctor` reports it as unmanaged.
+  Import already removed it from the lock of the skills CLI, so neither
+  tool updates it now: move it into an own repository to manage it with
+  skenv, add its name to `layout.ignore`, or give it back to the skills CLI
+  by restoring its entry from the backup of the lock in
+  `~/.local/state/skenv/backup/<timestamp>/`.
+
+`--dry-run --sync` says which skills the sync would leave as installed.
 
 ## What `import` reads
 
@@ -132,63 +244,9 @@ When no commit matches (the history was rewritten, or the ref is gone),
 `import` pins the commit whose files match the installed copy (the files
 the `skills` CLI copies: without `metadata.json`, `.git` and
 `__pycache__`), and if none does, HEAD of the ref or the default branch.
-Both fallbacks are warnings.
-
-## What `import` writes
-
-- **The manifest**: new `[[environment.own]]` and `[[environment.vendor]]`
-  entries at the end of `[environment]`, in the format of the file, with
-  its comments and order kept. The diff is printed; the change is not
-  committed, and `import` prints the commit command.
-- **The lock of the `skills` CLI**: every skill that is in the manifest now
-  is removed from it, so `npx skills update -g` does not overwrite a
-  directory skenv manages. Other entries and keys stay. The lock as it was
-  goes to `~/.local/state/skenv/backup/<timestamp>/` first, under its path
-  relative to your home (`.agents/.skill-lock.json`); copy it back to undo.
-- Nothing else: the installed copies and links stay until
-  `skenv sync --adopt`, which moves each one it replaces to
-  `~/.local/state/skenv/backup/<timestamp>/` (see
-  [`--adopt`](commands.md#--dry-run-and---adopt)).
-
-`--dry-run` prints the same report, diff and lock changes and writes
-nothing (it may fetch into the clone cache `~/.cache/skenv/repos` to search
-the history).
-
-## Reading the output
-
-```text
-import own <owner>/<skills-repo> at ~/src/<skills-repo> (skills alpha, beta)
-import vendor archify from <owner>/<repo> (skills/archify) at 6616c70c36e4
-  its skillFolderHash ed9275516424 is the tree of skills/archify at that commit
-import vendor lost from <owner>/<repo> (skills/lost) at 6616c70c36e4
-unmanaged ~/.claude/skills/handmade: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "handmade" to layout.ignore
---- ~/src/<skills-repo>/skenv.toml
-+++ ~/src/<skills-repo>/skenv.toml
-...
-remove archify, lost from ~/.agents/.skill-lock.json (a copy goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
-import: 3 manifest entries, 2 removed from the skills lock, 1 unmanaged, 1 warnings, 0 errors
-warning: vendor lost: skillFolderHash 000000000000 is not in the history of the default branch; pinned 6616c70c36e4, whose files match the installed copy
-```
-
-- **`its skillFolderHash … is the tree`**: an exact match; the vendored
-  skill will be what the `skills` CLI installed.
-- **`warning: … whose files match the installed copy`**: no commit has the
-  hash, but one has the same files as the copy on disk. Usually right;
-  check with `skenv vendor update <name> --rev <sha>` if not.
-- **`warning: … pinned HEAD`**: nothing matched; `sync --adopt` will
-  replace the copy with the current HEAD, which may differ from what you
-  had. Compare them first, or pin another commit with
-  `skenv vendor update <name> --rev <sha>`.
-- **`unmanaged`**: not imported, with the reason and a hint. Typical ones:
-  a directory installed by hand (move it into an own repository, or add
-  its name to `layout.ignore` to leave it alone), a skill of the lock that
-  was not installed from a git repository, a link under another name than
-  its directory, or an own skill that `skills` or `exclude` of its entry
-  does not select.
-- **`skip <name> of ~/.agents/.skill-lock.json: not installed`**: the lock
-  lists a skill that is not on disk; it is left in the lock.
-- A skill that cannot be fetched is an `error:` and exits 1; the rest is
-  imported.
+These are the three groups of the report: `exact`, `same files` and
+`unmatched`; only the last is a warning, and `--sync` leaves it as
+installed (see [Unmatched skills](#unmatched-skills-and---sync)).
 
 ## Project skills: `import --project`
 
@@ -209,7 +267,10 @@ git commit -m "chore(skills): import project skills"
 ```
 
 `skenv import --project --sync` runs `skenv sync --adopt` right after the
-import. It works from any directory of the repository and never touches
+import, except for the unmatched skills: their installed copies stay, and
+the report offers `skenv sync --adopt` or
+`skenv vendor remove --project <name>`, as at user level (see
+[Unmatched skills](#unmatched-skills-and---sync)). It works from any directory of the repository and never touches
 your machine's manifest (`--manifest` is refused with `--project`).
 
 ### What it reads and writes
@@ -242,7 +303,7 @@ your machine's manifest (`--manifest` is refused with `--project`).
   first. Commit the change with the project.
 - **Nothing else**: the installed copies stay until `skenv sync --adopt`
   moves each to the backup directory and copies the pinned commit in its
-  place.
+  place (`--sync` does that for every skill but the unmatched ones).
 
 `--dry-run` prints the same report, diff and lock changes and writes
 nothing. A second `import --project` imports nothing; an entry the
@@ -312,16 +373,22 @@ warning: project-own skill review is in .agents/skills/review, .claude/skills/re
 
 ### Reading the output
 
-The lines are those of the user-level import (see
-[Reading the output](#reading-the-output)), with `computedHash` for the
-fingerprint:
+The report is that of the user-level import (see
+[Reading the report](#reading-the-report)), with `computedHash` for the
+fingerprint and the project-own skills after what is not imported:
 
 ```text
-import vendor release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
-  its computedHash 652cdbb69a71 is the sha256 of the files of tools/release-notes at that commit
-warning: vendor lost: computedHash 000000000000 is not in the history of the default branch; pinned 6616c70c36e4, whose files match the installed copy
-skip local-one of skills-lock.json: installed from a "local" source, not a git repository; `skenv vendor add` needs one; it stays in the lock
-import: 2 [project] entries, 2 removed from skills-lock.json, 1 project-own skills, 0 differing duplicates, 1 warnings, 0 errors
+becomes managed: 2 entries in ~/src/<project>/skenv.toml
+  exact: the commit has the hash recorded in the lock
+    release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
+  same files: the commit has the files of the installed copy (no commit has the hash in the lock)
+    lost from <owner>/<repo> (skills/lost) at 6616c70c36e4: computedHash 000000000000 is not in the history of the default branch
+not imported: 1
+  local-one, in skills-lock.json: installed from a "local" source, not a git repository; `skenv vendor add` needs one; it stays in the lock
+project-own skill .agents/skills/deploy: kept as it is; sync mirrors it
+remove lost, release-notes from skills-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/src/<project>/skills-lock.json)
+...
+import: 2 [project] entries (1 exact, 1 same files), 2 removed from skills-lock.json, 1 project-own skills, 0 differing duplicates, 0 warnings, 0 errors
 ```
 
-The [command reference](commands/skenv_import.md) has a complete run.
+The [command reference](commands/skenv_import.md) has complete runs.
