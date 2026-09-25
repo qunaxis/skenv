@@ -31,7 +31,8 @@ Usage:
   skenv vendor bump <name> [--rev SHA] [--dry-run]
   skenv vendor remove <name> [--dry-run]
   skenv autostart enable|disable|status
-  skenv lint [path...] [--staged]         check skills (L1-L6)
+  skenv lint [path...] [--staged] [--publish]  check skills (L1-L6, P1)
+  skenv new <name> [--repo private|public]      scaffold a skill
   skenv repo init --visibility private|public | apply [--upgrade] | check
   skenv version
 
@@ -99,6 +100,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (int, err
 		return cmdLint(ctx, env, rest)
 	case "repo":
 		return cmdRepo(ctx, env, rest)
+	case "new":
+		return cmdNew(ctx, env, rest)
 	}
 	fmt.Fprint(stderr, usage)
 	return engine.ExitFatal, fmt.Errorf("unknown command %q", cmd)

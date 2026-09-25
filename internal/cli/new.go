@@ -1,0 +1,130 @@
+package cli
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"github.com/qunaxis/skenv/internal/engine"
+	"github.com/qunaxis/skenv/internal/harness"
+	"github.com/qunaxis/skenv/internal/lint"
+	"github.com/qunaxis/skenv/internal/paths"
+)
+
+var skillNameRe = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+// cmdNew scaffolds a skill (P3) in the own repository whose skenv.toml has
+// the requested visibility (private by default), or in --dir.
+func cmdNew(ctx context.Context, env engine.Env, args []string) (int, error) {
+	var o engine.Options
+	var repo, dir string
+	fs := newFlags(env, "new", "skenv new <name> [--repo private|public] [--dir D] [--manifest FILE]\n\nCreate skills/<name>/ with SKILL.md (frontmatter) and references/ in the own\nrepository of the manifest whose skenv.toml has that visibility (default\nprivate), or in the git repository at --dir.")
+	manifestFlag(fs, &o)
+	fs.StringVar(&repo, "repo", "private", "visibility of the target repository: private or public")
+	fs.StringVar(&dir, "dir", "", "target repository instead of the manifest's own repositories")
+	pos, err := parse(fs, args)
+	if err != nil {
+		return engine.ExitFatal, err
+	}
+	if err := wantArgs(fs, pos, 1); err != nil {
+		return engine.ExitFatal, err
+	}
+	name := pos[0]
+	if !skillNameRe.MatchString(name) || len(name) > lint.MaxNameLen {
+		return engine.ExitFatal, fmt.Errorf("skill name %q must be lowercase letters, digits and single hyphens, at most %d characters", name, lint.MaxNameLen)
+	}
+	if repo != "private" && repo != "public" {
+		return engine.ExitFatal, usageError{fmt.Sprintf("new: --repo must be private or public, got %q", repo)}
+	}
+
+	repoSet := false
+	fs.Visit(func(f *flag.Flag) { repoSet = repoSet || f.Name == "repo" })
+	var root, skillsDir string
+	if dir != "" {
+		if root, err = gitRoot(ctx, dir); err != nil {
+			return engine.ExitFatal, err
+		}
+		skillsDir = "skills"
+		// The repository's own skenv.toml knows its visibility.
+		if c, ok, _ := harness.ReadRaw(root); ok && c != nil && c.Visibility != "" {
+			if repoSet && c.Visibility != repo {
+				return engine.ExitFatal, fmt.Errorf("--repo %s, but %s is %s according to its skenv.toml", repo, paths.Collapse(env.Home, root), c.Visibility)
+			}
+			repo = c.Visibility
+		}
+	} else {
+		o.ReadOnly = true
+		e, err := engine.Open(ctx, env, o)
+		if err != nil {
+			return engine.ExitFatal, err
+		}
+		defer e.Close()
+		var matches []engine.OwnDir
+		var missing []string
+		for _, d := range e.OwnDirs() {
+			if _, err := os.Stat(d.Path); err != nil {
+				missing = append(missing, d.Repo)
+				continue
+			}
+			if c, ok, _ := harness.ReadRaw(d.Path); ok && c != nil && c.Visibility == repo {
+				matches = append(matches, d)
+			}
+		}
+		switch len(matches) {
+		case 0:
+			msg := fmt.Sprintf("no own repository in the manifest has visibility %q in its skenv.toml; pass --dir", repo)
+			if len(missing) > 0 {
+				msg += fmt.Sprintf(" (not cloned yet: %s; run `skenv sync`)", strings.Join(missing, ", "))
+			}
+			return engine.ExitFatal, errors.New(msg)
+		case 1:
+			root, skillsDir = matches[0].Path, matches[0].SkillsDir
+		default:
+			var names []string
+			for _, m := range matches {
+				names = append(names, m.Repo)
+			}
+			return engine.ExitFatal, fmt.Errorf("several own repositories are %s (%s); pass --dir", repo, strings.Join(names, ", "))
+		}
+	}
+
+	skill := filepath.Join(root, filepath.FromSlash(skillsDir), name)
+	if _, err := os.Lstat(skill); err == nil {
+		return engine.ExitFatal, fmt.Errorf("%s already exists", paths.Collapse(env.Home, skill))
+	}
+	title := strings.ReplaceAll(name, "-", " ")
+	title = strings.ToUpper(title[:1]) + title[1:]
+	files := map[string]string{
+		"SKILL.md": "---\nname: " + name + "\n" +
+			"description: \"TODO: what this skill does and when the agent should use it (at most 1024 characters).\"\n" +
+			"metadata:\n  source: original\n---\n\n# " + title + "\n\nTODO: instructions for the agent. Put long material in references/ and link it,\nfor example [notes](references/notes.md).\n",
+		"references/notes.md": "# Notes\n\nTODO: reference material, linked from SKILL.md.\n",
+	}
+	for rel, content := range files {
+		p := filepath.Join(skill, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return engine.ExitFatal, err
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			return engine.ExitFatal, err
+		}
+	}
+	fmt.Fprintf(env.Stdout, "created %s (SKILL.md, references/notes.md)\n", paths.Collapse(env.Home, skill))
+	if findings := lint.Skill(skill); len(findings) > 0 {
+		for _, f := range findings {
+			fmt.Fprintln(env.Stderr, f)
+		}
+		return engine.ExitProblems, nil
+	}
+	hint := "fill in the description and instructions, then run `skenv lint`"
+	if repo == "public" {
+		hint += "; before publishing add a license (LICENSE or the license field) and run `skenv lint --publish`"
+	}
+	fmt.Fprintln(env.Stdout, hint)
+	return engine.ExitOK, nil
+}

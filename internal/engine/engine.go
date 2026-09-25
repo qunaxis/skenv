@@ -341,3 +341,20 @@ func (e *Engine) finish(cmd string) (int, error) {
 	}
 	return ExitOK, nil
 }
+
+// OwnDir is an own repository of the manifest resolved on this machine.
+type OwnDir struct {
+	Repo      string
+	Path      string // expanded working copy path
+	SkillsDir string
+}
+
+// OwnDirs lists the own repositories of the manifest.
+func (e *Engine) OwnDirs() []OwnDir {
+	out := make([]OwnDir, 0, len(e.m.Own))
+	for i := range e.m.Own {
+		o := &e.m.Own[i]
+		out = append(out, OwnDir{Repo: o.Repo, Path: e.ownPath(o), SkillsDir: o.SkillsDir})
+	}
+	return out
+}
