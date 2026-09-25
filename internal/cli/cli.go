@@ -31,6 +31,8 @@ Usage:
   skenv vendor bump <name> [--rev SHA] [--dry-run]
   skenv vendor remove <name> [--dry-run]
   skenv autostart enable|disable|status
+  skenv lint [path...] [--staged]         check skills (L1-L6)
+  skenv repo init --visibility private|public | apply [--upgrade] | check
   skenv version
 
 Every command that reads the manifest accepts --manifest FILE (also
@@ -93,6 +95,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (int, err
 		return cmdVendor(ctx, env, rest)
 	case "autostart":
 		return cmdAutostart(ctx, env, rest)
+	case "lint":
+		return cmdLint(ctx, env, rest)
+	case "repo":
+		return cmdRepo(ctx, env, rest)
 	}
 	fmt.Fprint(stderr, usage)
 	return engine.ExitFatal, fmt.Errorf("unknown command %q", cmd)

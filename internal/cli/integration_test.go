@@ -451,3 +451,20 @@ func TestConcurrentRunIsRejected(t *testing.T) {
 	}
 	w.mustRun(0, "doctor") // read-only commands do not need the lock
 }
+
+// doctor warns about own repositories whose harness is older than the
+// templates of the installed skenv (PRD v0.2).
+func TestDoctorWarnsAboutOldHarness(t *testing.T) {
+	w := newWorld(t)
+	w.standard("")
+	w.push("me/skills-private", map[string]string{"skenv.toml": "harness = \"0.1.0\"\nvisibility = \"private\"\n"}, "chore: harness")
+	w.mustRun(0, "init", "me/skills-private", "--path", "~/"+ownPath)
+	_, errOut := w.mustRun(0, "doctor")
+	if !strings.Contains(errOut, "harness 0.1.0 is older than 0.2.0") {
+		t.Errorf("stderr = %q", errOut)
+	}
+	out, _ := w.mustRun(0, "doctor", "--json")
+	if !strings.Contains(out, "harness 0.1.0 is older") {
+		t.Errorf("json warnings: %s", out)
+	}
+}

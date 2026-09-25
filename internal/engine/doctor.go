@@ -13,6 +13,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/qunaxis/skenv/internal/gitx"
+	"github.com/qunaxis/skenv/internal/harness"
 )
 
 // Discrepancy classes reported by doctor.
@@ -145,6 +146,12 @@ func (e *Engine) doctorOwn(add func(class, skill, p, detail string), warn func(s
 		if !e.env.Git.OK(e.ctx, dir, "rev-parse", "--is-inside-work-tree") {
 			warn("%s is not a git working copy (own repo %s)", e.show(dir), o.Repo)
 			continue
+		}
+		switch v, ok, err := harness.Version(dir); {
+		case err != nil:
+			warn("%s: %v", e.show(dir), err)
+		case ok && harness.Compare(v, harness.Latest) < 0:
+			warn("%s: harness %s is older than %s of this skenv; run `skenv repo apply --upgrade` there", e.show(dir), v, harness.Latest)
 		}
 		if out, err := e.env.Git.Run(e.ctx, dir, "status", "--porcelain"); err == nil && out != "" {
 			n := len(strings.Split(out, "\n"))
