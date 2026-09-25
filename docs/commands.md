@@ -108,8 +108,13 @@ skenv doctor
 skenv doctor --json   # the report as JSON
 ```
 
-Compares the machine with the manifest without changing anything. Exit
-code 0: in sync, 1: discrepancies, 2: could not run. See
+Compares the machine with the manifest. It changes no skill, link or file,
+but runs `git fetch` in each own repository (network access, and it updates
+their remote-tracking branches) to report `unpushed` and `behind`. Exit
+code 0: in sync, 1: discrepancies, 2: could not run. `sync` exits 0 even
+when it leaves something undone with a warning (an own repository with
+uncommitted changes is not pulled, for example), so `doctor` is the check
+that the machine matches. See
 [`doctor` classes](#doctor-classes). Inside a project it checks the
 project instead (see [Projects](#projects)). Reference:
 [skenv doctor](commands/skenv_doctor.md).
@@ -205,9 +210,15 @@ A project is a git repository whose skenv file, at its root, has a
 
 ## `--dry-run` and `--adopt`
 
-`--dry-run` prints the plan and changes nothing (`vendor add|update --dry-run`
-still fetch into the clone cache `~/.cache/skenv/repos` to resolve the
-commit).
+`--dry-run` prints the plan and writes neither the skenv file, the store,
+the agent directories nor the state. It is a preview with limits:
+
+- `vendor add|update`, `import` and `init --import` still fetch into the
+  clone cache `~/.cache/skenv/repos` to resolve commits (network access).
+- `sync --dry-run` pulls nothing, so the plan uses the own repositories as
+  they are now; when the manifest lives in one of them, changes pushed from
+  another machine are not in the plan. Each such repository is marked in
+  the output.
 
 `--adopt` moves a conflicting unmanaged path to
 `~/.local/state/skenv/backup/<timestamp>/` and replaces it. The first run on

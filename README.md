@@ -58,8 +58,10 @@ Its design is guided by these mantras:
   creates and only ever replaces or removes those. Anything else is reported
   by `skenv doctor` and left alone unless you pass `--adopt`, which backs it
   up first.
-- **Look before you leap.** `skenv doctor` and `--dry-run` change nothing;
-  they tell you what `sync` would do.
+- **Look before you leap.** `skenv doctor` and `--dry-run` leave your skills,
+  links and skenv file alone and tell you what `sync` would do. They may
+  still use the network: `doctor` runs `git fetch` in own repositories, and
+  a `--dry-run` that resolves commits fetches into the clone cache.
 - **Only `git` at runtime.** No daemon, no service, no registry. skenv uses
   your normal git authentication (ssh key or credential helper) for private
   repositories.
@@ -236,8 +238,9 @@ skenv vendor add <owner>/<repo> --path <skill-dir>
 skenv new my-skill
 ```
 
-Commit the changes to `skenv.toml` and your new skill as usual; every other
-machine picks them up on its next `skenv sync` (or within the hour, with
+Commit the changes to `skenv.toml` and your new skill and push them: skenv
+never commits or pushes for you. Every other machine picks them up on its
+next `skenv sync` (or within the hour, with
 autostart). Later, `skenv vendor update` moves your vendored skills to new
 commits and shows what changed.
 
