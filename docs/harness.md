@@ -38,11 +38,37 @@ names, which skills you use).
 
 ## Commands
 
-| Command                                        | What it does                                                                                                                                                         |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `skenv repo init --visibility private\|public` | Add `[repo]` (creating `skenv.toml` if there is no skenv file) and every managed file, then `lefthook install`. Refuses if `[repo]` exists. |
-| `skenv repo apply`                             | Regenerate the managed files and blocks from the templates of this skenv, moving an older `harness` to it. Then `lefthook install`. |
-| `skenv repo check`                             | Compare with the templates; any drift, and a `CLAUDE.md` or `.claude/CLAUDE.md` (it disables `AGENTS.md` in Claude Code), is listed with exit code 1.                |
+### `skenv repo init`
+
+```sh
+skenv repo init --visibility private   # or: public
+```
+
+Adds `[repo]` (creating `skenv.toml` if there is no skenv file) and every
+managed file, then runs `lefthook install`. Refuses if `[repo]` already
+exists. Reference: [skenv repo init](commands/skenv_repo_init.md).
+
+### `skenv repo apply`
+
+```sh
+skenv repo apply
+```
+
+Regenerates the managed files and blocks from the templates of this skenv,
+moving an older `harness` to it, then runs `lefthook install`. Reference:
+[skenv repo apply](commands/skenv_repo_apply.md).
+
+### `skenv repo check`
+
+```sh
+skenv repo check
+```
+
+Compares the repository with the templates. Any drift, and a `CLAUDE.md` or
+`.claude/CLAUDE.md` (it disables `AGENTS.md` in Claude Code), is listed with
+exit code 1. Reference: [skenv repo check](commands/skenv_repo_check.md).
+
+### Common flags
 
 All commands take `--dir` (default: the current repository); `init` and
 `apply` take `--dry-run`, and `--force` to replace existing files that skenv

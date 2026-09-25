@@ -16,8 +16,8 @@ the top level, and unknown keys inside a section are errors.
 
 | Section         | What it is                                                                                            | Who writes it                              | Reference                     |
 | --------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------ | ----------------------------- |
-| `[repo]`        | The harness of a skills repository: `harness`, `visibility`, `runner`.                                | `skenv repo init`, `skenv repo apply`      | [harness](harness.md)         |
-| `[environment]` | The manifest of your machines: `layout`, `own`, `vendor`, `host`.                                     | you, `skenv vendor add\|bump\|remove`      | [manifest](manifest.md)       |
+| `[repo]`        | The harness of a skills repository: `harness`, `visibility`, `runner`.                                | [`skenv repo init`](harness.md#skenv-repo-init), [`skenv repo apply`](harness.md#skenv-repo-apply) | [harness](harness.md)         |
+| `[environment]` | The manifest of your machines: `layout`, `own`, `vendor`, `host`.                                     | you, [`skenv vendor add`](commands.md#skenv-vendor-add), [`bump`](commands.md#skenv-vendor-bump), [`remove`](commands.md#skenv-vendor-remove) | [manifest](manifest.md)       |
 
 - A skills repository has `[repo]`.
 - The repository that holds your manifest has `[environment]`, and usually
