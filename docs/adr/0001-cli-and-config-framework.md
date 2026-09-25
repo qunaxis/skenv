@@ -304,9 +304,20 @@ a plain loader.** This is a partial adoption.
   - `autostart` actions are subcommands, but they are spelled the same:
     `skenv autostart enable`.
   - New are `-v` for `--version`, `skenv help <command>` and `skenv completion`.
+  - `repo`'s `--dir` may also come before the subcommand
+    (`skenv repo --dir X check`).
+  - `skenv version extra` is now a usage error (exit 2). It used to ignore
+    the extra argument.
+  - A config value that is not a string (`manifest = 5`) is now an error.
+    It used to count as "not set".
+  - The single-dash rewrite also applies to a flag value that spells a flag
+    name: `--name -dry-run` becomes `--name --dry-run`. No shipped
+    invocation does this, and such a name would fail validation anyway.
 - A compatibility test pins every invocation from the harness templates
   0.2.0 and 0.3.0, the autostart units and the docs, in both the
   `--flag` and `-flag` forms, and checks the command and flag values each
   one parses to. A second test extracts the `skenv …` lines from the
   embedded templates and the rendered autostart units, and fails when one
-  of them is missing from the pinned list.
+  of them is missing from the pinned list. A third test takes every `skenv …`
+  line in the code of the README and `docs/*.md`, fills in the synopsis
+  placeholders, and requires that each one parses.
