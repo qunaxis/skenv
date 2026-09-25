@@ -170,3 +170,27 @@ func TestAppendOwn(t *testing.T) {
 		}
 	}
 }
+
+// Commented keys right under a table belong to it: a new vendor table goes
+// after them, so uncommenting them later keeps them in their own table.
+func TestAppendVendorKeepsTrailingComments(t *testing.T) {
+	out, err := AddEnvironment(nil, ".toml", &Own{Repo: "me/skills", Path: "~/skills"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err = AppendVendor(out, ".toml", "environment", Vendor{Name: "b", Repo: "x/b", Path: "skills/b", Rev: sha}); err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+	if i, j := strings.Index(s, "# exclude = "), strings.Index(s, "[[environment.vendor]]"); i < 0 || j < i {
+		t.Fatalf("the vendor table splits the own table from its commented keys:\n%s", s)
+	}
+	uncommented := strings.Replace(s, `# exclude = ["experimental-*"]`, `exclude = ["experimental-*"]`, 1)
+	m, err := Parse([]byte(uncommented), ".toml")
+	if err != nil {
+		t.Fatalf("uncommented exclude: %v\n%s", err, uncommented)
+	}
+	if len(m.Own) != 1 || len(m.Own[0].Exclude) != 1 || len(m.Vendor) != 1 {
+		t.Errorf("parsed: %+v", m)
+	}
+}

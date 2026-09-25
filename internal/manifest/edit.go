@@ -128,9 +128,12 @@ func AppendOwn(data []byte, ext string, o Own) ([]byte, error) {
 }
 
 // insertTable returns TOML data with table (a complete table, header
-// first) after the last table of section, before the comments and blank
-// lines that lead to the next table; at the end of the file when section
-// has no table. A blank line separates it from its neighbours.
+// first) after the last table of section, before the blank lines and
+// comments that lead to the next table; at the end of the file when
+// section has no table. Comments right under the last table, with no
+// blank line between, belong to it (such as commented keys to uncomment)
+// and stay with it. A blank line separates the new table from its
+// neighbours.
 func insertTable(data []byte, section, table string) []byte {
 	lines := splitLines(data)
 	at := len(lines)
@@ -140,6 +143,9 @@ func insertTable(data []byte, section, table string) []byte {
 			at = tableEnd(lines, i)
 			for at > i+1 && isBlankOrComment(lines[at-1]) {
 				at--
+			}
+			for at < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[at]), "#") && !headerRe.MatchString(lines[at]) {
+				at++
 			}
 			break
 		}
