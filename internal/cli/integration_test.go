@@ -575,3 +575,41 @@ func TestLayoutIgnore(t *testing.T) {
 	}
 	w.mustRun(0, "doctor")
 }
+
+// The tool config may be YAML or JSON instead of TOML; init then updates
+// that file in its own format instead of creating a second one.
+func TestConfigFormats(t *testing.T) {
+	for name, content := range map[string]string{
+		"config.yaml": "manifest: ~/" + ownPath + "/env.toml\n",
+		"config.yml":  "manifest: ~/" + ownPath + "/env.toml\n",
+		"config.json": `{"manifest": "~/` + ownPath + `/env.toml"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld(t)
+			w.initStandard("")
+			if err := os.Remove(w.path(".config/skenv/config.toml")); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, w.path(".config/skenv/"+name), content)
+			w.mustRun(0, "doctor")
+			w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+			if w.exists(".config/skenv/config.toml") {
+				t.Error("init created config.toml next to " + name)
+			}
+			w.mustRun(0, "sync", "--quiet")
+
+			writeFile(t, w.path(".config/skenv/config.toml"), "manifest = \"/elsewhere/env.toml\"\n")
+			for _, args := range [][]string{{"doctor"}, {"init", "me/skills", "--path", "~/" + ownPath, "--dry-run"}, {"init", "me/skills", "--path", "~/other"}} {
+				_, errOut := w.mustRun(2, args...)
+				if !strings.Contains(errOut, "several config files") {
+					t.Errorf("skenv %s with two config files: %s", strings.Join(args, " "), errOut)
+				}
+			}
+			if w.exists("other") {
+				t.Error("init cloned although the config cannot be updated")
+			}
+			// --manifest wins over the config files and does not read them.
+			w.mustRun(0, "doctor", "--manifest", "~/"+ownPath+"/env.toml")
+		})
+	}
+}
