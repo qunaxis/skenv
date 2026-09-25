@@ -6,7 +6,9 @@ Compare the machine with the manifest, or a project with its `[project]`
 
 ### Synopsis
 
-Compare the machine with the manifest without changing it.
+Compare the machine with the manifest. It changes no skill, link or file,
+but runs `git fetch` in each own repository (network access; it updates their
+remote-tracking branches) to report unpushed and behind.
 Classes: missing, extra-managed, unmanaged, wrong-rev, broken-link, conflict,
 dirty, unpushed, behind, agent-mismatch.
 
@@ -17,7 +19,8 @@ extra-managed, conflict, broken-mirror, mirror-drift, unmanaged (a skill
 only in a mirror). `--manifest` checks the machine from there; `--project`
 requires a project.
 
-Exit code: 0 in sync, 1 discrepancies, 2 error.
+Exit code: 0 in sync, 1 discrepancies, 2 error. Exit code 0 is the check
+that a sync converged: sync itself exits 0 with warnings.
 
 ```
 skenv doctor [flags]

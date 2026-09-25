@@ -131,7 +131,7 @@ the project skills changed; to commit them:
 ### Options
 
 ```
-      --dry-run           print the plan, change nothing
+      --dry-run           print the plan; write nothing except the clone cache ~/.cache/skenv/repos, fetched to resolve commits
   -h, --help              help for import
       --manifest string   skenv file with the [environment] section, or its directory
       --project           import the skills-lock.json of the current repository into its [project] section

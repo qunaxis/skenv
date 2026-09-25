@@ -205,7 +205,7 @@ func repoCmd(a *app) *cobra.Command {
 			}),
 		}
 		if name != "check" {
-			dryRunFlag(c.Flags(), &dryRun)
+			dryRunFlag(c.Flags(), &dryRun, dryRunPlain)
 			c.Flags().BoolVar(&force, "force", false, "replace existing files that skenv does not manage yet")
 		}
 		return c

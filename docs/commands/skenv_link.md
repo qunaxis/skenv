@@ -27,7 +27,7 @@ link: 1 changes, 0 warnings, 0 errors
 
 ```
       --adopt             move conflicting unmanaged paths to ~/.local/state/skenv/backup/<ts>/ and replace them
-      --dry-run           print the plan, change nothing
+      --dry-run           print the plan; write and pull nothing, so the plan uses the working copies as they are now
   -h, --help              help for link
       --manifest string   skenv file with the [environment] section, or its directory
 ```

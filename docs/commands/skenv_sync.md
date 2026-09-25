@@ -17,6 +17,12 @@ every skill of dir to each mirror. It changes a skill authored in dir only
 with `--adopt`, after a backup.
 `--manifest` syncs the machine from there; `--project` requires a project.
 
+Exit code 0 even with warnings: an own repository with uncommitted changes
+or a diverged branch is left as it is, with a warning, and the rest is
+synced. `skenv doctor` exits 0 only when the machine matches the manifest.
+With `--dry-run` nothing is pulled, so the plan uses the own repositories (and
+a manifest inside one) as they are now.
+
 ```
 skenv sync [flags]
 ```
@@ -27,7 +33,7 @@ Show what a sync would change:
 
 ```console
 $ skenv sync --dry-run
-would pull --ff-only ~/src/skills
+would pull --ff-only ~/src/skills (not pulled by --dry-run: the plan uses its current commit)
 would vendor release-notes from example-vendor/tools@27f221f8f2a4 (tools/release-notes)
 would link ~/.agents/skills/write-tests → ~/src/skills/skills/write-tests
 would link ~/.claude/skills/release-notes → ../../.agents/skills/release-notes
@@ -68,7 +74,7 @@ project sync: 5 changes, 0 warnings, 0 errors
 
 ```
       --adopt             move conflicting unmanaged paths to ~/.local/state/skenv/backup/<ts>/ and replace them
-      --dry-run           print the plan, change nothing
+      --dry-run           print the plan; write and pull nothing, so the plan uses the working copies as they are now
   -h, --help              help for sync
       --manifest string   skenv file with the [environment] section, or its directory
       --project           sync the [project] section of the current repository (the default there)

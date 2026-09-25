@@ -32,7 +32,7 @@ lefthook install: hooks active
 ### Options
 
 ```
-      --dry-run   print the plan, change nothing
+      --dry-run   print the plan; write nothing
       --force     replace existing files that skenv does not manage yet
   -h, --help      help for apply
 ```

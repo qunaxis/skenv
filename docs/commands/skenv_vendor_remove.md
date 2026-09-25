@@ -46,7 +46,7 @@ vendor: 3 changes, 0 warnings, 0 errors
 
 ```
       --adopt             move conflicting unmanaged paths to the backup directory and replace them
-      --dry-run           print the plan, change nothing
+      --dry-run           print the plan; write nothing
   -h, --help              help for remove
       --manifest string   skenv file with the [environment] section, or its directory
       --project           edit [project] of the current repository instead of the manifest, and sync the project
