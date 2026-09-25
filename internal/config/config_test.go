@@ -5,14 +5,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/qunaxis/skenv/schemas"
 )
 
 // The same setting in each format.
 var samples = map[string]string{
-	"config.toml": "# comment\nmanifest = \"~/file/env.toml\"\nother = 1\n",
-	"config.yaml": "# comment\nmanifest: ~/file/env.toml\nother: 1\n",
-	"config.yml":  "manifest: \"~/file/env.toml\"\nother: 1\n",
-	"config.json": "{\"manifest\": \"~/file/env.toml\", \"other\": 1}\n",
+	"config.toml": "# comment\nmanifest = \"~/file/env.toml\"\n",
+	"config.yaml": "# comment\nmanifest: ~/file/env.toml\n",
+	"config.yml":  "$schema: https://example.org/x.json\nmanifest: \"~/file/env.toml\"\n",
+	"config.json": "{\"$schema\": \"https://example.org/x.json\", \"manifest\": \"~/file/env.toml\"}\n",
 }
 
 func write(t *testing.T, home, name, content string) {
@@ -94,11 +96,24 @@ func TestBadFiles(t *testing.T) {
 			t.Errorf("%s: err = %v, want an error naming the file", name, err)
 		}
 	}
-	// Keys are case-sensitive in every format.
+	// Keys are case-sensitive in every format, and unknown keys are errors
+	// that name the key and the file.
+	for name, content := range map[string]string{
+		"config.json": `{"Manifest": "/x"}`,
+		"config.toml": "manifests = \"/nonexistent\"\n",
+		"config.yaml": "manifest: /x\nstore: /y\n",
+	} {
+		home := t.TempDir()
+		write(t, home, name, content)
+		_, _, err := Resolve(home, env(nil), "manifest", "", "")
+		if err == nil || !strings.Contains(err.Error(), name) || !strings.Contains(err.Error(), "unknown key") {
+			t.Errorf("%s: err = %v, want an unknown-key error naming the file", name, err)
+		}
+	}
 	home := t.TempDir()
-	write(t, home, "config.json", `{"Manifest": "/x"}`)
-	if got, src, err := Resolve(home, env(nil), "manifest", "", ""); err != nil || got != "" || src != FromDefault {
-		t.Errorf("Manifest must not match manifest: %q from %s (%v)", got, src, err)
+	write(t, home, "config.toml", "\"$schema\" = 1\n")
+	if _, _, err := Resolve(home, env(nil), "manifest", "", ""); err == nil || !strings.Contains(err.Error(), "$schema must be a string") {
+		t.Errorf("$schema = 1: %v", err)
 	}
 	// null is the same as not set.
 	home = t.TempDir()
@@ -140,8 +155,10 @@ func TestSet(t *testing.T) {
 			if got, _, _ := f.String("manifest"); got != "~/new/env.toml" {
 				t.Errorf("manifest = %q", got)
 			}
-			if _, ok := f.values["other"]; !ok {
-				t.Errorf("other key lost:\n%s", readFile(t, p))
+			if strings.Contains(content, "$schema") {
+				if _, ok := f.values["$schema"]; !ok {
+					t.Errorf("$schema lost:\n%s", readFile(t, p))
+				}
 			}
 		})
 	}
@@ -161,5 +178,61 @@ func TestEnvVar(t *testing.T) {
 		if got := EnvVar(key); got != want {
 			t.Errorf("EnvVar(%q) = %q, want %q", key, got, want)
 		}
+	}
+}
+
+// Set changes only the key: comments, the schema directive, other keys and
+// their order stay. A skenv directive moves to the running version (the
+// latest URL for a test binary).
+func TestSetKeepsTheRest(t *testing.T) {
+	latest := schemas.URL(schemas.Config, "")
+	old := schemas.URL(schemas.Config, "0.3.0")
+	cases := map[string]struct{ in, want string }{
+		"config.toml": {
+			in:   "#:schema " + old + "\n# my note: keep this\nmanifest = '~/old'   # where\n",
+			want: "#:schema " + latest + "\n# my note: keep this\nmanifest = \"~/new\"   # where\n",
+		},
+		"config.yaml": {
+			in:   "# yaml-language-server: $schema=" + old + "\n# my note\nmanifest: ~/old # where\n",
+			want: "# yaml-language-server: $schema=" + latest + "\n# my note\nmanifest: ~/new # where\n",
+		},
+		"config.yml": {
+			in:   "# yaml-language-server: $schema=./mine.json\n# no manifest yet\n",
+			want: "# yaml-language-server: $schema=./mine.json\n# no manifest yet\nmanifest: ~/new\n",
+		},
+		"config.json": {
+			in:   `{"$schema": "` + old + `?a=1&b=2", "manifest": "~/old"}`,
+			want: "{\n  \"$schema\": \"" + old + "?a=1&b=2\",\n  \"manifest\": \"~/new\"\n}\n",
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			write(t, home, name, c.in)
+			p, err := Set(home, "manifest", "~/new")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := readFile(t, p); got != c.want {
+				t.Errorf("got:\n%s\nwant:\n%s", got, c.want)
+			}
+		})
+	}
+	// A new file carries the header and the directive.
+	home := t.TempDir()
+	p, err := Set(home, "manifest", "~/a <&> b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "#:schema " + latest + "\n# skenv configuration, written by `skenv init`\nmanifest = \"~/a <&> b\"\n"
+	if got := readFile(t, p); got != want {
+		t.Errorf("new file:\n%s\nwant:\n%s", got, want)
+	}
+	// A key missing from a TOML file goes after the top-level keys.
+	home = t.TempDir()
+	write(t, home, "config.toml", "# c\n\"$schema\" = \"x\"\n")
+	p, _ = Set(home, "manifest", "~/m")
+	if got := readFile(t, p); got != "# c\n\"$schema\" = \"x\"\nmanifest = \"~/m\"\n" {
+		t.Errorf("appended key:\n%s", got)
 	}
 }

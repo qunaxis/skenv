@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/qunaxis/skenv/internal/harness"
+	"github.com/qunaxis/skenv/schemas"
 )
 
 // harnessRepo is a git repository inside a temporary $HOME.
@@ -62,6 +63,39 @@ func TestRepoInitCheckApply(t *testing.T) {
 	if !strings.Contains(out, "up to date") {
 		t.Errorf("second apply: %s", out)
 	}
+
+	// The skenv file names the schema of its harness version. A missing or
+	// outdated directive is a warning of check (exit code unchanged) that
+	// apply fixes.
+	cfg := filepath.Join(repo, "skenv.toml")
+	directive := "#:schema " + schemas.URL(schemas.Skenv, harness.Latest) + "\n"
+	text := readFile(t, cfg)
+	if !strings.HasPrefix(text, directive) {
+		t.Fatalf("skenv.toml has no directive:\n%s", text)
+	}
+	for _, c := range []struct{ content, warning string }{
+		{strings.TrimPrefix(text, directive), "no schema directive"},
+		{strings.Replace(text, harness.Latest+"/", "0.3.0/", 1), "the schema directive points at " + schemas.URL(schemas.Skenv, "0.3.0")},
+	} {
+		writeFile(t, cfg, c.content)
+		_, errOut := w.mustRun(0, "repo", "check", "--dir", repo)
+		if !strings.Contains(errOut, "warning: skenv.toml: "+c.warning) {
+			t.Errorf("check with %q: %s", c.warning, errOut)
+		}
+		out, _ = w.mustRun(0, "repo", "apply", "--dir", repo)
+		if !strings.Contains(out, "update skenv.toml") || readFile(t, cfg) != text {
+			t.Errorf("apply must restore the directive:\n%s\n%s", out, readFile(t, cfg))
+		}
+		if _, errOut = w.mustRun(0, "repo", "check", "--dir", repo); errOut != "" {
+			t.Errorf("check after apply: %s", errOut)
+		}
+	}
+	// A URL of the user's choice is left alone.
+	writeFile(t, cfg, strings.Replace(text, directive, "#:schema ./my-schema.json\n", 1))
+	if _, errOut := w.mustRun(0, "repo", "check", "--dir", repo); errOut != "" {
+		t.Errorf("check with a custom schema URL: %s", errOut)
+	}
+	writeFile(t, cfg, text)
 
 	writeFile(t, filepath.Join(repo, "CLAUDE.md"), "x\n")
 	out, _ = w.mustRun(1, "repo", "check", "--dir", repo)

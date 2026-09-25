@@ -1,0 +1,30 @@
+{
+  "$schema": "https://qunaxis.github.io/skenv/schemas/skenv.schema.json",
+  "environment": {
+    "vendor": [
+      {
+        "name": "archify",
+        "repo": "ext/tools",
+        "path": "tools/archify",
+        "rev": "<rev>"
+      },
+      {
+        "name": "other",
+        "repo": "ext/tools",
+        "path": "tools/other",
+        "rev": "<rev>"
+      }
+    ],
+    "own": [
+      {
+        "repo": "me/skills",
+        "path": "~/src/skills"
+      }
+    ],
+    "layout": {
+      "ignore": [
+        "tool<x>&*"
+      ]
+    }
+  }
+}

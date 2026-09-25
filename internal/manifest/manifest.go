@@ -20,24 +20,42 @@ import (
 // DefaultSkillsDir is used when an [[own]] entry does not set skills_dir.
 const DefaultSkillsDir = "skills"
 
-// Manifest is the parsed [environment] section. Paths are kept as written (possibly with
-// a leading "~"); callers expand them against the home directory.
+// Manifest is the [environment] section of the skenv file: the skills every
+// machine that runs `skenv sync` should have. Paths may start with "~".
+//
+// Paths are kept as written; callers expand them against the home
+// directory. The first paragraph of the doc comments of these types and
+// the comments of their fields are the descriptions of the JSON Schema
+// (`make schemas`): write them for users.
 type Manifest struct {
-	Layout Layout          `toml:"layout" yaml:"layout" json:"layout"`
-	Own    []Own           `toml:"own" yaml:"own" json:"own"`
-	Vendor []Vendor        `toml:"vendor" yaml:"vendor" json:"vendor"`
-	Host   map[string]Host `toml:"host" yaml:"host" json:"host"`
+	// Layout is where skills are stored and linked.
+	Layout Layout `toml:"layout" yaml:"layout" json:"layout"`
+	// Own lists your skills repositories, kept as git working copies: every
+	// skill directory in them is linked.
+	Own []Own `toml:"own" yaml:"own" json:"own"`
+	// Vendor lists third-party skills, each pinned to a commit and copied
+	// into the store. Skill names are unique across own and vendor skills.
+	Vendor []Vendor `toml:"vendor" yaml:"vendor" json:"vendor"`
+	// Host holds per-machine overrides, keyed by the full or the short
+	// hostname.
+	Host map[string]Host `toml:"host" yaml:"host" json:"host"`
 }
 
-// Layout describes where skills are stored and linked.
+// Layout is where skills are stored and linked.
 type Layout struct {
+	// Store is the directory that holds every skill: links to own skills,
+	// copies of vendored ones. Codex reads it directly. Default:
+	// "~/.agents/skills".
 	Store string `toml:"store" yaml:"store" json:"store"`
-	// Targets overrides the built-in agent table when non-nil (A3). An
-	// explicitly empty list means "no agent directories besides the store".
+	// Targets are the agent directories that get a link per skill. When set
+	// (even to an empty list) it replaces the built-in table: Claude Code
+	// ($CLAUDE_CONFIG_DIR/skills, else ~/.claude/skills) and pi
+	// (~/.pi/agent/skills), each only if the agent is installed.
 	Targets []string `toml:"targets" yaml:"targets" json:"targets"`
-	// Ignore lists glob patterns (path.Match) of entry names in the store and
-	// targets that belong to other tools: doctor does not report them and
-	// sync/link never touch them, not even with --adopt.
+	// Ignore lists glob patterns over entry names (no "/") in the store and
+	// the agent directories that belong to other tools: doctor does not
+	// report them and sync never touches them, not even with --adopt. A
+	// manifest skill must not match a pattern.
 	Ignore []string `toml:"ignore" yaml:"ignore" json:"ignore"`
 }
 
@@ -51,23 +69,40 @@ func (l Layout) Ignored(name string) bool {
 	return false
 }
 
-// Own is a skills repository kept as a working copy.
+// Own is a skills repository of yours, kept as a git working copy so that
+// edits show up immediately.
 type Own struct {
-	Repo      string `toml:"repo" yaml:"repo" json:"repo"`
-	Path      string `toml:"path" yaml:"path" json:"path"`
+	// Repo is the repository to clone: "owner/repo" on github.com or a full
+	// git URL.
+	Repo string `toml:"repo" yaml:"repo" json:"repo"`
+	// Path is where the working copy lives ("~" allowed). Point it at the
+	// existing clone, or sync clones a second one there.
+	Path string `toml:"path" yaml:"path" json:"path"`
+	// SkillsDir is the directory inside the repository whose
+	// subdirectories with a SKILL.md are the skills. Default: "skills".
 	SkillsDir string `toml:"skills_dir" yaml:"skills_dir" json:"skills_dir"`
 }
 
-// Vendor is a third-party skill pinned to a commit.
+// Vendor is a third-party skill pinned to a commit; `skenv vendor
+// add|bump|remove` edit these entries.
 type Vendor struct {
+	// Name is the skill name: 1 to 64 lowercase letters, digits and single
+	// hyphens, with no hyphen at the start or end; "synced" is reserved.
 	Name string `toml:"name" yaml:"name" json:"name"`
+	// Repo is the repository: "owner/repo" on github.com or a full git URL.
 	Repo string `toml:"repo" yaml:"repo" json:"repo"`
+	// Path is the directory with SKILL.md inside the repository, relative
+	// to its root; "." for the root. Default: ".".
 	Path string `toml:"path" yaml:"path" json:"path"`
-	Rev  string `toml:"rev" yaml:"rev" json:"rev"`
+	// Rev is the full 40-character lowercase commit SHA. Branches, tags and
+	// short SHAs are rejected: a vendored skill changes only when you bump
+	// it.
+	Rev string `toml:"rev" yaml:"rev" json:"rev"`
 }
 
-// Host holds per-machine overrides keyed by hostname.
+// Host holds the overrides of one machine.
 type Host struct {
+	// Skip lists skills that are neither stored nor linked on this host.
 	Skip []string `toml:"skip" yaml:"skip" json:"skip"`
 }
 

@@ -8,8 +8,12 @@
 //   - [environment]: the manifest of a user's machines (layout, own,
 //     vendor, host), edited by `skenv vendor add|bump|remove`.
 //
-// Nothing else may appear at the top level. Each section is decoded
-// strictly: unknown keys are errors.
+// Nothing else may appear at the top level, except "$schema" (a string,
+// ignored) for editors. Each section is decoded strictly: unknown keys are
+// errors.
+//
+// YAML and JSON files are edited with internal/docedit, which keeps
+// comments and key order; TOML files are edited as text by their callers.
 package skenvfile
 
 import (
@@ -21,11 +25,15 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 	"go.yaml.in/yaml/v3"
+
+	"github.com/qunaxis/skenv/internal/docedit"
+	"github.com/qunaxis/skenv/schemas"
 )
 
 // Names are the accepted file names, in lookup order. skenv creates the
@@ -131,7 +139,7 @@ func Parse(data []byte, ext string) (*Doc, error) {
 	}
 	var unknown []string
 	for k := range d.raw {
-		if k != Repo && k != Environment {
+		if k != Repo && k != Environment && k != docedit.SchemaKey {
 			unknown = append(unknown, k)
 		}
 	}
@@ -149,6 +157,11 @@ func Parse(data []byte, ext string) (*Doc, error) {
 			if _, isMap := v.(map[string]any); !isMap {
 				return nil, fmt.Errorf("%s must be a table", s)
 			}
+		}
+	}
+	if v, ok := d.raw[docedit.SchemaKey]; ok {
+		if _, isString := v.(string); !isString {
+			return nil, fmt.Errorf("%s must be a string (the URL of the schema, for editors)", docedit.SchemaKey)
 		}
 	}
 	return d, nil
@@ -218,55 +231,34 @@ func (d *Doc) IsDefined(keys ...string) bool {
 	return true
 }
 
-// Rewrite decodes data (YAML or JSON), lets edit change the document and
-// encodes it again. Comments and key order are not kept; TOML files are
-// edited as text by their callers instead.
-func Rewrite(data []byte, ext string, edit func(doc map[string]any) error) ([]byte, error) {
-	doc := map[string]any{}
-	var err error
-	switch ext {
-	case ".yaml", ".yml":
-		err = yaml.Unmarshal(data, &doc)
-	case ".json":
-		if len(bytes.TrimSpace(data)) > 0 {
-			err = json.Unmarshal(data, &doc)
-		}
-	default:
-		return nil, fmt.Errorf("Rewrite: unsupported format %q", ext)
+// Harness returns repo.harness as written, "" when it is missing or not a
+// string.
+func (d *Doc) Harness() string {
+	r, _ := d.raw[Repo].(map[string]any)
+	v, _ := r["harness"].(string)
+	return v
+}
+
+var versionRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+
+// SchemaVersion is the skenv release whose schema the directive of this
+// file names: repo.harness in a repository with a harness, because that is
+// the skenv its CI installs (`skenv repo check` compares with it); the
+// running skenv otherwise ("" for a development build: the latest schema).
+func (d *Doc) SchemaVersion() string {
+	if h := d.Harness(); versionRe.MatchString(h) {
+		return h
 	}
+	return schemas.Running()
+}
+
+// Stamp returns data, a skenv file after an edit, with its schema
+// directive at SchemaVersion: a skenv directive moves there, a missing one
+// is added only with add, any other URL stays.
+func Stamp(data []byte, ext string, add bool) ([]byte, error) {
+	d, err := Parse(data, ext)
 	if err != nil {
 		return nil, err
 	}
-	if doc == nil {
-		doc = map[string]any{}
-	}
-	if err := edit(doc); err != nil {
-		return nil, err
-	}
-	var b bytes.Buffer
-	if ext == ".json" {
-		enc := json.NewEncoder(&b)
-		enc.SetIndent("", "  ")
-		err = enc.Encode(doc)
-	} else {
-		enc := yaml.NewEncoder(&b)
-		enc.SetIndent(2)
-		err = enc.Encode(doc)
-	}
-	return b.Bytes(), err
-}
-
-// Table returns doc[key] as a table, creating it when absent.
-func Table(doc map[string]any, key string) (map[string]any, error) {
-	v, ok := doc[key]
-	if !ok || v == nil {
-		t := map[string]any{}
-		doc[key] = t
-		return t, nil
-	}
-	t, ok := v.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("%s must be a table", key)
-	}
-	return t, nil
+	return schemas.Stamp(data, ext, schemas.Skenv, d.SchemaVersion(), add)
 }

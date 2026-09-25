@@ -1,8 +1,11 @@
 /skenv
 /dist/
 /man/
+/build/
 
 # documentation site (make docs-site)
 /node_modules/
 /docs/.vitepress/dist/
 /docs/.vitepress/cache/
+/docs/public/schemas/*
+!/docs/public/schemas/README.md

@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://qunaxis.github.io/skenv/schemas/skenv.schema.json
+# my manifest
+environment:
+  # where skills live
+  own:
+    - repo: me/skills   # the manifest repository
+      path: ~/src/skills
+
+  # pinned third-party skills
+  vendor:
+    - name: archify
+      repo: ext/tools
+      path: tools/archify
+      rev: "<rev>"   # keep this comment
+    - name: other
+      repo: ext/tools
+      path: tools/other
+      rev: <rev>
+  host:
+    other-host:
+      skip: [beta]

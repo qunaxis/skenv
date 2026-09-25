@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -17,7 +18,7 @@ func runMain(args ...string) (int, string, string) {
 // and completion exit 0.
 func TestExitCodes(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	for _, args := range []string{"", "bogus", "sync --bogus", "sync -quiet", "sync extra", "vendor", "vendor frob", "vendor add", "autostart", "autostart frob", "repo", "repo frob", "init", "completion", "completion powershell"} {
+	for _, args := range []string{"", "bogus", "sync --bogus", "sync -quiet", "sync extra", "vendor", "vendor frob", "vendor add", "autostart", "autostart frob", "repo", "repo frob", "init", "completion", "completion powershell", "schema bogus", "schema skenv config"} {
 		code, _, errOut := runMain(strings.Fields(args)...)
 		if code != 2 || errOut == "" {
 			t.Errorf("skenv %s: exit %d, stderr %q; want exit 2 with a message", args, code, errOut)
@@ -41,6 +42,7 @@ func TestCompletion(t *testing.T) {
 		"vendor ":                 {"add", "bump", "remove"},
 		"sync --":                 {"--quiet", "--dry-run", "--adopt", "--manifest"},
 		"repo init --visibility ": {"private", "public"},
+		"schema ":                 {"skenv", "config"},
 	} {
 		fields := strings.Fields(args)
 		if strings.HasSuffix(args, " ") || args == "" {
@@ -71,5 +73,20 @@ func TestCompletion(t *testing.T) {
 	}
 	if _, help, _ := runMain("completion", "--help"); strings.Contains(help, "powershell") {
 		t.Errorf("completion --help mentions powershell:\n%s", help)
+	}
+}
+
+// skenv schema prints the embedded schemas; a development build names the
+// unversioned URL in "$id".
+func TestSchemaCommand(t *testing.T) {
+	for args, want := range map[string]string{
+		"schema":        `"$id": "https://qunaxis.github.io/skenv/schemas/skenv.schema.json"`,
+		"schema skenv":  `"title": "skenv file"`,
+		"schema config": `"$id": "https://qunaxis.github.io/skenv/schemas/config.schema.json"`,
+	} {
+		code, out, errOut := runMain(strings.Fields(args)...)
+		if code != 0 || !strings.Contains(out, want) || !json.Valid([]byte(out)) {
+			t.Errorf("skenv %s: exit %d, stderr %q, output lacks %s", args, code, errOut, want)
+		}
 	}
 }
