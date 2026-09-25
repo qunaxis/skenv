@@ -1,6 +1,0 @@
-default: true
-MD013: false   # long lines: skills are prose
-MD033: false   # inline HTML is used for diagrams and details blocks
-MD024:
-  siblings_only: true
-MD041: false   # SKILL.md starts with YAML frontmatter

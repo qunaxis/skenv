@@ -57,10 +57,14 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, repo st
 			return engine.ExitFatal, err
 		}
 		skillsDir = "skills"
-		// The repository's own skenv.toml knows its visibility.
-		if c, ok, _ := harness.ReadRaw(root); ok && c != nil && c.Visibility != "" {
+		// The repository's own [repo] section knows its visibility.
+		c, ok, err := harness.ReadRaw(root)
+		if err != nil {
+			return engine.ExitFatal, err
+		}
+		if ok && c.Visibility != "" {
 			if repoSet && c.Visibility != repo {
-				return engine.ExitFatal, fmt.Errorf("--repo %s, but %s is %s according to its skenv.toml", repo, paths.Collapse(env.Home, root), c.Visibility)
+				return engine.ExitFatal, fmt.Errorf("--repo %s, but %s is %s according to its skenv file", repo, paths.Collapse(env.Home, root), c.Visibility)
 			}
 			repo = c.Visibility
 		}
@@ -78,13 +82,17 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, repo st
 				missing = append(missing, d.Repo)
 				continue
 			}
-			if c, ok, _ := harness.ReadRaw(d.Path); ok && c != nil && c.Visibility == repo {
+			c, ok, err := harness.ReadRaw(d.Path)
+			if err != nil {
+				return engine.ExitFatal, err
+			}
+			if ok && c.Visibility == repo {
 				matches = append(matches, d)
 			}
 		}
 		switch len(matches) {
 		case 0:
-			msg := fmt.Sprintf("no own repository in the manifest has visibility %q in its skenv.toml; pass --dir", repo)
+			msg := fmt.Sprintf("no own repository in the manifest has visibility %q in its [repo] section; pass --dir", repo)
 			if len(missing) > 0 {
 				msg += fmt.Sprintf(" (not cloned yet: %s; run `skenv sync`)", strings.Join(missing, ", "))
 			}

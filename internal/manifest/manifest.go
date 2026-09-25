@@ -1,5 +1,6 @@
-// Package manifest parses and validates env.toml, the declarative list of
-// skills that skenv keeps in sync on a machine.
+// Package manifest parses and validates the manifest: the [environment]
+// section of a skenv file (skenv.toml), the declarative list of skills that
+// skenv keeps in sync on a machine.
 package manifest
 
 import (
@@ -7,35 +8,36 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
-	"github.com/BurntSushi/toml"
+	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
 // DefaultSkillsDir is used when an [[own]] entry does not set skills_dir.
 const DefaultSkillsDir = "skills"
 
-// Manifest is the parsed env.toml. Paths are kept as written (possibly with
+// Manifest is the parsed [environment] section. Paths are kept as written (possibly with
 // a leading "~"); callers expand them against the home directory.
 type Manifest struct {
-	Layout Layout          `toml:"layout"`
-	Own    []Own           `toml:"own"`
-	Vendor []Vendor        `toml:"vendor"`
-	Host   map[string]Host `toml:"host"`
+	Layout Layout          `toml:"layout" yaml:"layout" json:"layout"`
+	Own    []Own           `toml:"own" yaml:"own" json:"own"`
+	Vendor []Vendor        `toml:"vendor" yaml:"vendor" json:"vendor"`
+	Host   map[string]Host `toml:"host" yaml:"host" json:"host"`
 }
 
 // Layout describes where skills are stored and linked.
 type Layout struct {
-	Store string `toml:"store"`
+	Store string `toml:"store" yaml:"store" json:"store"`
 	// Targets overrides the built-in agent table when non-nil (A3). An
 	// explicitly empty list means "no agent directories besides the store".
-	Targets []string `toml:"targets"`
+	Targets []string `toml:"targets" yaml:"targets" json:"targets"`
 	// Ignore lists glob patterns (path.Match) of entry names in the store and
 	// targets that belong to other tools: doctor does not report them and
 	// sync/link never touch them, not even with --adopt.
-	Ignore []string `toml:"ignore"`
+	Ignore []string `toml:"ignore" yaml:"ignore" json:"ignore"`
 }
 
 // Ignored reports whether an entry name matches layout.ignore.
@@ -50,22 +52,22 @@ func (l Layout) Ignored(name string) bool {
 
 // Own is a skills repository kept as a working copy.
 type Own struct {
-	Repo      string `toml:"repo"`
-	Path      string `toml:"path"`
-	SkillsDir string `toml:"skills_dir"`
+	Repo      string `toml:"repo" yaml:"repo" json:"repo"`
+	Path      string `toml:"path" yaml:"path" json:"path"`
+	SkillsDir string `toml:"skills_dir" yaml:"skills_dir" json:"skills_dir"`
 }
 
 // Vendor is a third-party skill pinned to a commit.
 type Vendor struct {
-	Name string `toml:"name"`
-	Repo string `toml:"repo"`
-	Path string `toml:"path"`
-	Rev  string `toml:"rev"`
+	Name string `toml:"name" yaml:"name" json:"name"`
+	Repo string `toml:"repo" yaml:"repo" json:"repo"`
+	Path string `toml:"path" yaml:"path" json:"path"`
+	Rev  string `toml:"rev" yaml:"rev" json:"rev"`
 }
 
 // Host holds per-machine overrides keyed by hostname.
 type Host struct {
-	Skip []string `toml:"skip"`
+	Skip []string `toml:"skip" yaml:"skip" json:"skip"`
 }
 
 var (
@@ -73,34 +75,54 @@ var (
 	nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 )
 
-// Load reads and validates the manifest at file.
+// Locate returns the skenv file that path names: path itself, or the skenv
+// file in path when it is a directory.
+func Locate(path string) (string, error) {
+	if filepath.Base(path) == "env.toml" {
+		return "", skenvfile.OldManifestError(path)
+	}
+	fi, err := os.Stat(path)
+	if err != nil || !fi.IsDir() {
+		return path, nil //nolint:nilerr // Load reports a missing file
+	}
+	file, err := skenvfile.Find(path)
+	if err != nil {
+		return "", err
+	}
+	if file == "" {
+		return "", fmt.Errorf("no skenv file (%s) in %s", strings.Join(skenvfile.Names, ", "), path)
+	}
+	return file, nil
+}
+
+// Load reads and validates the manifest in the skenv file at file.
 func Load(file string) (*Manifest, error) {
 	data, err := os.ReadFile(file)
 	if err != nil {
 		return nil, fmt.Errorf("read manifest %s: %w (set --manifest, $SKENV_MANIFEST or run `skenv init`)", file, err)
 	}
-	m, err := Parse(data)
+	m, err := Parse(data, filepath.Ext(file))
 	if err != nil {
 		return nil, fmt.Errorf("manifest %s: %w", file, err)
 	}
 	return m, nil
 }
 
-// Parse decodes and validates manifest data.
-func Parse(data []byte) (*Manifest, error) {
-	var m Manifest
-	md, err := toml.Decode(string(data), &m)
+// Parse decodes and validates the [environment] section of a skenv file in
+// the format of ext (".toml", ".yaml", ".yml", ".json").
+func Parse(data []byte, ext string) (*Manifest, error) {
+	doc, err := skenvfile.Parse(data, ext)
 	if err != nil {
 		return nil, err
 	}
-	if undecoded := md.Undecoded(); len(undecoded) > 0 {
-		keys := make([]string, len(undecoded))
-		for i, k := range undecoded {
-			keys[i] = k.String()
-		}
-		return nil, fmt.Errorf("unknown keys: %s", strings.Join(keys, ", "))
+	if !doc.Has(skenvfile.Environment) {
+		return nil, errors.New("no [environment] section: this skenv file is not a manifest")
 	}
-	if md.IsDefined("layout", "targets") && m.Layout.Targets == nil {
+	var m Manifest
+	if err := doc.Decode(skenvfile.Environment, &m); err != nil {
+		return nil, err
+	}
+	if doc.IsDefined(skenvfile.Environment, "layout", "targets") && m.Layout.Targets == nil {
 		m.Layout.Targets = []string{}
 	}
 	for i := range m.Own {

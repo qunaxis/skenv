@@ -9,28 +9,28 @@ const sha = "9e35d2b0b39b0000000000000000000000000000"
 
 func TestParseFull(t *testing.T) {
 	m, err := Parse([]byte(`
-[layout]
+[environment.layout]
 store   = "~/.agents/skills"
 targets = ["~/.claude/skills", "~/.pi/agent/skills"]
 
-[[own]]
+[[environment.own]]
 repo = "me/my-skills"
 path = "~/src/my-skills"
 
-[[vendor]]
+[[environment.vendor]]
 name = "archify"
 repo = "tt-a1i/archify"
 path = "archify"
-rev  = "` + sha + `"
+rev  = "`+sha+`"
 
-[[vendor]]
+[[environment.vendor]]
 name = "root"
 repo = "https://example.com/x/root.git"
-rev  = "` + sha + `"
+rev  = "`+sha+`"
 
-[host."mbp"]
+[environment.host."mbp"]
 skip = ["bpmn-process-modeler"]
-`))
+`), ".toml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,14 +49,14 @@ skip = ["bpmn-process-modeler"]
 }
 
 func TestTargetsUnsetVsEmpty(t *testing.T) {
-	m, err := Parse([]byte(""))
+	m, err := Parse([]byte("[environment]\n"), ".toml")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if m.Layout.Targets != nil {
 		t.Error("unset targets must be nil (use the agent table)")
 	}
-	m, err = Parse([]byte("[layout]\ntargets = []\n"))
+	m, err = Parse([]byte("[environment.layout]\ntargets = []\n"), ".toml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestTargetsUnsetVsEmpty(t *testing.T) {
 
 func TestParseErrors(t *testing.T) {
 	vendor := func(name, rev string) string {
-		return "[[vendor]]\nname = \"" + name + "\"\nrepo = \"a/b\"\nrev = \"" + rev + "\"\n"
+		return "[[environment.vendor]]\nname = \"" + name + "\"\nrepo = \"a/b\"\nrev = \"" + rev + "\"\n"
 	}
 	cases := map[string]struct{ src, want string }{
 		"M1 duplicate vendor": {vendor("x", sha) + vendor("x", sha), "duplicate skill name"},
@@ -76,14 +76,14 @@ func TestParseErrors(t *testing.T) {
 		"M2 uppercase rev":    {vendor("x", strings.ToUpper(sha)), "full 40-character"},
 		"bad name":            {vendor("X/y", sha), "must match"},
 		"reserved name":       {vendor("synced", sha), "reserved"},
-		"unknown key":         {"[[own]]\nrepo = \"a/b\"\npath = \"~/x\"\nbranch = \"main\"\n", "unknown keys: own.branch"},
-		"own without path":    {"[[own]]\nrepo = \"a/b\"\n", "path is required"},
-		"vendor escapes repo": {"[[vendor]]\nname = \"x\"\nrepo = \"a/b\"\npath = \"../x\"\nrev = \"" + sha + "\"\n", "relative path"},
+		"unknown key":         {"[[environment.own]]\nrepo = \"a/b\"\npath = \"~/x\"\nbranch = \"main\"\n", "unknown keys: environment.own.branch"},
+		"own without path":    {"[[environment.own]]\nrepo = \"a/b\"\n", "path is required"},
+		"vendor escapes repo": {"[[environment.vendor]]\nname = \"x\"\nrepo = \"a/b\"\npath = \"../x\"\nrev = \"" + sha + "\"\n", "relative path"},
 		"syntax":              {"[[vendor]\n", "expected"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := Parse([]byte(c.src))
+			_, err := Parse([]byte(c.src), ".toml")
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("err = %v, want %q", err, c.want)
 			}
@@ -94,17 +94,17 @@ func TestParseErrors(t *testing.T) {
 // M1 across own and vendor skills.
 func TestCheckNames(t *testing.T) {
 	m, err := Parse([]byte(`
-[[own]]
+[[environment.own]]
 repo = "me/a"
 path = "~/a"
-[[own]]
+[[environment.own]]
 repo = "me/b"
 path = "~/b"
-[[vendor]]
+[[environment.vendor]]
 name = "v"
 repo = "x/y"
-rev = "` + sha + `"
-`))
+rev = "`+sha+`"
+`), ".toml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestRepo(t *testing.T) {
 }
 
 func TestLayoutIgnore(t *testing.T) {
-	m, err := Parse([]byte("[layout]\nignore = [\"peon-ping-*\", \"tmp?\"]\n"))
+	m, err := Parse([]byte("[environment.layout]\nignore = [\"peon-ping-*\", \"tmp?\"]\n"), ".toml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,11 +151,11 @@ func TestLayoutIgnore(t *testing.T) {
 		}
 	}
 	for _, bad := range []string{`ignore = ["[x"]`, `ignore = ["a/b"]`, `ignore = [""]`} {
-		if _, err := Parse([]byte("[layout]\n" + bad + "\n")); err == nil || !strings.Contains(err.Error(), "layout.ignore") {
+		if _, err := Parse([]byte("[environment.layout]\n"+bad+"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "layout.ignore") {
 			t.Errorf("%s: err = %v", bad, err)
 		}
 	}
-	m, _ = Parse([]byte("[layout]\nignore = [\"peon-*\"]\n[[vendor]]\nname = \"peon-x\"\nrepo = \"a/b\"\nrev = \"" + sha + "\"\n"))
+	m, _ = Parse([]byte("[environment.layout]\nignore = [\"peon-*\"]\n[[environment.vendor]]\nname = \"peon-x\"\nrepo = \"a/b\"\nrev = \""+sha+"\"\n"), ".toml")
 	if _, err := m.CheckNames(nil); err == nil || !strings.Contains(err.Error(), "matches layout.ignore") {
 		t.Errorf("skill matching ignore: %v", err)
 	}

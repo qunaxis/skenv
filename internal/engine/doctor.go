@@ -151,7 +151,7 @@ func (e *Engine) doctorOwn(add func(class, skill, p, detail string), warn func(s
 		case err != nil:
 			warn("%s: %v", e.show(dir), err)
 		case ok && harness.Compare(v, harness.Latest) < 0:
-			warn("%s: harness %s is older than %s of this skenv; run `skenv repo apply --upgrade` there", e.show(dir), v, harness.Latest)
+			warn("%s: harness %s is older than %s of this skenv; run `skenv repo apply` there", e.show(dir), v, harness.Latest)
 		}
 		if out, err := e.env.Git.Run(e.ctx, dir, "status", "--porcelain"); err == nil && out != "" {
 			n := len(strings.Split(out, "\n"))

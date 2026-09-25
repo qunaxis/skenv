@@ -177,7 +177,7 @@ func gitRoot(ctx context.Context, dir string) (string, error) {
 
 func repoCmd(a *app) *cobra.Command {
 	var dir, visibility string
-	var dryRun, upgrade, force bool
+	var dryRun, force bool
 	sub := func(name, use, short, long string) *cobra.Command {
 		c := &cobra.Command{
 			Use:   use,
@@ -185,7 +185,7 @@ func repoCmd(a *app) *cobra.Command {
 			Long:  long,
 			Args:  nArgs(0),
 			RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
-				return runRepo(ctx, env, name, dir, visibility, dryRun, upgrade, force)
+				return runRepo(ctx, env, name, dir, visibility, dryRun, force)
 			}),
 		}
 		if name != "check" {
@@ -195,20 +195,19 @@ func repoCmd(a *app) *cobra.Command {
 		return c
 	}
 	initC := sub("init", "init --visibility private|public", "Set up the harness of a skills repository",
-		"Set up the harness of a skills repository: skenv.toml, lefthook.yml, CI\nworkflow, linter configs and the managed blocks of AGENTS.md and .gitignore;\nthen `lefthook install`. Refuses if skenv.toml exists.")
+		"Set up the harness of a skills repository: the [repo] section of skenv.toml\n(added to an existing skenv file), lefthook.yml, CI workflow, linter configs\nand the managed blocks of AGENTS.md and .gitignore; then `lefthook install`.\nRefuses if [repo] exists.")
 	initC.Flags().StringVar(&visibility, "visibility", "", "private or public (required)")
 	_ = initC.RegisterFlagCompletionFunc("visibility", cobra.FixedCompletions([]string{"private", "public"}, cobra.ShellCompDirectiveNoFileComp))
 	apply := sub("apply", "apply", "Regenerate the managed files of the harness",
-		"Regenerate the managed files and blocks for the harness version in skenv.toml\n(--upgrade moves it to "+harness.Latest+" first); then `lefthook install`.")
-	apply.Flags().BoolVar(&upgrade, "upgrade", false, "move harness to "+harness.Latest+" (the templates of this skenv)")
+		"Regenerate the managed files and blocks from the templates of this skenv\n(harness "+harness.Latest+"; an older repo.harness is moved to it); then\n`lefthook install`.")
 	check := sub("check", "check", "Compare the managed files with the harness templates",
-		"Compare the managed files and blocks with the templates of the harness version.\nExit code 0: in sync, 1: drift (files listed), 2: error.")
+		"Compare the managed files and blocks with the templates of this skenv\n(harness "+harness.Latest+"). Exit code 0: in sync, 1: drift (files listed), 2: error.")
 	c := group("repo", "Set up and check the harness of a skills repository", initC, apply, check)
 	c.PersistentFlags().StringVar(&dir, "dir", ".", "repository (any directory inside it)")
 	return c
 }
 
-func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility string, dryRun, upgrade, force bool) (int, error) {
+func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility string, dryRun, force bool) (int, error) {
 	root, err := gitRoot(ctx, dir)
 	if err != nil {
 		return engine.ExitFatal, err
@@ -223,6 +222,9 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility string, d
 		if err != nil {
 			return engine.ExitFatal, err
 		}
+		if len(changes) > 0 && changes[0].Action != "create" {
+			rewriteNote(env, c.File)
+		}
 		fmt.Fprintf(env.Stdout, "harness %s (%s) set up in %s\n", c.Harness, c.Visibility, root)
 		return lefthookInstall(ctx, env, root, dryRun), nil
 	case "apply":
@@ -230,22 +232,29 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility string, d
 		if err != nil {
 			return engine.ExitFatal, err
 		}
-		switch cmp := harness.Compare(c.Harness, harness.Latest); {
-		case upgrade && cmp < 0:
+		old := c.Harness
+		c.Harness = harness.Latest
+		// Refuse (foreign files without --force) before the version moves.
+		if _, err := harness.Apply(root, c, true, force); err != nil {
+			return engine.ExitFatal, err
+		}
+		if old != harness.Latest {
 			if err := harness.SetHarness(root, harness.Latest, dryRun); err != nil {
 				return engine.ExitFatal, err
 			}
-			fmt.Fprintf(env.Stdout, "harness %s → %s\n", c.Harness, harness.Latest)
-			c.Harness = harness.Latest
-		case cmp < 0:
-			fmt.Fprintf(env.Stderr, "note: this skenv has harness %s, the repository uses %s; `skenv repo apply --upgrade` moves to it\n", harness.Latest, c.Harness)
+			prefix := ""
+			if dryRun {
+				prefix = "would move "
+			}
+			fmt.Fprintf(env.Stdout, "%sharness %s → %s\n", prefix, old, harness.Latest)
+			rewriteNote(env, c.File)
 		}
 		changes, err := harness.Apply(root, c, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
 			return engine.ExitFatal, err
 		}
-		if len(changes) == 0 {
+		if len(changes) == 0 && old == harness.Latest {
 			fmt.Fprintln(env.Stdout, "repo apply: up to date")
 		}
 		return lefthookInstall(ctx, env, root, dryRun), nil
@@ -263,6 +272,14 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility string, d
 	}
 	fmt.Fprintln(env.Stdout, "repo check: managed files match the harness")
 	return engine.ExitOK, nil
+}
+
+// rewriteNote tells that a YAML or JSON skenv file was rewritten from its
+// data: unlike TOML, its comments and key order are gone.
+func rewriteNote(env engine.Env, file string) {
+	if ext := filepath.Ext(file); ext != ".toml" && file != "" {
+		fmt.Fprintf(env.Stderr, "note: %s is rewritten from its data; only TOML keeps comments and key order\n", filepath.Base(file))
+	}
 }
 
 func printChanges(env engine.Env, changes []harness.Change, dryRun bool) {

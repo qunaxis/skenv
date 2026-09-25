@@ -1,9 +1,0 @@
-line-length = 120
-target-version = "py39"
-extend-exclude = [".venv", "node_modules"]
-
-[lint]
-select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "RUF"]
-
-[lint.per-file-ignores]
-"skills/*/tests/*" = ["B011"]

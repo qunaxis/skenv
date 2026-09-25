@@ -172,7 +172,7 @@ func (w *world) standard(extraManifest string) string {
 		"tools/other/SKILL.md":      skillMD("other", "v1"),
 	}, "feat: initial")
 	w.push("me/skills", map[string]string{
-		"env.toml":              manifestText(rev, extraManifest),
+		"skenv.toml":            manifestText(rev, extraManifest),
 		"skills/alpha/SKILL.md": skillMD("alpha", ""),
 		"skills/beta/SKILL.md":  skillMD("beta", ""),
 		"README.md":             "not a skill\n",
@@ -182,12 +182,12 @@ func (w *world) standard(extraManifest string) string {
 
 func manifestText(rev, extra string) string {
 	return `# test manifest
-[[own]]
+[[environment.own]]
 repo = "me/skills"
 path = "~/` + ownPath + `"
 
 # pinned third-party skill
-[[vendor]]
+[[environment.vendor]]
 name = "archify"
 repo = "ext/tools"
 path = "tools/archify"

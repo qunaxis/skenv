@@ -19,7 +19,7 @@ skenv sync [flags]
       --adopt             move conflicting unmanaged paths to ~/.local/state/skenv/backup/<ts>/ and replace them
       --dry-run           print the plan, change nothing
   -h, --help              help for sync
-      --manifest string   path to env.toml
+      --manifest string   skenv file with the [environment] section, or its directory
       --quiet             print only warnings and errors
 ```
 

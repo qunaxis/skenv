@@ -6,9 +6,8 @@
 // lowercase and case-sensitive in every format. At most one config file may
 // exist; skenv refuses to guess between two.
 //
-// The manifest (env.toml) and the repository harness (skenv.toml) are data
-// files, not configuration, and stay TOML only: see
-// docs/adr/0001-cli-and-config-framework.md.
+// The skenv file of a repository (skenv.toml with [repo] and [environment])
+// is not configuration of the tool and is read by internal/skenvfile.
 package config
 
 import (

@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v skenv >/dev/null 2>&1 || exit 0; skenv lint --help 2>&1 | grep -q -- -hook || exit 0; skenv lint --hook"
+            "command": "command -v skenv >/dev/null 2>&1 || exit 0; skenv lint --hook"
           }
         ]
       }

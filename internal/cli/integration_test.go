@@ -47,7 +47,7 @@ func TestInitOnCleanHome(t *testing.T) {
 	w := newWorld(t)
 	rev := w.initStandard("")
 	cfg := readFile(t, w.path(".config/skenv/config.toml"))
-	if !strings.Contains(cfg, `manifest = "~/`+ownPath+`/env.toml"`) {
+	if !strings.Contains(cfg, `manifest = "~/`+ownPath+`/skenv.toml"`) {
 		t.Fatalf("config.toml does not record the manifest:\n%s", cfg)
 	}
 	assertStandardLayout(t, w)
@@ -94,7 +94,7 @@ func TestRemoveSkillsFromManifest(t *testing.T) {
 	// Remove the vendor skill from the manifest and an own skill from the
 	// repository, upstream; sync pulls both changes.
 	text, _, _ := strings.Cut(manifestText(rev, ""), "# pinned")
-	w.push("me/skills", map[string]string{"env.toml": text, "skills/beta": ""}, "chore: drop skills")
+	w.push("me/skills", map[string]string{"skenv.toml": text, "skills/beta": ""}, "chore: drop skills")
 	out, errOut := w.mustRun(0, "sync")
 	for _, p := range []string{".agents/skills/archify", ".claude/skills/archify", ".pi/agent/skills/archify",
 		".agents/skills/beta", ".claude/skills/beta", ".pi/agent/skills/beta"} {
@@ -122,7 +122,7 @@ func TestVendorBump(t *testing.T) {
 	if strings.Contains(out, "docs: readme") {
 		t.Error("log must be limited to the vendored path")
 	}
-	manifestFile := w.path(ownPath + "/env.toml")
+	manifestFile := w.path(ownPath + "/skenv.toml")
 	text := readFile(t, manifestFile)
 	if !strings.Contains(text, `rev  = "`+newRev+`" # keep this comment`) || strings.Contains(text, oldRev) {
 		t.Errorf("manifest not bumped in place:\n%s", text)
@@ -216,15 +216,15 @@ func doctorClasses(t *testing.T, out string) map[string]bool {
 func TestDoctorFindsEveryClass(t *testing.T) {
 	w := newWorld(t)
 	rev := w.standard(`
-[[vendor]]
+[[environment.vendor]]
 name = "other"
 repo = "ext/tools"
 path = "tools/other"
 rev  = "PLACEHOLDER"
 `)
 	// Pin "other" at the same commit.
-	w.push("me/skills", map[string]string{"env.toml": strings.ReplaceAll(manifestText(rev, `
-[[vendor]]
+	w.push("me/skills", map[string]string{"skenv.toml": strings.ReplaceAll(manifestText(rev, `
+[[environment.vendor]]
 name = "other"
 repo = "ext/tools"
 path = "tools/other"
@@ -238,7 +238,7 @@ rev  = "`+rev+`"
 	// wrong-rev (archify pinned to a newer commit) and extra-managed
 	// ("other" dropped), edited locally without syncing.
 	text := manifestText(newRev, "")
-	writeFile(t, filepath.Join(own, "env.toml"), text)
+	writeFile(t, filepath.Join(own, "skenv.toml"), text)
 	// unpushed: a local commit; behind: a new upstream commit.
 	w.git(own, "commit", "--quiet", "-am", "chore: local")
 	w.push("me/skills", map[string]string{"notes.txt": "x\n"}, "docs: upstream")
@@ -280,7 +280,7 @@ func TestHostSkip(t *testing.T) {
 	if err != nil {
 		t.Skip("no hostname")
 	}
-	w.initStandard("\n[host.\"" + host + "\"]\nskip = [\"beta\", \"archify\"]\n")
+	w.initStandard("\n[environment.host.\"" + host + "\"]\nskip = [\"beta\", \"archify\"]\n")
 	for _, p := range []string{".agents/skills/beta", ".claude/skills/beta", ".agents/skills/archify", ".pi/agent/skills/archify"} {
 		if w.exists(p) {
 			t.Errorf("%s must be skipped on this host", p)
@@ -311,7 +311,7 @@ func TestVendorAddAndRemove(t *testing.T) {
 		t.Errorf("commit command not printed:\n%s", out)
 	}
 	w.mustRun(0, "vendor", "add", "solo/one")
-	text := readFile(t, w.path(ownPath+"/env.toml"))
+	text := readFile(t, w.path(ownPath+"/skenv.toml"))
 	for _, s := range []string{"# test manifest", "# keep this comment", `name = "other"`, `path = "tools/other"`, `name = "one"`, `path = "."`} {
 		if !strings.Contains(text, s) {
 			t.Errorf("manifest lacks %q:\n%s", s, text)
@@ -328,7 +328,7 @@ func TestVendorAddAndRemove(t *testing.T) {
 	if w.exists(".agents/skills/other") || w.exists(".claude/skills/other") {
 		t.Error("removed vendor still present")
 	}
-	text = readFile(t, w.path(ownPath+"/env.toml"))
+	text = readFile(t, w.path(ownPath+"/skenv.toml"))
 	if strings.Contains(text, `"other"`) || !strings.Contains(text, `name = "one"`) || !strings.Contains(text, "# keep this comment") {
 		t.Errorf("manifest after remove:\n%s", text)
 	}
@@ -342,7 +342,7 @@ func TestDryRunChangesNothing(t *testing.T) {
 		t.Fatal("init --dry-run changed the machine")
 	}
 	w.git(w.home, "clone", "--quiet", "https://github.com/me/skills", w.path(ownPath))
-	manifest := "--manifest=~/" + ownPath + "/env.toml"
+	manifest := "--manifest=~/" + ownPath + "/skenv.toml"
 	out, _ := w.mustRun(0, "sync", "--dry-run", manifest)
 	if !strings.Contains(out, "would vendor archify") || !strings.Contains(out, "would link ~/.claude/skills/alpha") {
 		t.Errorf("dry-run plan:\n%s", out)
@@ -354,7 +354,7 @@ func TestDryRunChangesNothing(t *testing.T) {
 	}
 	w.mustRun(0, "sync", manifest)
 	w.mustRun(0, "vendor", "remove", "archify", "--dry-run", manifest)
-	if !w.exists(".agents/skills/archify") || !strings.Contains(readFile(t, w.path(ownPath+"/env.toml")), "archify") {
+	if !w.exists(".agents/skills/archify") || !strings.Contains(readFile(t, w.path(ownPath+"/skenv.toml")), "archify") {
 		t.Error("vendor remove --dry-run changed something")
 	}
 }
@@ -367,7 +367,7 @@ func TestManifestFromEnvironment(t *testing.T) {
 	if !strings.Contains(errOut, "skenv init") {
 		t.Errorf("missing manifest error must say how to fix it: %s", errOut)
 	}
-	t.Setenv("SKENV_MANIFEST", "~/"+ownPath+"/env.toml")
+	t.Setenv("SKENV_MANIFEST", "~/"+ownPath+"/skenv.toml")
 	w.mustRun(0, "sync", "--quiet")
 }
 
@@ -399,7 +399,7 @@ func TestInitClonesIntoCurrentDirectory(t *testing.T) {
 		t.Errorf("init output = %q", out)
 	}
 	cfg := readFile(t, w.path(".config/skenv/config.toml"))
-	if !strings.Contains(cfg, `manifest = "~/`+ownPath+`/env.toml"`) {
+	if !strings.Contains(cfg, `manifest = "~/`+ownPath+`/skenv.toml"`) {
 		t.Fatalf("config.toml does not record the manifest:\n%s", cfg)
 	}
 	assertStandardLayout(t, w)
@@ -418,11 +418,11 @@ func TestInitCustomRepositoryAndPath(t *testing.T) {
 	rev := w.push("ext/tools", map[string]string{"tools/archify/SKILL.md": skillMD("archify", "v1")}, "feat: initial")
 	const kit = "work/team/kit"
 	w.push("acme/agent-kit", map[string]string{
-		"env.toml": `[[own]]
+		"skenv.toml": `[[environment.own]]
 repo = "acme/agent-kit"
 path = "~/` + kit + `"
 
-[[vendor]]
+[[environment.vendor]]
 name = "archify"
 repo = "ext/tools"
 path = "tools/archify"
@@ -431,7 +431,7 @@ rev  = "` + rev + `"
 		"skills/gamma/SKILL.md": skillMD("gamma", ""),
 	}, "feat: initial")
 	w.mustRun(0, "init", "acme/agent-kit", "--path", "~/"+kit)
-	if cfg := readFile(t, w.path(".config/skenv/config.toml")); !strings.Contains(cfg, `manifest = "~/`+kit+`/env.toml"`) {
+	if cfg := readFile(t, w.path(".config/skenv/config.toml")); !strings.Contains(cfg, `manifest = "~/`+kit+`/skenv.toml"`) {
 		t.Fatalf("config.toml does not record the manifest:\n%s", cfg)
 	}
 	if got, want := w.readlink(".agents/skills/gamma"), w.path(kit+"/skills/gamma"); got != want {
@@ -499,12 +499,12 @@ func TestReplacedManagedPathIsNotDeleted(t *testing.T) {
 func TestVendorAddRejectsOwnNameClash(t *testing.T) {
 	w := newWorld(t)
 	w.initStandard("")
-	before := readFile(t, w.path(ownPath+"/env.toml"))
+	before := readFile(t, w.path(ownPath+"/skenv.toml"))
 	_, errOut := w.mustRun(2, "vendor", "add", "ext/tools", "--path", "tools/other", "--name", "alpha")
 	if !strings.Contains(errOut, `"alpha" is defined twice`) {
 		t.Errorf("stderr = %s", errOut)
 	}
-	if readFile(t, w.path(ownPath+"/env.toml")) != before {
+	if readFile(t, w.path(ownPath+"/skenv.toml")) != before {
 		t.Fatal("manifest was written despite the clash")
 	}
 	w.mustRun(0, "sync")
@@ -530,8 +530,7 @@ func TestConcurrentRunIsRejected(t *testing.T) {
 // templates of the installed skenv (PRD v0.2).
 func TestDoctorWarnsAboutOldHarness(t *testing.T) {
 	w := newWorld(t)
-	w.standard("")
-	w.push("me/skills", map[string]string{"skenv.toml": "harness = \"0.1.0\"\nvisibility = \"private\"\n"}, "chore: harness")
+	w.standard("\n[repo]\nharness = \"0.1.0\"\nvisibility = \"private\"\n")
 	w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
 	_, errOut := w.mustRun(0, "doctor")
 	if !strings.Contains(errOut, "harness 0.1.0 is older than "+harness.Latest) {
@@ -549,8 +548,8 @@ func TestDoctorWarnsAboutOldHarness(t *testing.T) {
 func TestLayoutIgnore(t *testing.T) {
 	w := newWorld(t)
 	rev := w.standard("")
-	text := strings.Replace(manifestText(rev, ""), "# test manifest\n", "# test manifest\n[layout]\nignore = [\"peon-ping-*\"]\n\n", 1)
-	w.push("me/skills", map[string]string{"env.toml": text}, "chore: ignore peon-ping")
+	text := strings.Replace(manifestText(rev, ""), "# test manifest\n", "# test manifest\n[environment.layout]\nignore = [\"peon-ping-*\"]\n\n", 1)
+	w.push("me/skills", map[string]string{"skenv.toml": text}, "chore: ignore peon-ping")
 	writeFile(t, w.path(".claude/skills/peon-ping-toggle/SKILL.md"), "brew\n")
 	writeFile(t, w.path(".agents/skills/peon-ping-use/SKILL.md"), "brew\n")
 	writeFile(t, w.path(".claude/skills/manual/SKILL.md"), "hand\n")
@@ -580,9 +579,9 @@ func TestLayoutIgnore(t *testing.T) {
 // that file in its own format instead of creating a second one.
 func TestConfigFormats(t *testing.T) {
 	for name, content := range map[string]string{
-		"config.yaml": "manifest: ~/" + ownPath + "/env.toml\n",
-		"config.yml":  "manifest: ~/" + ownPath + "/env.toml\n",
-		"config.json": `{"manifest": "~/` + ownPath + `/env.toml"}`,
+		"config.yaml": "manifest: ~/" + ownPath + "/skenv.toml\n",
+		"config.yml":  "manifest: ~/" + ownPath + "/skenv.toml\n",
+		"config.json": `{"manifest": "~/` + ownPath + `/skenv.toml"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			w := newWorld(t)
@@ -598,7 +597,7 @@ func TestConfigFormats(t *testing.T) {
 			}
 			w.mustRun(0, "sync", "--quiet")
 
-			writeFile(t, w.path(".config/skenv/config.toml"), "manifest = \"/elsewhere/env.toml\"\n")
+			writeFile(t, w.path(".config/skenv/config.toml"), "manifest = \"/elsewhere/skenv.toml\"\n")
 			for _, args := range [][]string{{"doctor"}, {"init", "me/skills", "--path", "~/" + ownPath, "--dry-run"}, {"init", "me/skills", "--path", "~/other"}} {
 				_, errOut := w.mustRun(2, args...)
 				if !strings.Contains(errOut, "several config files") {
@@ -609,7 +608,52 @@ func TestConfigFormats(t *testing.T) {
 				t.Error("init cloned although the config cannot be updated")
 			}
 			// --manifest wins over the config files and does not read them.
-			w.mustRun(0, "doctor", "--manifest", "~/"+ownPath+"/env.toml")
+			w.mustRun(0, "doctor", "--manifest", "~/"+ownPath+"/skenv.toml")
 		})
+	}
+}
+
+// The manifest may be skenv.yaml or skenv.json; vendor edits rewrite it
+// from its data. --manifest may name the directory of the skenv file.
+func TestManifestFormats(t *testing.T) {
+	for name, content := range map[string]func(rev string) string{
+		"skenv.yaml": func(rev string) string {
+			return "environment:\n  own:\n    - repo: me/skills\n      path: ~/" + ownPath + "\n  vendor:\n    - name: archify\n      repo: ext/tools\n      path: tools/archify\n      rev: \"" + rev + "\"\n"
+		},
+		"skenv.json": func(rev string) string {
+			return `{"environment": {"own": [{"repo": "me/skills", "path": "~/` + ownPath + `"}], "vendor": [{"name": "archify", "repo": "ext/tools", "path": "tools/archify", "rev": "` + rev + `"}]}}`
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld(t)
+			rev := w.standard("")
+			w.push("me/skills", map[string]string{"skenv.toml": "", name: content(rev)}, "chore: "+name)
+			w.mustRun(0, "init", "me/skills", "--path", "~/"+ownPath)
+			assertStandardLayout(t, w)
+			w.mustRun(0, "doctor", "--manifest", "~/"+ownPath)
+			out, _ := w.mustRun(0, "vendor", "add", "ext/tools", "--path", "tools/other")
+			if !strings.Contains(out, "only TOML keeps comments") {
+				t.Errorf("vendor add output = %q", out)
+			}
+			if !strings.Contains(readFile(t, w.path(ownPath+"/"+name)), "tools/other") {
+				t.Error("vendor not recorded")
+			}
+		})
+	}
+}
+
+// The env.toml of skenv before 0.4 is not read; the error says how to move
+// its content.
+func TestOldManifestIsRejected(t *testing.T) {
+	w := newWorld(t)
+	w.standard("")
+	w.push("me/skills", map[string]string{"env.toml": "[[own]]\nrepo = \"me/skills\"\npath = \"~/x\"\n", "skenv.toml": ""}, "chore: old layout")
+	_, errOut := w.mustRun(2, "init", "me/skills", "--path", "~/"+ownPath)
+	if !strings.Contains(errOut, "env.toml is no longer read") || !strings.Contains(errOut, "[environment]") {
+		t.Errorf("init: %s", errOut)
+	}
+	_, errOut = w.mustRun(2, "doctor", "--manifest", "~/"+ownPath+"/env.toml")
+	if !strings.Contains(errOut, "no longer read") {
+		t.Errorf("doctor: %s", errOut)
 	}
 }

@@ -6,8 +6,8 @@ Compare the managed files with the harness templates
 
 ### Synopsis
 
-Compare the managed files and blocks with the templates of the harness version.
-Exit code 0: in sync, 1: drift (files listed), 2: error.
+Compare the managed files and blocks with the templates of this skenv
+(harness 0.4.0). Exit code 0: in sync, 1: drift (files listed), 2: error.
 
 ```
 skenv repo check [flags]

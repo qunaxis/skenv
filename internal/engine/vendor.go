@@ -51,7 +51,7 @@ func (e *Engine) VendorAdd(o VendorAddOptions) (int, error) {
 		return ExitFatal, fmt.Errorf("vendor %q is already in the manifest; use `skenv vendor bump %s`", name, name)
 	}
 	v := manifest.Vendor{Name: name, Repo: o.Repo, Path: skillPath, Rev: rev}
-	if err := e.editManifest(func(data []byte) ([]byte, error) { return manifest.AppendVendor(data, v) }); err != nil {
+	if err := e.editManifest(func(data []byte) ([]byte, error) { return manifest.AppendVendor(data, filepath.Ext(e.manifestPath), v) }); err != nil {
 		return ExitFatal, err
 	}
 	e.changef("add vendor %s (%s@%.12s, %s) to %s", name, o.Repo, rev, skillPath, e.show(e.manifestPath))
@@ -90,7 +90,9 @@ func (e *Engine) VendorBump(name, rev string) (int, error) {
 		}
 	}
 	old := v.Rev
-	if err := e.editManifest(func(data []byte) ([]byte, error) { return manifest.SetVendorRev(data, name, newRev) }); err != nil {
+	if err := e.editManifest(func(data []byte) ([]byte, error) {
+		return manifest.SetVendorRev(data, filepath.Ext(e.manifestPath), name, newRev)
+	}); err != nil {
 		return ExitFatal, err
 	}
 	e.changef("bump vendor %s %.12s → %.12s in %s", name, old, newRev, e.show(e.manifestPath))
@@ -103,7 +105,9 @@ func (e *Engine) VendorRemove(name string) (int, error) {
 	if _, ok := e.m.FindVendor(name); !ok {
 		return ExitFatal, fmt.Errorf("vendor %q is not in the manifest %s", name, e.show(e.manifestPath))
 	}
-	if err := e.editManifest(func(data []byte) ([]byte, error) { return manifest.RemoveVendor(data, name) }); err != nil {
+	if err := e.editManifest(func(data []byte) ([]byte, error) {
+		return manifest.RemoveVendor(data, filepath.Ext(e.manifestPath), name)
+	}); err != nil {
 		return ExitFatal, err
 	}
 	e.changef("remove vendor %s from %s", name, e.show(e.manifestPath))
@@ -127,9 +131,12 @@ func (e *Engine) editManifest(edit func([]byte) ([]byte, error)) error {
 	if err != nil {
 		return err
 	}
-	m, err := manifest.Parse(out)
+	m, err := manifest.Parse(out, filepath.Ext(e.manifestPath))
 	if err != nil {
 		return err
+	}
+	if filepath.Ext(e.manifestPath) != ".toml" {
+		e.infof("note: %s is rewritten from its data; only TOML keeps comments and key order", e.show(e.manifestPath))
 	}
 	// Name clashes with own skills (M1) are only visible with the own
 	// repositories listed; check before writing so a bad edit never lands.
