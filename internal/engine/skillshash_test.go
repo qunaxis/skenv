@@ -25,13 +25,18 @@ func TestPathOrderIsLocaleCompare(t *testing.T) {
 	}
 }
 
-// fixtureHash is computeSkillFolderHash of skills 1.7.0 (its code, run
-// with Node) over the folder that TestCommitFolderHash commits.
-const fixtureHash = "648ff9bcb7ac7a4ad683248c703097280b62fe24ae7977ae1b8325e6afd1213c"
+// The hashes of skills 1.7.0 (its code, run with Node) over the folder
+// that TestMatchFolderHash commits: computeSkillFolderHash of a clone, and
+// computeSnapshotHash over the files a blob install keeps.
+const (
+	fixtureHash         = "9963dd2feec24e995558b5f13ab20dfa8ed5feece441ef1f94e0ca61b9341714"
+	fixtureSnapshotHash = "c8edb92ea52ecfa1a9e184113ce6674d08f3e314fc415f0a131766b5cfec0128"
+)
 
-// computeSkillFolderHash recomputed from a commit: every regular file in
-// localeCompare order, without node_modules and symlinks.
-func TestCommitFolderHash(t *testing.T) {
+// Both hashes recomputed from a commit: every regular file in
+// localeCompare order, without symlinks; the clone hash without
+// node_modules, the snapshot hash without metadata.json and __pycache__.
+func TestMatchFolderHash(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
@@ -49,6 +54,8 @@ func TestCommitFolderHash(t *testing.T) {
 		"node_modules/pkg/index.js": "skip\n",
 		"sub/node_modules/x.js":     "skip2\n",
 		"sub/kept.md":               "kept\n",
+		"metadata.json":             "{\"a\":1}\n",
+		"__pycache__/c.pyc":         "pyc\n",
 	}
 	for p, content := range files {
 		full := filepath.Join(repo, "skills/fixture", p)
@@ -81,14 +88,13 @@ func TestCommitFolderHash(t *testing.T) {
 	commit := git("rev-parse", "HEAD")
 
 	e := &base{env: Env{Git: gitx.Git{}}, ctx: context.Background()}
-	got, err := e.commitFolderHash(repo, commit, "skills/fixture")
-	if err != nil {
-		t.Fatal(err)
+	for hash, want := range map[string]string{fixtureHash: commit, fixtureSnapshotHash: commit, strings.Repeat("0", 64): ""} {
+		got, err := e.matchFolderHash(repo, []string{commit}, "skills/fixture", hash)
+		if err != nil || got != want {
+			t.Errorf("matchFolderHash(%.12s) = %q, %v; want %q", hash, got, err, want)
+		}
 	}
-	if got != fixtureHash {
-		t.Errorf("commitFolderHash = %s, want %s", got, fixtureHash)
-	}
-	if got, err := e.commitFolderHash(repo, commit, "skills/none"); got != "" || err != nil {
+	if got, err := e.matchFolderHash(repo, []string{commit}, "skills/none", fixtureHash); got != "" || err != nil {
 		t.Errorf("missing folder: %q, %v", got, err)
 	}
 	// The same files in memory, in any order.

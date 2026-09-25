@@ -75,84 +75,103 @@ func hashedOut(rel string) bool {
 	return false
 }
 
-// commitFolderHash is computeSkillFolderHash of folder at commit, as the
-// skills CLI computes it on a checkout: regular and executable files only
-// (it skips symlinks, and submodules are empty directories in a clone).
-// It is "" when the commit has no such folder.
-func (e *base) commitFolderHash(cache, commit, folder string) (string, error) {
-	out, err := e.env.Git.Output(e.ctx, cache, nil, "ls-tree", "-r", "-z", commit+":"+folder)
-	if err != nil {
-		return "", nil //nolint:nilerr // no folder at this commit (it removed the folder): no hash
-	}
-	var files []hashFile
-	var oids []string
-	for _, rec := range strings.Split(string(out), "\x00") {
-		meta, name, ok := strings.Cut(rec, "\t")
-		f := strings.Fields(meta)
-		if !ok || len(f) != 3 || f[1] != "blob" || (f[0] != "100644" && f[0] != "100755") || hashedOut(name) {
-			continue
+// folderAt is the files of a skill folder at a commit: slash paths
+// relative to the folder and their blob ids.
+type folderAt struct {
+	commit string
+	paths  []string
+	oids   []string
+}
+
+// matchFolderHash returns the first of commits whose folder has the
+// fingerprint hash, "" when none does. A fingerprint is either hash the
+// skills CLI records: computeSkillFolderHash of a clone (regular and
+// executable files, without .git and node_modules; it skips symlinks, and
+// submodules are empty directories in a clone), or the snapshot hash of a
+// blob install from its own servers (for a few owners, such as
+// vercel-labs), the same over the files it installs: without
+// metadata.json, __pycache__ and __pypackages__, with node_modules. The
+// blobs of every commit are fetched into the partial clone in one go.
+func (e *base) matchFolderHash(cache string, commits []string, folder, hash string) (string, error) {
+	var list []folderAt
+	var trees, oids []string
+	for _, c := range commits {
+		out, err := e.env.Git.Output(e.ctx, cache, nil, "ls-tree", "-r", "-z", c+":"+folder)
+		if err != nil {
+			continue // the commit removed the folder
 		}
-		files = append(files, hashFile{path: name})
-		oids = append(oids, f[2])
+		f := folderAt{commit: c}
+		for _, rec := range strings.Split(string(out), "\x00") {
+			meta, name, ok := strings.Cut(rec, "\t")
+			fields := strings.Fields(meta)
+			if !ok || len(fields) != 3 || fields[1] != "blob" || (fields[0] != "100644" && fields[0] != "100755") {
+				continue
+			}
+			f.paths = append(f.paths, name)
+			f.oids = append(f.oids, fields[2])
+		}
+		list = append(list, f)
+		trees = append(trees, c+":"+folder)
+		oids = append(oids, f.oids...)
 	}
-	contents, err := e.blobs(cache, oids)
+	contents, err := e.blobs(cache, trees, oids)
 	if err != nil {
 		return "", err
 	}
-	for i := range files {
-		files[i].content = contents[oids[i]]
+	for _, f := range list {
+		var clone, snapshot []hashFile
+		for i, p := range f.paths {
+			hf := hashFile{path: p, content: contents[f.oids[i]]}
+			if !hashedOut(p) {
+				clone = append(clone, hf)
+			}
+			if !copiedOut(p) {
+				snapshot = append(snapshot, hf)
+			}
+		}
+		if skillsFolderHash(clone) == hash || skillsFolderHash(snapshot) == hash {
+			return f.commit, nil
+		}
 	}
-	return skillsFolderHash(files), nil
+	return "", nil
 }
 
-// blobs returns the contents of the blobs oids of the clone cache, which
-// is a partial clone (--filter=blob:none): the missing ones are fetched in
-// one request first, instead of one request per blob. Contents read once
-// are kept for the rest of the command.
-func (e *base) blobs(cache string, oids []string) (map[string][]byte, error) {
-	if e.blobCache == nil {
-		e.blobCache = map[string][]byte{}
+// blobs returns the contents of the blobs oids, which the tree-ishes
+// trees reach, from the clone cache. The cache is a partial clone
+// (--filter=blob:none): the blobs it lacks are listed without fetching
+// them (rev-list --missing=print, which also works on git before 2.44) and
+// fetched in a few requests, not one per blob.
+func (e *base) blobs(cache string, trees, oids []string) (map[string][]byte, error) {
+	oids = slices.Compact(slices.Sorted(slices.Values(oids)))
+	if len(oids) == 0 {
+		return nil, nil
 	}
-	var want []string
-	for _, id := range oids {
-		if _, ok := e.blobCache[id]; !ok && !slices.Contains(want, id) {
-			want = append(want, id)
+	out, err := e.env.Git.Run(e.ctx, cache, append([]string{"rev-list", "--objects", "--no-object-names", "--missing=print"}, trees...)...)
+	if err != nil {
+		return nil, err
+	}
+	var missing []string
+	for _, line := range strings.Split(out, "\n") {
+		if id, ok := strings.CutPrefix(line, "?"); ok {
+			missing = append(missing, id)
 		}
 	}
-	if len(want) > 0 {
-		input := []byte(strings.Join(want, "\n") + "\n")
-		noLazy := e.env.Git
-		noLazy.Env = append(slices.Clip(noLazy.Env), "GIT_NO_LAZY_FETCH=1")
-		out, err := noLazy.Output(e.ctx, cache, input, "cat-file", "--batch-check=%(objectname) %(objecttype)")
-		if err != nil {
-			return nil, err
-		}
-		var missing []string
-		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			if id, kind, _ := strings.Cut(line, " "); kind == "missing" {
-				missing = append(missing, id)
-			}
-		}
-		if len(missing) > 0 {
-			args := append([]string{"-c", "fetch.negotiationAlgorithm=noop", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head",
-				"--recurse-submodules=no", "--filter=blob:none", "origin"}, missing...)
-			if _, err := e.env.Git.Run(e.ctx, cache, args...); err != nil {
-				return nil, err
-			}
-		}
-		out, err = e.env.Git.Output(e.ctx, cache, input, "cat-file", "--batch")
-		if err != nil {
-			return nil, err
-		}
-		if err := readBatch(out, e.blobCache); err != nil {
+	for chunk := range slices.Chunk(missing, 500) {
+		args := append([]string{"-c", "fetch.negotiationAlgorithm=noop", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head",
+			"--recurse-submodules=no", "--filter=blob:none", "origin"}, chunk...)
+		if _, err := e.env.Git.Run(e.ctx, cache, args...); err != nil {
 			return nil, err
 		}
 	}
-	got := make(map[string][]byte, len(oids))
-	for _, id := range oids {
-		got[id] = e.blobCache[id]
+	batch, err := e.env.Git.Output(e.ctx, cache, []byte(strings.Join(oids, "\n")+"\n"), "cat-file", "--batch")
+	if err != nil {
+		return nil, err
 	}
-	return got, nil
+	contents := map[string][]byte{}
+	if err := readBatch(batch, contents); err != nil {
+		return nil, err
+	}
+	return contents, nil
 }
 
 // readBatch parses the output of `git cat-file --batch` into into.

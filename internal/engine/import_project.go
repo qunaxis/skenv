@@ -95,7 +95,10 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 		if err := e.cleanLock(r.lock, r.unlock, e.rel); err != nil {
 			return ExitFatal, err
 		}
-		e.hintPaths = []string{projectLockName}
+		// A lock that is gone and was never committed has nothing to add.
+		if fileExists(r.lock.path) || e.env.Git.OK(ctx, root, "ls-files", "--error-unmatch", "--", projectLockName) {
+			e.hintPaths = []string{projectLockName}
+		}
 	}
 	code := e.finishProjectImport(r, sync)
 	if code != ExitOK || !sync || dryRun {

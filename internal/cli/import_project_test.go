@@ -253,7 +253,10 @@ func TestImportProjectExistingFile(t *testing.T) {
 	w.writeProjectLock(map[string]lockEntry{"archify": projectEntry("ext/tools", "github", "tools/archify/SKILL.md", archifyV1Hash)})
 	t.Chdir(w.pp(".agents/skills"))
 
-	w.mustRun(0, "import", "--project")
+	out, _ := w.mustRun(0, "import", "--project")
+	if !strings.Contains(out, "add -- skenv.yaml .agents/skills .claude/skills\n") {
+		t.Errorf("the commit hint names the removed, never committed lock:\n%s", out)
+	}
 	text := readFile(t, w.pp("skenv.yaml"))
 	if !strings.Contains(text, yaml) || !strings.Contains(text, "project:\n  mirrors: [.claude/skills]\n  vendor:\n    - name: archify\n") ||
 		!strings.Contains(text, rev) {
@@ -265,7 +268,7 @@ func TestImportProjectExistingFile(t *testing.T) {
 
 	// The skills CLI installs it again: the entry is in [project] already.
 	w.writeProjectLock(map[string]lockEntry{"archify": projectEntry("ext/tools", "github", "tools/archify/SKILL.md", archifyV1Hash)})
-	out, _ := w.mustRun(0, "import", "--project")
+	out, _ = w.mustRun(0, "import", "--project")
 	if readFile(t, w.pp("skenv.yaml")) != text || w.exists(projectDir+"/skills-lock.json") ||
 		!strings.Contains(out, "import: 0 [project] entries, 1 removed from skills-lock.json") {
 		t.Errorf("second import:\n%s", out)

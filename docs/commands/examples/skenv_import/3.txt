@@ -20,5 +20,5 @@ remove release-notes from skills-lock.json (a copy goes to ~/.local/state/skenv/
 import: 1 [project] entry, 1 removed from skills-lock.json, 1 project-own skills, 0 differing duplicates, 0 warnings, 0 errors
 next: `skenv sync --adopt` replaces the installed copies with the pinned ones (the old ones go to ~/.local/state/skenv/backup)
 the project skills changed; to commit them:
-  git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills skills-lock.json
+  git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
   git -C ~/src/web-app commit -m "chore(skills): import project skills"

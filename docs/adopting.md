@@ -250,10 +250,10 @@ lock.
 
 ### The file hash (`computedHash`)
 
-`computedHash` is not a git hash. It is `computeSkillFolderHash` of the
-`skills` CLI, computed on a clone of the repository: sha256 over the skill
-directory's files, each fed as its path relative to the directory, then
-its content. skenv recomputes it from each candidate commit's tree and
+`computedHash` is not a git hash. It is usually `computeSkillFolderHash`
+of the `skills` CLI, computed on a clone of the repository: sha256 over the
+skill directory's files, each fed as its path relative to the directory,
+then its content. skenv recomputes it from each candidate commit's tree and
 pins the newest commit that gives the same value:
 
 - **Files**: every regular file, executable or not. Symbolic links are
@@ -268,6 +268,16 @@ pins the newest commit that gives the same value:
   before digits and letters in its own order (`_`, `-`, `.`, `/`), so
   `SKILL.md` sorts between `scripts/…` and `templates/…`, and
   `references/a_b.md` before `references/a-b.md`.
+
+For a few owners (`vercel`, `vercel-labs`, `heygen-com`,
+`remotion-dev`) the CLI downloads a snapshot from its own servers instead
+of cloning, and records the snapshot's hash: the same sha256, over the
+files it installs (without `metadata.json`, `__pycache__` and
+`__pypackages__`, with `node_modules`). skenv tries that variant too; when
+the servers computed the hash some other way, the installed-copy fallback
+pins the commit. The same fallback covers repositories whose checkout
+changes the files (Git LFS, line-ending conversion in `.gitattributes`),
+where no commit's stored files give the recorded hash.
 
 The global lock records the same hash as `skillFolderHash` for installs
 from outside GitHub, and `import` without `--project` matches it the same

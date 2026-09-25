@@ -42,7 +42,7 @@ skenv file without `[project]` gets one, a repository without a skenv file a
 computedHash of the lock (a sha256 of the folder's files, recomputed per
 commit); when none does, the commit whose files match the installed copy,
 else HEAD, both warnings. Project-own skills in dir, the mirrors,
-.agents/skills and .claude/skills are reported, and one that is in several
+.agents/skills, .claude/skills and .pi/skills are reported, and one that is in several
 of them with different files is a warning: pick the version to keep before
 sync mirrors dir; import never removes one. The imported entries leave
 `skills-lock.json` (the file goes when none are left), after a copy to the
@@ -124,7 +124,7 @@ remove release-notes from skills-lock.json (a copy goes to ~/.local/state/skenv/
 import: 1 [project] entry, 1 removed from skills-lock.json, 1 project-own skills, 0 differing duplicates, 0 warnings, 0 errors
 next: `skenv sync --adopt` replaces the installed copies with the pinned ones (the old ones go to ~/.local/state/skenv/backup)
 the project skills changed; to commit them:
-  git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills skills-lock.json
+  git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
   git -C ~/src/web-app commit -m "chore(skills): import project skills"
 ```
 

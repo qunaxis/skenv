@@ -99,3 +99,33 @@ func TestLockWithout(t *testing.T) {
 		t.Errorf("version 2: %v", err)
 	}
 }
+
+// A project lock is written as the skills CLI writes it, and removed once
+// it has no skills left.
+func TestProjectLockWithout(t *testing.T) {
+	p := filepath.Join(t.TempDir(), projectLockName)
+	in := `{"version": 1, "skills": {"a": {"source": "o/a", "computedHash": "x"}, "b": {"source": "o/b"}}}`
+	if err := os.WriteFile(p, []byte(in), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	l, err := readSkillsLock(p, projectLockVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.entries["a"].ComputedHash != "x" {
+		t.Errorf("entry a = %+v", l.entries["a"])
+	}
+	if err := l.without([]string{"a"}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(p)
+	if want := "{\n  \"version\": 1,\n  \"skills\": {\n    \"b\": {\n      \"source\": \"o/b\"\n    }\n  }\n}\n"; string(got) != want {
+		t.Errorf("lock:\n%s\nwant:\n%s", got, want)
+	}
+	if err := l.without([]string{"b"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Errorf("an empty project lock stays: %v", err)
+	}
+}

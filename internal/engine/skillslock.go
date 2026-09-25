@@ -156,11 +156,18 @@ func (l *skillsLock) without(names []string) error {
 		return os.Remove(l.path)
 	}
 	l.top = now.top
-	top := map[string]any{}
-	for k, v := range l.top {
-		top[k] = v
+	var top any = struct {
+		Version json.RawMessage            `json:"version"`
+		Skills  map[string]json.RawMessage `json:"skills"`
+	}{now.top["version"], skills} // the order writeLocalLock writes
+	if l.version != projectLockVersion {
+		all := map[string]any{}
+		for k, v := range l.top {
+			all[k] = v
+		}
+		all["skills"] = skills
+		top = all
 	}
-	top["skills"] = skills
 	// Like JSON.stringify(lock, null, 2) of the skills CLI: no HTML escapes,
 	// and a final newline in the project lock only.
 	var b bytes.Buffer
@@ -271,14 +278,12 @@ func (e *base) lockRev(cache, repo string, le lockEntry, dir string) (rev string
 			}
 		}
 	case folderHashRe.MatchString(hash):
-		for _, c := range commits {
-			got, err := e.commitFolderHash(cache, c, folder)
-			if err != nil {
-				return "", 0, tip, err
-			}
-			if got == hash {
-				return c, revByHash, tip, nil
-			}
+		c, err := e.matchFolderHash(cache, commits, folder, hash)
+		if err != nil {
+			return "", 0, tip, err
+		}
+		if c != "" {
+			return c, revByHash, tip, nil
 		}
 	}
 	if dir == "" {

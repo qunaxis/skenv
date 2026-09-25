@@ -64,9 +64,8 @@ type base struct {
 	pending []byte
 
 	// fetched maps a repository to its clone cache, fetched once per
-	// import; blobCache holds the blob contents read from the caches.
-	fetched   map[string]string
-	blobCache map[string][]byte
+	// import.
+	fetched map[string]string
 
 	changes  int
 	warnings int
