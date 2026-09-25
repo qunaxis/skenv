@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/qunaxis/skenv/internal/config"
 	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/manifest"
 	"github.com/qunaxis/skenv/internal/paths"
@@ -18,7 +19,7 @@ import (
 const ManifestFile = "env.toml"
 
 // Init bootstraps a machine (B1): clone the manifest repository, record the
-// manifest path in ~/.config/skenv/config.toml and run sync. Without dir the
+// manifest path in ~/.config/skenv/config.toml (or the existing config file) and run sync. Without dir the
 // repository is cloned into ./<repo> of the current directory, like git
 // clone. When the repository is already cloned it only records the path.
 func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, error) {
@@ -40,14 +41,22 @@ func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, er
 		return ExitFatal, err
 	}
 	manifestPath := filepath.Join(dir, ManifestFile)
-	layout := paths.Layout{Home: env.Home}
 	show := func(p string) string { return paths.Collapse(env.Home, p) }
+	// An existing config.{yaml,yml,json} is updated in its own format;
+	// otherwise config.toml is written.
+	cfgFile, err := config.Find(env.Home)
+	if err != nil {
+		return ExitFatal, err
+	}
+	if cfgFile == "" {
+		cfgFile = config.DefaultFile(env.Home)
+	}
 
 	cloned := false
 	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
 		if opts.DryRun {
 			fmt.Fprintf(env.Stdout, "would clone %s into %s, record %s in %s and run sync\n",
-				repo, show(dir), show(manifestPath), show(layout.ConfigFile()))
+				repo, show(dir), show(manifestPath), show(cfgFile))
 			return ExitOK, nil
 		}
 		if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
@@ -65,13 +74,13 @@ func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, er
 		return ExitFatal, err
 	}
 	if opts.DryRun {
-		fmt.Fprintf(env.Stdout, "would record %s in %s\n", show(manifestPath), show(layout.ConfigFile()))
+		fmt.Fprintf(env.Stdout, "would record %s in %s\n", show(manifestPath), show(cfgFile))
 		return ExitOK, nil
 	}
-	if err := writeConfig(layout.ConfigFile(), show(manifestPath)); err != nil {
-		return ExitFatal, fmt.Errorf("write %s: %w", show(layout.ConfigFile()), err)
+	if _, err := config.Set(env.Home, config.Manifest, show(manifestPath)); err != nil {
+		return ExitFatal, fmt.Errorf("write %s: %w", show(cfgFile), err)
 	}
-	fmt.Fprintf(env.Stdout, "manifest %s recorded in %s\n", show(manifestPath), show(layout.ConfigFile()))
+	fmt.Fprintf(env.Stdout, "manifest %s recorded in %s\n", show(manifestPath), show(cfgFile))
 	if !cloned {
 		fmt.Fprintf(env.Stdout, "repository was already cloned; run `skenv sync` to apply the manifest\n")
 		return ExitOK, nil

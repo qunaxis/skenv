@@ -47,8 +47,5 @@ func (l Layout) AutostartLog() string { return filepath.Join(l.State(), "autosta
 // Cache is ~/.cache/skenv/repos.
 func (l Layout) Cache() string { return filepath.Join(l.Home, ".cache", "skenv", "repos") }
 
-// ConfigFile is ~/.config/skenv/config.toml.
-func (l Layout) ConfigFile() string { return filepath.Join(l.Home, ".config", "skenv", "config.toml") }
-
 // DefaultStore is ~/.agents/skills.
 func (l Layout) DefaultStore() string { return filepath.Join(l.Home, ".agents", "skills") }

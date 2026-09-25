@@ -37,7 +37,7 @@ Usage:
   skenv version
 
 Every command that reads the manifest accepts --manifest FILE (also
-$SKENV_MANIFEST or "manifest" in ~/.config/skenv/config.toml).
+$SKENV_MANIFEST or "manifest" in ~/.config/skenv/config.{toml,yaml,yml,json}).
 Run "skenv <command> --help" for details.
 `
 
