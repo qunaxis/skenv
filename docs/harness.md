@@ -45,8 +45,11 @@ skenv repo init --visibility private   # or: public
 ```
 
 Adds `[repo]` and the schema directive (creating `skenv.toml` if there is
-no skenv file) and every managed file, then runs `lefthook install`. Refuses if `[repo]` already
-exists. Reference: [skenv repo init](commands/skenv_repo_init.md).
+no skenv file, or `skenv.yaml` or `skenv.json` with `--format yaml|json`)
+and every managed file, then runs `lefthook install`. Refuses if `[repo]` already
+exists. An existing skenv file gets `[repo]` in its own format; `--format`
+that disagrees with it is an error (see
+[Creating the file](skenv-file.md#creating-the-file)). Reference: [skenv repo init](commands/skenv_repo_init.md).
 
 ### `skenv repo apply`
 

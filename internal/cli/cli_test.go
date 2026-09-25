@@ -35,13 +35,14 @@ func TestExitCodes(t *testing.T) {
 }
 
 // Shell completion comes from the command tree: subcommands, flags and
-// the fixed values of --visibility.
+// the fixed values of --visibility and --format.
 func TestCompletion(t *testing.T) {
 	for args, want := range map[string][]string{
 		"":                        {"sync", "vendor", "repo", "lint", "completion"},
 		"vendor ":                 {"add", "bump", "remove"},
 		"sync --":                 {"--quiet", "--dry-run", "--adopt", "--manifest"},
 		"repo init --visibility ": {"private", "public"},
+		"repo init --format ":     {"toml", "yaml", "json"},
 		"schema ":                 {"skenv", "config"},
 	} {
 		fields := strings.Fields(args)

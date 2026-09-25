@@ -17,6 +17,7 @@ import (
 	"github.com/qunaxis/skenv/internal/autostart"
 	"github.com/qunaxis/skenv/internal/buildinfo"
 	"github.com/qunaxis/skenv/internal/engine"
+	"github.com/qunaxis/skenv/internal/fileformat"
 	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/paths"
 	"github.com/qunaxis/skenv/schemas"
@@ -188,6 +189,12 @@ func groupRun(cmd *cobra.Command, args []string) error {
 		return usageError{fmt.Sprintf("%s: unknown subcommand %q (%s)", cmdName(cmd), args[0], strings.Join(names, ", "))}
 	}
 	return usageError{fmt.Sprintf("%s: missing subcommand (see `%s --help`)", cmdName(cmd), cmd.CommandPath())}
+}
+
+// formatFlag adds --format with the completion of its values.
+func formatFlag(c *cobra.Command, p *string, usage string) {
+	c.Flags().StringVar(p, "format", "", usage)
+	_ = c.RegisterFlagCompletionFunc("format", cobra.FixedCompletions(fileformat.Names, cobra.ShellCompDirectiveNoFileComp))
 }
 
 func manifestFlag(fs *pflag.FlagSet, o *engine.Options) {
