@@ -299,7 +299,9 @@ the repository works.
   `--project` makes that explicit and fails outside a project, and
   `--manifest` makes them work on your machine instead, from anywhere.
 - `vendor` commands edit the manifest unless you pass `--project`.
-- `--dry-run` prints the plan of every command and changes nothing.
+- `--dry-run` prints the plan of every command and writes nothing in the
+  project; `vendor add|update --dry-run` still fetch into the clone cache
+  `~/.cache/skenv/repos` to resolve commits.
 - `sync` never overwrites a copy that was edited locally, a project-own
   skill, or a directory in a mirror that differs from `dir` and was not
   made by skenv. It reports an error and goes on. `--adopt` moves such a

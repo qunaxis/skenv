@@ -53,8 +53,8 @@ type DoctorReport struct {
 	Warnings []string `json:"warnings"`
 }
 
-// Doctor compares the machine with the manifest without changing anything
-// (other than `git fetch` in own repositories).
+// Doctor compares the machine with the manifest. It changes no skill, link
+// or file, but runs `git fetch` in own repositories.
 func (e *Engine) Doctor(asJSON bool) (int, error) {
 	r := &DoctorReport{Manifest: e.show(e.manifestPath), Store: e.show(e.store), Issues: []Issue{}, Warnings: []string{}}
 	for _, t := range e.targets {

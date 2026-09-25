@@ -148,7 +148,7 @@ next steps:
 ```
       --adopt           back up and replace unmanaged paths that conflict with the manifest
       --dir string      without <repo>: the repository to start the manifest in (default: the current one)
-      --dry-run         print the plan, change nothing
+      --dry-run         print the plan; write nothing except the clone cache ~/.cache/skenv/repos, fetched to resolve commits
       --format string   format of a new file: toml, yaml or json (default toml; an existing file keeps its format)
   -h, --help            help for init
       --import          without <owner/repo>: import the installed skills into the new manifest and run sync --adopt

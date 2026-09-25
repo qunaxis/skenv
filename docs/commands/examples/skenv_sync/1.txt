@@ -1,5 +1,5 @@
 exit 0
-would pull --ff-only ~/src/skills
+would pull --ff-only ~/src/skills (not pulled by --dry-run: the plan uses its current commit)
 would vendor release-notes from example-vendor/tools@27f221f8f2a4 (tools/release-notes)
 would link ~/.agents/skills/write-tests → ~/src/skills/skills/write-tests
 would link ~/.claude/skills/release-notes → ../../.agents/skills/release-notes

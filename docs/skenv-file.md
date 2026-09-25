@@ -21,7 +21,7 @@ ignores), and unknown keys inside a section are errors.
 | Section         | What it is                                                                                            | Who writes it                              | Reference                     |
 | --------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------ | ----------------------------- |
 | `[repo]`        | The harness of a skills repository: `harness`, `visibility`, `ci`, `runner`.                          | [`skenv repo init`](harness.md#skenv-repo-init), [`skenv repo apply`](harness.md#skenv-repo-apply) | [harness](harness.md)         |
-| `[environment]` | The manifest of your machines: `layout`, `hosts`, `own`, `vendor`, `host`.                            | you, [`skenv init`](#creating-the-file) (starts it), [`skenv vendor add`](commands.md#skenv-vendor-add), [`update`](commands.md#skenv-vendor-update), [`remove`](commands.md#skenv-vendor-remove) | [manifest](manifest.md)       |
+| `[environment]` | The manifest of your machines: `layout`, `hosts`, `own`, `vendor`, `host`.                            | you, [`skenv init`](#creating-the-file) (starts it), [`skenv import`](adopting.md), [`skenv vendor add`](commands.md#skenv-vendor-add), [`update`](commands.md#skenv-vendor-update), [`remove`](commands.md#skenv-vendor-remove) | [manifest](manifest.md)       |
 | `[project]`     | The skills a project repository carries: `dir`, `mirrors`, `mirrors_mode`, `hosts`, `vendor`, `from`.| you, [`skenv vendor add`, `update`, `remove`](project-skills.md#commands) with `--project` | [project skills](project-skills.md) |
 
 - A skills repository has `[repo]`.
@@ -99,6 +99,10 @@ case-sensitive in every format. skenv edits the file in these places:
   has none, see [Creating the file](#creating-the-file));
 - `skenv init` without `<owner/repo>` adds `[environment]` (it creates the
   file too);
+- `skenv import` adds `environment.vendor` and `environment.own` entries for
+  the skills already installed on the machine (and `[environment]` itself
+  when the file has none); `skenv import --project` adds `project.vendor`
+  entries (and `[project]`, or `skenv.toml`, when missing);
 - `skenv repo apply` sets `repo.harness` when it moves the repository to the
   templates of the installed skenv.
 
@@ -155,8 +159,10 @@ skenv init
 It refuses when the file has `[environment]` already, or when its `[repo]`
 says `visibility = "public"`. Then it records the file as `manifest` in the
 [tool config](configuration.md), the same way `skenv init <owner/repo>`
-does, and prints the next steps. It doesn't sync: the new manifest is empty
-until you list skills in it.
+does, and prints the next steps. It doesn't sync. The new manifest is not
+necessarily empty: when the repository's `origin` is on a network host, the
+repository itself is already its first `[[environment.own]]` entry, so the
+first `skenv sync` links the skills it holds.
 
 ## Editor support
 

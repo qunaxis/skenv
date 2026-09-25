@@ -68,7 +68,7 @@ lefthook install: hooks active
 
 ```
       --ci string           CI system: github or gitlab (default: detected from the host of origin, else github)
-      --dry-run             print the plan, change nothing
+      --dry-run             print the plan; write nothing
       --force               replace existing files that skenv does not manage yet
       --format string       format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)
   -h, --help                help for init

@@ -86,7 +86,8 @@ the skills a project repository carries in its [project] section.
 "manifest" names that file or the directory that holds it. Inside a
 project, sync and doctor work on its [project] section.
 
-Exit codes: 0 success, 1 problems found, 2 error.`,
+Exit codes: 0 success, 1 problems found, 2 error. Warnings do not change
+the exit code; "skenv doctor" exits 0 only when the machine matches.`,
 		Example: `# Set up a machine from the manifest repository
 skenv init example-org/skills
 # Compare the machine with the manifest, then bring it in line
@@ -269,8 +270,16 @@ func manifestFlag(fs *pflag.FlagSet, o *engine.Options) {
 	fs.StringVar(&o.Manifest, "manifest", "", "skenv file with the [environment] section, or its directory")
 }
 
-func dryRunFlag(fs *pflag.FlagSet, p *bool) {
-	fs.BoolVar(p, "dry-run", false, "print the plan, change nothing")
+// Usages of --dry-run: what a preview still does differs by command, and
+// the flag says so rather than promising that nothing happens.
+const (
+	dryRunPlain = "print the plan; write nothing"
+	dryRunFetch = "print the plan; write nothing except the clone cache ~/.cache/skenv/repos, fetched to resolve commits"
+	dryRunSync  = "print the plan; write and pull nothing, so the plan uses the working copies as they are now"
+)
+
+func dryRunFlag(fs *pflag.FlagSet, p *bool, usage string) {
+	fs.BoolVar(p, "dry-run", false, usage)
 }
 
 func initCmd(a *app) *cobra.Command {
@@ -353,7 +362,7 @@ skenv init --remote gitlab:example-group/my-skills`,
 	c.Flags().StringVar(&here, "dir", "", "without <repo>: the repository to start the manifest in (default: the current one)")
 	c.Flags().StringVar(&remote, "remote", "", "without <repo>, for a repository without origin: its future remote, recorded as its own entry (owner/repo, gitlab:group/repo, codeberg:owner/repo or a URL)")
 	formatFlag(c, &format, "format of a new file: toml, yaml or json (default toml; an existing file keeps its format)")
-	dryRunFlag(c.Flags(), &o.DryRun)
+	dryRunFlag(c.Flags(), &o.DryRun, dryRunFetch)
 	c.Flags().BoolVar(&o.Adopt, "adopt", false, "back up and replace unmanaged paths that conflict with the manifest")
 	c.Flags().BoolVar(&imp, "import", false, "without <owner/repo>: import the installed skills into the new manifest and run sync --adopt")
 	return c
@@ -428,7 +437,7 @@ skenv import --project`,
 		}),
 	}
 	manifestFlag(c.Flags(), &o)
-	dryRunFlag(c.Flags(), &o.DryRun)
+	dryRunFlag(c.Flags(), &o.DryRun, dryRunFetch)
 	projectFlag(c.Flags(), &project, "import the skills-lock.json of the current repository into its [project] section")
 	c.Flags().BoolVar(&sync, "sync", false, "run skenv sync --adopt after the import")
 	return c
@@ -449,7 +458,13 @@ works on the project instead: it copies every pinned skill of [project]
 into its dir at its rev, removes copies whose entry is gone, and gives
 every skill of dir to each mirror. It changes a skill authored in dir only
 with --adopt, after a backup.
---manifest syncs the machine from there; --project requires a project.`,
+--manifest syncs the machine from there; --project requires a project.
+
+Exit code 0 even with warnings: an own repository with uncommitted changes
+or a diverged branch is left as it is, with a warning, and the rest is
+synced. ` + "`skenv doctor`" + ` exits 0 only when the machine matches the manifest.
+With --dry-run nothing is pulled, so the plan uses the own repositories (and
+a manifest inside one) as they are now.`,
 		Example: `# Show what a sync would change
 skenv sync --dry-run
 # Pull, vendor and link
@@ -490,7 +505,7 @@ skenv sync --project`,
 		c.Example = "# Recreate a link removed by hand, without pulling\nskenv link"
 	}
 	manifestFlag(c.Flags(), &o)
-	dryRunFlag(c.Flags(), &o.DryRun)
+	dryRunFlag(c.Flags(), &o.DryRun, dryRunSync)
 	c.Flags().BoolVar(&o.Adopt, "adopt", false, "move conflicting unmanaged paths to ~/.local/state/skenv/backup/<ts>/ and replace them")
 	if name == "sync" {
 		c.Flags().BoolVar(&o.Quiet, "quiet", false, "print only warnings and errors")
@@ -505,7 +520,9 @@ func doctorCmd(a *app) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "doctor",
 		Short: "Compare the machine with the manifest, or a project with its [project]",
-		Long: `Compare the machine with the manifest without changing it.
+		Long: `Compare the machine with the manifest. It changes no skill, link or file,
+but runs ` + "`git fetch`" + ` in each own repository (network access; it updates their
+remote-tracking branches) to report unpushed and behind.
 Classes: missing, extra-managed, unmanaged, wrong-rev, broken-link, conflict,
 dirty, unpushed, behind, agent-mismatch.
 
@@ -516,7 +533,8 @@ extra-managed, conflict, broken-mirror, mirror-drift, unmanaged (a skill
 only in a mirror). --manifest checks the machine from there; --project
 requires a project.
 
-Exit code: 0 in sync, 1 discrepancies, 2 error.`,
+Exit code: 0 in sync, 1 discrepancies, 2 error. Exit code 0 is the check
+that a sync converged: sync itself exits 0 with warnings.`,
 		Example: `# The machine matches the manifest
 skenv doctor
 # A skill link was removed by hand
@@ -565,9 +583,9 @@ func vendorCmd(a *app) *cobra.Command {
 		project bool
 	}
 	// shared wires the flags every vendor subcommand shares.
-	shared := func(c *cobra.Command, f *flags) {
+	shared := func(c *cobra.Command, f *flags, dryRun string) {
 		manifestFlag(c.Flags(), &f.o)
-		dryRunFlag(c.Flags(), &f.o.DryRun)
+		dryRunFlag(c.Flags(), &f.o.DryRun, dryRun)
 		c.Flags().BoolVar(&f.o.Adopt, "adopt", false, "move conflicting unmanaged paths to the backup directory and replace them")
 		projectFlag(c.Flags(), &f.project, "edit [project] of the current repository instead of the manifest, and sync the project")
 	}
@@ -626,7 +644,7 @@ skenv vendor add example-vendor/tools --path tools/release-notes --project`,
 			return v.VendorAdd(va)
 		}),
 	}
-	shared(add, &addF)
+	shared(add, &addF, dryRunFetch)
 	add.Flags().StringVar(&va.Path, "path", "", `directory with SKILL.md inside the repository ("." for the root)`)
 	add.Flags().StringVar(&va.Name, "name", "", "skill name (default: last element of --path)")
 	add.Flags().StringVar(&va.Rev, "rev", "", revUsage)
@@ -659,7 +677,7 @@ skenv vendor update --project`,
 			return v.VendorUpdate(args, rev)
 		}),
 	}
-	shared(update, &updateF)
+	shared(update, &updateF, dryRunFetch)
 	update.Flags().StringVar(&rev, "rev", "", revUsage)
 
 	var rmF flags
@@ -679,7 +697,7 @@ is removed by editing the skills of that entry.`,
 			return v.VendorRemove(args[0])
 		}),
 	}
-	shared(remove, &rmF)
+	shared(remove, &rmF, dryRunPlain)
 
 	c := group("vendor", "Pin, update and remove third-party skills", add, update, remove)
 	c.Example = "skenv vendor add example-vendor/tools --path tools/release-notes\n" +

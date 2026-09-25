@@ -21,7 +21,8 @@ the skills a project repository carries in its `[project]` section.
 `manifest` names that file or the directory that holds it. Inside a
 project, sync and doctor work on its `[project]` section.
 
-Exit codes: 0 success, 1 problems found, 2 error.
+Exit codes: 0 success, 1 problems found, 2 error. Warnings do not change
+the exit code; `skenv doctor` exits 0 only when the machine matches.
 
 ```
 skenv [flags]

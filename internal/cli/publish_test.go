@@ -95,6 +95,19 @@ func TestLintHook(t *testing.T) {
 	if code != 2 || !strings.Contains(errOut, "L2") || !strings.Contains(errOut, "L4") || !strings.Contains(errOut, "after Edit") {
 		t.Errorf("broken skill: %d\n%s", code, errOut)
 	}
+	// --hook ignores paths and the other modes, so they are usage errors
+	// rather than checks that silently do not run.
+	for _, args := range [][]string{
+		{"lint", "--hook", "--publish"},
+		{"lint", "--hook", "--staged"},
+		{"lint", "--hook", "/does-not-exist"},
+	} {
+		hookStdin = strings.NewReader("{}")
+		code, out, errOut := w.run(args...)
+		if code != 2 || out != "" || !strings.Contains(errOut, "--hook") {
+			t.Errorf("%v: %d %q %q", args, code, out, errOut)
+		}
+	}
 	for _, ev := range []string{
 		`{"tool_name":"Write","tool_input":{"file_path":"` + filepath.Join(repo, "README.md") + `"}}`,
 		`{"tool_name":"Bash","tool_input":{"command":"ls"}}`,

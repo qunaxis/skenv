@@ -145,7 +145,9 @@ func (e *Engine) syncOwn() {
 		}
 		before, _ := e.env.Git.Run(e.ctx, dir, "rev-parse", "HEAD")
 		if e.opts.DryRun {
-			e.infof("would pull --ff-only %s", e.show(dir))
+			// The preview cannot see upstream changes: say so, since the
+			// manifest itself often lives in this working copy.
+			e.infof("would pull --ff-only %s (not pulled by --dry-run: the plan uses its current commit)", e.show(dir))
 			continue
 		}
 		if _, err := e.env.Git.Run(e.ctx, dir, "pull", "--ff-only", "--quiet"); err != nil {
