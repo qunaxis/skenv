@@ -12,7 +12,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/qunaxis/skenv/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/qunaxis/skenv/actions/workflows/ci.yml)
 [![Go version](https://img.shields.io/github/go-mod/go-version/qunaxis/skenv?style=flat-square)](go.mod)
 
-![Terminal demo: skenv clone and skenv sync clone a skills repository and link the same skills into Claude Code, pi and the Codex store; skenv doctor reports a deleted link, skenv sync restores it, and skenv vendor add pins a third-party skill to a commit](docs/demo/demo.gif)
+![Terminal demo: skenv clone and skenv sync clone a skills repository and link the same skills into Claude Code, pi and the Codex store; skenv list shows them installed, skenv doctor reports a deleted link, skenv sync restores it, and skenv vendor add pins a third-party skill to a commit](docs/demo/demo.gif)
 
 </div>
 
