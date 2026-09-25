@@ -46,7 +46,7 @@ func LoadDenylist(home string, getenv func(string) string) (*Denylist, error) {
 	data, err := os.ReadFile(p)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("stop-list %s not found: create it (one phrase per line) or point $SKENV_DENYLIST to it; in CI set the SKENV_DENYLIST secret", p)
+			return nil, fmt.Errorf("stop-list %s not found: create it (one phrase per line) or point $SKENV_DENYLIST to it; in CI set the SKENV_DENYLIST secret (GitHub) or the SKENV_DENYLIST_B64 variable (GitLab)", p)
 		}
 		return nil, fmt.Errorf("stop-list %s: %w", p, err)
 	}

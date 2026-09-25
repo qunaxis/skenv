@@ -83,10 +83,10 @@ func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) 
 
 // InitImport runs `skenv init --import`: start a manifest in the git
 // repository of dir, import into it and run `skenv sync --adopt`. The
-// repository itself becomes an own repository when its origin is on GitHub
-// and the import did not add it already.
-func InitImport(ctx context.Context, env Env, dir, format string, dryRun bool) (int, error) {
-	p, err := planManifest(ctx, env, dir, format)
+// repository itself becomes an own repository (from origin, or remote when
+// it has none) unless the import added it already.
+func InitImport(ctx context.Context, env Env, dir, format, remote string, dryRun bool) (int, error) {
+	p, err := planManifest(ctx, env, dir, format, remote)
 	if err != nil {
 		return ExitFatal, err
 	}

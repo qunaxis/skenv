@@ -7,16 +7,22 @@ Set up the harness of a skills repository
 ### Synopsis
 
 Set up the harness of a skills repository: the `[repo]` section and the schema
-directive of the skenv file, `lefthook.yml`, CI workflow, linter configs and the
-managed blocks of `AGENTS.md` and `.gitignore`; then `lefthook install`. Refuses
-if `[repo]` exists.
+directive of the skenv file, `lefthook.yml`, the CI pipeline, linter configs and
+the managed blocks of `AGENTS.md` and `.gitignore`; then `lefthook install`.
+Refuses if `[repo]` exists.
+
+`--ci` picks the CI system: github (.github/workflows/check.yml) or gitlab
+(`.gitlab-ci.yml`). Without it, the host of origin decides: gitlab when origin
+is on `gitlab.com` or on a host declared with type `gitlab` in the manifest
+(this repository's own `[environment]`, else the manifest in the config file),
+github otherwise, also when there is no origin.
 
 Without a skenv file it creates `skenv.toml`, or `skenv.yaml` or `skenv.json` with
 `--format`. An existing skenv file gets `[repo]` added in its own format;
 `--format` that disagrees with it is an error, and nothing is written.
 
 ```
-skenv repo init --visibility private|public [flags]
+skenv repo init --visibility private|public [--ci github|gitlab] [flags]
 ```
 
 ### Examples
@@ -35,13 +41,33 @@ create .markdownlint.yaml
 create AGENTS.md
 create .gitignore
 create .claude/settings.json
-harness 0.4.0 (public) set up in ~/src/public-skills
+ci github: the default, the repository has no origin; --ci overrides it
+harness 0.5.0 (public, ci github) set up in ~/src/public-skills
+lefthook install: hooks active
+```
+
+A private repository on GitLab, with jobs on runners tagged self-hosted, linux, docker:
+
+```console
+$ skenv repo init --visibility private --ci gitlab
+create skenv.toml
+create lefthook.yml
+create .gitlab-ci.yml
+create ruff.toml
+create pyrightconfig.json
+create .editorconfig
+create .markdownlint.yaml
+create AGENTS.md
+create .gitignore
+create .claude/settings.json
+harness 0.5.0 (private, ci gitlab) set up in ~/src/team-skills
 lefthook install: hooks active
 ```
 
 ### Options
 
 ```
+      --ci string           CI system: github or gitlab (default: detected from the host of origin, else github)
       --dry-run             print the plan, change nothing
       --force               replace existing files that skenv does not manage yet
       --format string       format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)

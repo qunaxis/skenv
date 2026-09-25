@@ -32,10 +32,17 @@ local instructions go outside this block.
 - `lefthook install` once: pre-commit runs `skenv lint --staged`, ruff,
   shellcheck and gitleaks on staged files; pre-push runs `check` of changed
   skills.
-- CI (`.github/workflows/check.yml`): `skenv repo check`, `skenv lint`,
-  ruff, pyright, shellcheck, markdownlint, gitleaks and the skill checks[[ if not .Private ]],
-  plus `skenv lint --publish` with the stop-list from the `SKENV_DENYLIST`
-  secret[[ end ]].
+[[- if .GitLab ]]
+- CI (`.gitlab-ci.yml`, GitLab CI): `skenv repo check`, `skenv lint`, ruff,
+  pyright, shellcheck, markdownlint, gitleaks and the skill checks[[ if not .Private ]],
+  plus `skenv lint --publish` with the stop-list from the masked
+  `SKENV_DENYLIST_B64` CI/CD variable (base64)[[ end ]].
+[[- else ]]
+- CI (`.github/workflows/check.yml`, GitHub Actions): `skenv repo check`,
+  `skenv lint`, ruff, pyright, shellcheck, markdownlint, gitleaks and the
+  skill checks[[ if not .Private ]], plus `skenv lint --publish` with the
+  stop-list from the `SKENV_DENYLIST` secret[[ end ]].
+[[- end ]]
 - Claude Code: `.claude/settings.json` runs `skenv lint --hook` after every
   Edit/Write/MultiEdit and shows lint problems of the edited skill to the
   agent. Personal settings go to `.claude/settings.local.json`.

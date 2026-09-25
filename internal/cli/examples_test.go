@@ -64,6 +64,12 @@ var exampleScenarios = map[string]func(f *exampleWorld){
 		f.npxInstalled()
 		f.t.Chdir(f.path("src/my-skills"))
 	},
+	"skenv init/4": func(f *exampleWorld) {
+		repo := f.path("src/my-skills")
+		mustMkdir(f.t, repo)
+		f.git(repo, "init", "--quiet", "-b", "main")
+		f.t.Chdir(repo)
+	},
 	"skenv import/1": func(f *exampleWorld) { f.initialized(); f.npxInstalled() },
 	"skenv import/2": func(f *exampleWorld) { f.initialized(); f.npxInstalled() },
 	"skenv sync/1": func(f *exampleWorld) {
@@ -158,6 +164,12 @@ type = "gitlab"
 	"skenv new/1": func(f *exampleWorld) { f.initialized() },
 	"skenv repo init/1": func(f *exampleWorld) {
 		repo := f.path("src/public-skills")
+		mustMkdir(f.t, repo)
+		f.git(repo, "init", "--quiet", "-b", "main")
+		f.t.Chdir(repo)
+	},
+	"skenv repo init/2": func(f *exampleWorld) {
+		repo := f.path("src/team-skills")
 		mustMkdir(f.t, repo)
 		f.git(repo, "init", "--quiet", "-b", "main")
 		f.t.Chdir(repo)

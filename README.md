@@ -271,7 +271,8 @@ The same pages, with search, are published at
 - [Project skills](docs/project-skills.md): `[project]`, skills committed
   with a project, mirrors, `doctor` in CI.
 - [Harness](docs/harness.md): `skenv repo init|apply|check`, `[repo]`,
-  the managed files and harness versions.
+  the managed files, the GitHub Actions and GitLab CI pipelines and harness
+  versions.
 - [Claude Code hook](docs/claude-code-hook.md): how skills are linted while
   an agent edits them.
 - [Development and releases](docs/releasing.md): `make` targets, commit

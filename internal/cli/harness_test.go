@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -198,4 +199,110 @@ func TestRepoApplyOlderHarness(t *testing.T) {
 	}
 	w.mustRun(0, "repo", "apply", "--dir", repo, "--force")
 	w.mustRun(0, "repo", "check", "--dir", repo)
+}
+
+// repo init picks the CI system from the host of origin (declared hosts
+// included) unless --ci says otherwise; the GitLab pipeline is checked for
+// drift like the GitHub workflow, and switching repo.ci moves the
+// repository from one to the other.
+func TestRepoInitCI(t *testing.T) {
+	lookLefthook = func(string) (string, error) { return "", exec.ErrNotFound }
+	t.Cleanup(func() { lookLefthook = exec.LookPath })
+	newRepo := func(w *world, name, origin string) string {
+		t.Helper()
+		repo := w.path("src/" + name)
+		mustMkdir(t, repo)
+		w.git(repo, "init", "--quiet", "-b", "main")
+		if origin != "" {
+			w.git(repo, "remote", "add", "origin", origin)
+		}
+		return repo
+	}
+	pipeline := func(repo string) string {
+		t.Helper()
+		gh, gl := fileExists(filepath.Join(repo, ".github/workflows/check.yml")), fileExists(filepath.Join(repo, ".gitlab-ci.yml"))
+		switch {
+		case gh && !gl:
+			return "github"
+		case gl && !gh:
+			return "gitlab"
+		}
+		return "both or none"
+	}
+
+	w := newWorld(t)
+	for i, c := range []struct {
+		origin string
+		args   []string
+		want   string
+		why    string
+	}{
+		{"https://gitlab.com/example-group/sub/skills.git", nil, "gitlab", "detected from origin, on a GitLab host"},
+		{"git@gitlab.com:example-group/skills.git", nil, "gitlab", "detected from origin, on a GitLab host"},
+		{"https://user:secret@github.com/example-org/skills.git", nil, "github", "detected from origin, on GitHub"},
+		{"https://codeberg.org/example-org/skills.git", nil, "github", "the default, origin is not on a GitLab host"},
+		{"", nil, "github", "the default, the repository has no origin"},
+		{"", []string{"--ci", "gitlab"}, "gitlab", ""},
+		{"https://gitlab.com/example-group/skills.git", []string{"--ci", "github"}, "github", ""},
+	} {
+		repo := newRepo(w, "case"+strconv.Itoa(i), c.origin)
+		args := append([]string{"repo", "init", "--visibility", "private", "--dir", repo}, c.args...)
+		out, _ := w.mustRun(0, args...)
+		if got := pipeline(repo); got != c.want {
+			t.Errorf("%s %v: pipeline %s, want %s", c.origin, c.args, got, c.want)
+		}
+		if !strings.Contains(out, "(private, ci "+c.want+")") || (c.why != "" && !strings.Contains(out, "ci "+c.want+": "+c.why)) || strings.Contains(out, "secret") {
+			t.Errorf("%s %v:\n%s", c.origin, c.args, out)
+		}
+		if !strings.Contains(readFile(t, filepath.Join(repo, "skenv.toml")), `ci         = "`+c.want+`"`) {
+			t.Errorf("%s: skenv.toml:\n%s", c.origin, readFile(t, filepath.Join(repo, "skenv.toml")))
+		}
+	}
+	if _, errOut := w.mustRun(2, "repo", "init", "--visibility", "private", "--ci", "jenkins", "--dir", newRepo(w, "bad", "")); !strings.Contains(errOut, "--ci must be github or gitlab") {
+		t.Errorf("--ci jenkins: %s", errOut)
+	}
+
+	// A self-hosted GitLab declared in the repository's own manifest, and
+	// one declared in the manifest of the config file.
+	own := newRepo(w, "own-manifest", "https://git.example.com/team/skills.git")
+	writeFile(t, filepath.Join(own, "skenv.toml"), "[environment.hosts.work]\nurl = \"https://git.example.com\"\ntype = \"gitlab\"\n")
+	w.mustRun(0, "repo", "init", "--visibility", "private", "--dir", own)
+	if got := pipeline(own); got != "gitlab" {
+		t.Errorf("host declared in the repository: %s", got)
+	}
+	writeFile(t, w.path(".config/skenv/config.toml"), "manifest = \""+filepath.Join(own, "skenv.toml")+"\"\n")
+	other := newRepo(w, "other", "git@git.example.com:team/public-skills.git")
+	w.mustRun(0, "repo", "init", "--visibility", "public", "--dir", other)
+	if got := pipeline(other); got != "gitlab" {
+		t.Errorf("host declared in the manifest of the config: %s", got)
+	}
+
+	// Drift of the GitLab pipeline.
+	w.mustRun(0, "repo", "check", "--dir", other)
+	pipe := filepath.Join(other, ".gitlab-ci.yml")
+	writeFile(t, pipe, strings.Replace(readFile(t, pipe), "timeout: 30m", "timeout: 99m", 1))
+	out, _ := w.mustRun(1, "repo", "check", "--dir", other)
+	if !strings.Contains(out, ".gitlab-ci.yml: differs from the harness") {
+		t.Errorf("check:\n%s", out)
+	}
+	w.mustRun(0, "repo", "apply", "--dir", other)
+	w.mustRun(0, "repo", "check", "--dir", other)
+
+	// Switching to GitHub is an edit of repo.ci and apply.
+	cfg := filepath.Join(other, "skenv.toml")
+	writeFile(t, cfg, strings.Replace(readFile(t, cfg), `ci         = "gitlab"`, `ci         = "github"`, 1))
+	out, _ = w.mustRun(1, "repo", "check", "--dir", other)
+	if !strings.Contains(out, `.gitlab-ci.yml: managed file of ci = "gitlab"`) {
+		t.Errorf("check after the edit:\n%s", out)
+	}
+	out, _ = w.mustRun(0, "repo", "apply", "--dir", other)
+	if !strings.Contains(out, "create .github/workflows/check.yml") || !strings.Contains(out, "remove .gitlab-ci.yml") || pipeline(other) != "github" {
+		t.Errorf("apply after the edit:\n%s", out)
+	}
+	w.mustRun(0, "repo", "check", "--dir", other)
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }

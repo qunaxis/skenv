@@ -7,9 +7,13 @@ Regenerate the managed files of the harness
 ### Synopsis
 
 Regenerate the managed files and blocks from the templates of this skenv
-(harness 0.4.0; an older `repo.harness` is moved to it) and point
+(harness 0.5.0; an older `repo.harness` is moved to it) and point
 the schema directive of the skenv file at that version; then
 `lefthook install`.
+
+The CI pipeline follows `repo.ci` of the skenv file. To switch CI systems, edit
+`repo.ci` and run apply: it writes the pipeline of the new one and removes the
+managed file of the other (.github/workflows/check.yml or `.gitlab-ci.yml`).
 
 ```
 skenv repo apply [flags]

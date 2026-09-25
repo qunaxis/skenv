@@ -132,7 +132,9 @@ The alias is lowercase letters, digits and `-`, starting with a letter.
 | `generic` | anything else            | any path                              | `<url>/<path>` as written |
 
 Besides the paths, skenv records the type for features that depend on the
-server software, such as default CI templates and imports from other tools.
+server software: the default CI system of
+[`skenv repo init`](harness.md#choosing-the-ci-system) (GitLab CI for
+`gitlab`) and imports from other tools.
 
 ## Why aliases live in the manifest
 
@@ -309,3 +311,21 @@ server is written as its URL. Once you declare the host, you can shorten
 the entry to `work:platform/skills`; the canonical URL, and so the
 [identity](#the-canonical-url) of the repository, stays the same if the
 host's `url` matches the origin.
+
+A repository without an `origin` yet takes its future remote from
+`--remote`, in any form above except a declared alias (the new manifest
+declares none), and it is written the same way:
+
+```sh
+skenv init --remote gitlab:example-org/team/skills
+skenv init --remote https://git.example.com/platform/skills.git
+```
+
+`--remote` with an `origin` is an error: the origin is the remote. It does
+not add a git remote either; run `git remote add origin …` when the
+repository exists on the server.
+
+The host type also decides the CI system of
+[`skenv repo init`](harness.md#choosing-the-ci-system): GitLab CI for an
+`origin` on gitlab.com or on a declared host with `type = "gitlab"`,
+GitHub Actions otherwise.

@@ -56,20 +56,29 @@
           "type": "string",
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
           "examples": [
-            "0.4.0"
+            "0.5.0"
           ],
-          "patternErrorMessage": "A version such as 0.4.0."
+          "patternErrorMessage": "A version such as 0.5.0."
         },
         "visibility": {
-          "description": "The visibility of the repository on GitHub: \"private\" or \"public\". A public repository must not have [environment], and its CI always runs on ubuntu-latest.",
+          "description": "The visibility of the repository on its host: \"private\" or \"public\". A public repository must not have [environment], and its CI always runs on the runners of the host (ubuntu-latest on GitHub, the shared runners on GitLab), never on self-hosted ones.",
           "type": "string",
           "enum": [
             "private",
             "public"
           ]
         },
+        "ci": {
+          "description": "The CI system the harness generates for: \"github\" (.github/workflows/check.yml) or \"gitlab\" (.gitlab-ci.yml). `skenv repo init` detects it from the host of origin; a file without it means \"github\". Switching it makes `skenv repo apply` remove the managed file of the other CI.",
+          "type": "string",
+          "enum": [
+            "github",
+            "gitlab"
+          ],
+          "default": "github"
+        },
         "runner": {
-          "description": "The runs-on of the CI jobs, used only when visibility is \"private\". Default: [\"self-hosted\", \"linux\", \"docker\"]; use [\"ubuntu-latest\"] for GitHub-hosted runners.",
+          "description": "Where the CI jobs run, used only when visibility is \"private\": the runs-on labels on GitHub, the runner tags on GitLab. Default: [\"self-hosted\", \"linux\", \"docker\"]; use [\"ubuntu-latest\"] for GitHub-hosted runners or [\"saas-linux-small-amd64\"] for the GitLab.com instance runners.",
           "type": "array",
           "items": {
             "type": "string"

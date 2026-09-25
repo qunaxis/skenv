@@ -1,5 +1,6 @@
 // Package harness generates and verifies the tooling of a skills repository
-// ("repository harness"): git hooks, CI workflow, linter configs and the
+// ("repository harness"): git hooks, the CI pipeline of GitHub Actions or
+// GitLab CI, linter configs and the
 // managed blocks of AGENTS.md and .gitignore. The templates of one harness
 // version (Latest) are embedded; `skenv repo apply` moves a repository to
 // it. Its settings are the [repo] section of the skenv file.
@@ -33,11 +34,30 @@ const ConfigFile = "skenv.toml"
 
 // Latest is the harness version of the embedded templates; `repo init`
 // and `repo apply` write it. The CI workflow installs this skenv release.
-const Latest = "0.4.0"
+const Latest = "0.5.0"
 
-// DefaultRunner is the runs-on of private repositories (the self-hosted
-// Docker runner).
+// DefaultRunner is the runner of private repositories (the self-hosted
+// Docker runner): the runs-on labels on GitHub, the tags on GitLab.
 var DefaultRunner = []string{"self-hosted", "linux", "docker"}
+
+// CI systems, the values of repo.ci.
+const (
+	CIGitHub = "github"
+	CIGitLab = "gitlab"
+)
+
+// CIs lists the values of repo.ci.
+var CIs = []string{CIGitHub, CIGitLab}
+
+// DetectCI is the default repo.ci for a repository whose origin is on a
+// host of hostType (manifest.TypeGitLab, ...): GitLab CI on GitLab,
+// GitHub Actions on any other host.
+func DetectCI(hostType string) string {
+	if hostType == CIGitLab {
+		return CIGitLab
+	}
+	return CIGitHub
+}
 
 //go:embed templates
 var templates embed.FS
@@ -54,13 +74,22 @@ type Config struct {
 	// the templates of the skenv that reads it; `skenv repo apply` moves it
 	// to the version of the running skenv.
 	Harness string `toml:"harness" yaml:"harness" json:"harness"`
-	// Visibility is the visibility of the repository on GitHub: "private"
+	// Visibility is the visibility of the repository on its host: "private"
 	// or "public". A public repository must not have [environment], and its
-	// CI always runs on ubuntu-latest.
+	// CI always runs on the runners of the host (ubuntu-latest on GitHub,
+	// the shared runners on GitLab), never on self-hosted ones.
 	Visibility string `toml:"visibility" yaml:"visibility" json:"visibility"`
-	// Runner is the runs-on of the CI jobs, used only when visibility is
-	// "private". Default: ["self-hosted", "linux", "docker"]; use
-	// ["ubuntu-latest"] for GitHub-hosted runners.
+	// CI is the CI system the harness generates for: "github"
+	// (.github/workflows/check.yml) or "gitlab" (.gitlab-ci.yml). `skenv
+	// repo init` detects it from the host of origin; a file without it
+	// means "github". Switching it makes `skenv repo apply` remove the
+	// managed file of the other CI.
+	CI string `toml:"ci" yaml:"ci" json:"ci"`
+	// Runner is where the CI jobs run, used only when visibility is
+	// "private": the runs-on labels on GitHub, the runner tags on GitLab.
+	// Default: ["self-hosted", "linux", "docker"]; use ["ubuntu-latest"]
+	// for GitHub-hosted runners or ["saas-linux-small-amd64"] for the
+	// GitLab.com instance runners.
 	Runner []string `toml:"runner" yaml:"runner" json:"runner"`
 
 	// File is the skenv file; HasEnvironment reports whether it also
@@ -153,6 +182,13 @@ func (c *Config) validate() error {
 	if c.File == "" {
 		name = ConfigFile
 	}
+	switch c.CI {
+	case "":
+		c.CI = CIGitHub
+	case CIGitHub, CIGitLab:
+	default:
+		return fmt.Errorf("%s: repo.ci must be %q or %q, got %q", name, CIGitHub, CIGitLab, c.CI)
+	}
 	switch c.Visibility {
 	case "private":
 		if len(c.Runner) == 0 {
@@ -184,12 +220,17 @@ func (c *Config) encode() []byte {
 	b.WriteString("[repo]\n")
 	fmt.Fprintf(&b, "harness    = %q\n", c.Harness)
 	fmt.Fprintf(&b, "visibility = %q\n", c.Visibility)
+	fmt.Fprintf(&b, "ci         = %q\n", c.CI)
 	if c.Visibility == "private" {
 		quoted := make([]string, len(c.Runner))
 		for i, r := range c.Runner {
 			quoted[i] = strconv.Quote(r)
 		}
-		fmt.Fprintf(&b, "runner     = [%s]  # runs-on of the CI jobs\n", strings.Join(quoted, ", "))
+		what := "runs-on of the CI jobs"
+		if c.CI == CIGitLab {
+			what = "tags of the CI jobs"
+		}
+		fmt.Fprintf(&b, "runner     = [%s]  # %s\n", strings.Join(quoted, ", "), what)
 	}
 	return b.Bytes()
 }
@@ -208,11 +249,13 @@ type item struct {
 	Template string // file name under templates/<version>/
 	Kind     kind
 	Comment  string // line comment prefix for the header ("#", "//") or block markers ("<!--", "#")
+	CI       string // the CI system it belongs to; "" for every one
 }
 
 var items = []item{
 	{Path: "lefthook.yml", Template: "lefthook.yml", Kind: whole, Comment: "#"},
-	{Path: ".github/workflows/check.yml", Template: "check.yml", Kind: whole, Comment: "#"},
+	{Path: ".github/workflows/check.yml", Template: "check.yml", Kind: whole, Comment: "#", CI: CIGitHub},
+	{Path: ".gitlab-ci.yml", Template: "gitlab-ci.yml", Kind: whole, Comment: "#", CI: CIGitLab},
 	{Path: "ruff.toml", Template: "ruff.toml", Kind: whole, Comment: "#"},
 	{Path: "pyrightconfig.json", Template: "pyrightconfig.json", Kind: whole, Comment: "//"},
 	{Path: ".editorconfig", Template: "editorconfig", Kind: whole, Comment: "#"},
@@ -221,6 +264,29 @@ var items = []item{
 	{Path: ".gitignore", Template: "gitignore.block", Kind: block, Comment: "#"},
 	// JSON has no comments: the template carries the header in "$comment".
 	{Path: ".claude/settings.json", Template: "claude-settings.json", Kind: whole, Comment: jsonHeader},
+}
+
+// managed returns the items c generates: the common ones and those of its
+// CI.
+func (c *Config) managed() []item {
+	var out []item
+	for _, it := range items {
+		if it.CI == "" || it.CI == c.CI {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// otherCI returns the items of the CI systems that c does not use.
+func (c *Config) otherCI() []item {
+	var out []item
+	for _, it := range items {
+		if it.CI != "" && it.CI != c.CI {
+			out = append(out, it)
+		}
+	}
+	return out
 }
 
 // jsonHeader marks items whose template writes its own header.
@@ -232,7 +298,9 @@ func Header(version string) string { return "managed by skenv " + version + " â€
 type tmplData struct {
 	Harness string
 	Private bool
-	RunsOn  string
+	GitLab  bool
+	RunsOn  string // GitHub runs-on
+	Tags    string // GitLab tags of a private repository
 }
 
 // render returns the expected content of it: the whole file for managed
@@ -246,9 +314,14 @@ func render(c *Config, it item) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	data := tmplData{Harness: c.Harness, Private: c.Visibility == "private", RunsOn: "ubuntu-latest"}
+	data := tmplData{Harness: c.Harness, Private: c.Visibility == "private", GitLab: c.CI == CIGitLab, RunsOn: "ubuntu-latest"}
 	if data.Private {
 		data.RunsOn = "[" + strings.Join(c.Runner, ", ") + "]"
+		quoted := make([]string, len(c.Runner))
+		for i, r := range c.Runner {
+			quoted[i] = strconv.Quote(r)
+		}
+		data.Tags = "[" + strings.Join(quoted, ", ") + "]"
 	}
 	var body bytes.Buffer
 	if err := t.Execute(&body, data); err != nil {
@@ -337,7 +410,12 @@ func Check(root string) ([]Drift, error) {
 			out = append(out, Drift{Path: filepath.ToSlash(p), Reason: "must not exist: it disables loading of AGENTS.md in Claude Code; move its content to AGENTS.md"})
 		}
 	}
-	for _, it := range items {
+	for _, it := range c.otherCI() {
+		if data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(it.Path))); err == nil && isManaged(data) {
+			out = append(out, Drift{Path: it.Path, Reason: fmt.Sprintf("managed file of ci = %q, and this repository has ci = %q: run `skenv repo apply` to remove it", it.CI, c.CI)})
+		}
+	}
+	for _, it := range c.managed() {
 		want, err := render(c, it)
 		if err != nil {
 			return nil, err
@@ -392,20 +470,22 @@ func normalize(s string) string {
 // Change is a file written by Apply.
 type Change struct {
 	Path   string
-	Action string // "create" or "update"
+	Action string // "create", "update" or "remove"
 }
 
 // Apply regenerates every managed file and block in root for c. Text
 // outside the managed blocks is kept. An existing file that skenv does not
 // manage yet (no "managed by skenv" header) is only replaced with force.
-// With dryRun nothing is written.
+// The managed file of another CI system (after a switch of repo.ci) is
+// removed, a file of it that skenv does not manage is kept. With dryRun
+// nothing is written.
 func Apply(root string, c *Config, dryRun, force bool) ([]Change, error) {
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
 	if !force {
 		var foreign []string
-		for _, it := range items {
+		for _, it := range c.managed() {
 			if it.Kind != whole {
 				continue
 			}
@@ -419,7 +499,7 @@ func Apply(root string, c *Config, dryRun, force bool) ([]Change, error) {
 		}
 	}
 	var changes []Change
-	for _, it := range items {
+	for _, it := range c.managed() {
 		want, err := render(c, it)
 		if err != nil {
 			return nil, err
@@ -455,7 +535,36 @@ func Apply(root string, c *Config, dryRun, force bool) ([]Change, error) {
 			return nil, err
 		}
 	}
+	for _, it := range c.otherCI() {
+		file := filepath.Join(root, filepath.FromSlash(it.Path))
+		data, err := os.ReadFile(file)
+		if errors.Is(err, fs.ErrNotExist) || (err == nil && !isManaged(data)) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		changes = append(changes, Change{Path: it.Path, Action: "remove"})
+		if dryRun {
+			continue
+		}
+		if err := os.Remove(file); err != nil {
+			return nil, err
+		}
+		removeEmptyParents(root, filepath.Dir(file))
+	}
 	return changes, nil
+}
+
+// removeEmptyParents removes dir and its parents up to root while they are
+// empty (.github/workflows and .github after a switch to GitLab CI).
+func removeEmptyParents(root, dir string) {
+	for dir != root && strings.HasPrefix(dir, root+string(filepath.Separator)) {
+		if os.Remove(dir) != nil {
+			return
+		}
+		dir = filepath.Dir(dir)
+	}
 }
 
 // mergeBlock replaces the managed block in data with want, or appends it.
@@ -485,12 +594,13 @@ func mergeBlock(it item, data, want string, exists bool) (string, error) {
 	return strings.Join(lines[:start], "") + want + strings.Join(lines[end+1:], ""), nil
 }
 
-// Init adds the [repo] section and all managed files. Without a skenv file
+// Init adds the [repo] section and all managed files, for the CI system ci
+// ("" is GitHub). Without a skenv file
 // it creates skenv.<format> (format "" is TOML); an existing one (a
 // manifest repository) gets the section added in its own format, and a
 // format that disagrees with it is an error. It refuses when [repo] exists
 // already.
-func Init(root, visibility, format string, dryRun, force bool) (*Config, []Change, error) {
+func Init(root, visibility, ci, format string, dryRun, force bool) (*Config, []Change, error) {
 	file, err := skenvfile.Find(root)
 	if err != nil {
 		return nil, nil, err
@@ -499,7 +609,7 @@ func Init(root, visibility, format string, dryRun, force bool) (*Config, []Chang
 	if err != nil {
 		return nil, nil, err
 	}
-	c := &Config{Harness: Latest, Visibility: visibility, File: file}
+	c := &Config{Harness: Latest, Visibility: visibility, CI: ci, File: file}
 	var data []byte
 	if file != "" {
 		doc, err := skenvfile.Read(file)
@@ -568,7 +678,7 @@ func addRepo(data []byte, ext string, c *Config) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	repo := docedit.Map{{Key: "harness", Value: c.Harness}, {Key: "visibility", Value: c.Visibility}}
+	repo := docedit.Map{{Key: "harness", Value: c.Harness}, {Key: "visibility", Value: c.Visibility}, {Key: "ci", Value: c.CI}}
 	if c.Visibility == "private" {
 		repo = append(repo, docedit.Field{Key: "runner", Value: c.Runner})
 	}

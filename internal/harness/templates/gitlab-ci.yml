@@ -1,0 +1,170 @@
+# Checks for a skills repository; regenerate with `skenv repo apply`.
+#
+# Every job runs in the image below, so the runner needs the Docker (or
+# Kubernetes) executor. Tools are downloaded at the pinned versions.
+[[- if .Private ]]
+# Private repository: jobs run on runners with the tags [[ .Tags ]].
+[[- else ]]
+# Public repository: jobs run on the shared runners of the instance, never on
+# self-hosted ones.
+[[- end ]]
+
+workflow:
+  # Merge request pipelines; branch pipelines only for branches without an
+  # open merge request, so a push does not start two pipelines; tags.
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+variables:
+  SKENV_VERSION: "[[ .Harness ]]"
+  GITLEAKS_VERSION: "8.30.1"
+  RUFF_VERSION: "0.16.9"
+  PYRIGHT_VERSION: "1.1.414"
+  SHELLCHECK_PY_VERSION: "0.11.0.1"
+  MARKDOWNLINT_CLI2_VERSION: "0.23.3"
+  UV_VERSION: "0.12.10"
+  # The whole history: gitleaks scans it, and changed skills are found
+  # against the merge request base or the previous push.
+  GIT_DEPTH: "0"
+
+default:
+  image: node:22-bookworm
+[[- if .Private ]]
+  tags: [[ .Tags ]]
+[[- end ]]
+  interruptible: true
+
+# Script fragments, used by the jobs below.
+.scripts:
+  install-skenv: &install-skenv
+    - |
+      arch=$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/)
+      bin=$(mktemp -d)
+      curl -fsSL "https://github.com/qunaxis/skenv/releases/download/v$SKENV_VERSION/skenv_${SKENV_VERSION}_linux_${arch}.tar.gz" | tar xz -C "$bin" skenv
+      export PATH="$bin:$PATH"
+      skenv version
+  install-gitleaks: &install-gitleaks
+    - |
+      arch=$(uname -m | sed -e s/x86_64/x64/ -e s/aarch64/arm64/)
+      bin=$(mktemp -d)
+      curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_linux_${arch}.tar.gz" | tar xz -C "$bin" gitleaks
+      export PATH="$bin:$PATH"
+      gitleaks version
+  install-uv: &install-uv
+    - |
+      bin=$(mktemp -d)
+      curl -fsSL "https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-$(uname -m)-unknown-linux-gnu.tar.gz" | tar xz -C "$bin" --strip-components=1
+      export PATH="$bin:$PATH"
+      uv --version
+  changed-skills: &changed-skills
+    - |
+      # Skills with an executable ./check that changed: a merge request
+      # against CI_MERGE_REQUEST_DIFF_BASE_SHA, a push against
+      # CI_COMMIT_BEFORE_SHA; a base that is empty, all zeros or not in the
+      # history (first push of a branch, tags, scheduled pipelines): every
+      # skill with ./check.
+      if [ "${CI_PIPELINE_SOURCE:-}" = merge_request_event ]; then
+        base=${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}
+      else
+        base=${CI_COMMIT_BEFORE_SHA:-}
+      fi
+      all=false
+      if [ -z "$base" ] || [ -z "$(printf '%s' "$base" | tr -d 0)" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+        all=true
+      fi
+      if $all; then
+        candidates=$(ls skills 2>/dev/null || true)
+      else
+        candidates=$(git diff --name-only "$base" HEAD -- skills/ | cut -d/ -f2 | sort -u)
+      fi
+      skills=""
+      for s in $candidates; do
+        if [ -x "skills/$s/check" ]; then skills="${skills:+$skills }$s"; fi
+      done
+      echo "all=$all base=${base:-<none>} skills=[$skills]"
+
+skenv:
+  timeout: 15m
+  script:
+    - *install-skenv
+    - skenv repo check
+    - skenv lint
+
+gitleaks:
+  timeout: 15m
+  script:
+    - *install-gitleaks
+    - gitleaks git --redact --no-banner .
+[[- if not .Private ]]
+    - *install-skenv
+    - |
+      # Public repository: every skill must pass the publication check. The
+      # stop-list comes base64-encoded from the masked SKENV_DENYLIST_B64
+      # CI/CD variable, is decoded to a temporary file and never printed.
+      if [ -z "${SKENV_DENYLIST_B64:-}" ]; then
+        echo "error: the SKENV_DENYLIST_B64 CI/CD variable (publication stop-list, base64) is not set"
+        exit 1
+      fi
+      list=$(mktemp)
+      if ! printf '%s' "$SKENV_DENYLIST_B64" | base64 -d > "$list" 2>/dev/null; then
+        rm -f "$list"
+        echo "error: the SKENV_DENYLIST_B64 CI/CD variable is not valid base64"
+        exit 1
+      fi
+      status=0
+      SKENV_DENYLIST="$list" skenv lint --publish || status=$?
+      rm -f "$list"
+      if [ "$status" -ne 0 ]; then exit "$status"; fi
+[[- end ]]
+
+lint:
+  timeout: 30m
+  script:
+    - *install-uv
+    - uvx "ruff@$RUFF_VERSION" format --check .
+    - uvx "ruff@$RUFF_VERSION" check .
+    - |
+      # pyright; third-party imports of the skills go to requirements-dev.txt.
+      uv venv -q .venv
+      if [ -f requirements-dev.txt ]; then uv pip install -q --python .venv/bin/python -r requirements-dev.txt; fi
+      npx --yes "pyright@$PYRIGHT_VERSION"
+    - |
+      # Shell scripts for shellcheck: *.sh plus every executable tracked file with a
+      # sh/bash shebang (e.g. skills/*/check).
+      files=$(git ls-files -s | awk '$1 == "100755" || $4 ~ /\.sh$/ { print $4 }' | while IFS= read -r f; do
+        case "$f" in
+          *.sh) echo "$f" ;;
+          *) first=$(head -n1 -- "$f"); if printf '%s\n' "$first" | grep -qE '^#!.*\b(ba)?sh\b'; then echo "$f"; fi ;;
+        esac
+      done)
+      if [ -z "$files" ]; then
+        echo "no shell scripts"
+      else
+        printf '%s\n' "$files" | tr '\n' '\0' | xargs -0 uvx --from "shellcheck-py==$SHELLCHECK_PY_VERSION" shellcheck -x
+      fi
+    - npx --yes "markdownlint-cli2@$MARKDOWNLINT_CLI2_VERSION" "**/*.md" "#node_modules" "#.venv"
+
+skills:
+  timeout: 45m
+  parallel:
+    matrix:
+      - PYTHON: ["3.9", "3.12"]
+  script:
+    - *install-uv
+    - *changed-skills
+    - |
+      # ./check of every changed skill, from the skill directory; all of them
+      # run, the job fails if any fails.
+      failed=""
+      for s in $skills; do
+        echo "== skills/$s/check (Python $PYTHON)"
+        (cd "skills/$s" && CHECK_PYTHON="$PYTHON" UV_PYTHON="$PYTHON" ./check) || failed="$failed $s"
+      done
+      if [ -n "$failed" ]; then
+        echo "failed:$failed"
+        exit 1
+      fi

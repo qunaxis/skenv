@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -18,6 +19,8 @@ import (
 	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/lint"
+	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
 func lintCmd(a *app) *cobra.Command {
@@ -183,7 +186,7 @@ func gitRoot(ctx context.Context, dir string) (string, error) {
 }
 
 func repoCmd(a *app) *cobra.Command {
-	var dir, visibility, format string
+	var dir, visibility, ci, format string
 	var dryRun, force bool
 	sub := func(name, use, short, long, example string) *cobra.Command {
 		c := &cobra.Command{
@@ -193,7 +196,7 @@ func repoCmd(a *app) *cobra.Command {
 			Example: example,
 			Args:    nArgs(0),
 			RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
-				return runRepo(ctx, env, name, dir, visibility, format, dryRun, force)
+				return runRepo(ctx, env, name, dir, visibility, ci, format, dryRun, force)
 			}),
 		}
 		if name != "check" {
@@ -202,26 +205,32 @@ func repoCmd(a *app) *cobra.Command {
 		}
 		return c
 	}
-	initC := sub("init", "init --visibility private|public", "Set up the harness of a skills repository",
-		"Set up the harness of a skills repository: the [repo] section and the schema\ndirective of the skenv file, lefthook.yml, CI workflow, linter configs and the\nmanaged blocks of AGENTS.md and .gitignore; then `lefthook install`. Refuses\nif [repo] exists.\n\nWithout a skenv file it creates skenv.toml, or skenv.yaml or skenv.json with\n--format. An existing skenv file gets [repo] added in its own format;\n--format that disagrees with it is an error, and nothing is written.",
+	initC := sub("init", "init --visibility private|public [--ci github|gitlab]", "Set up the harness of a skills repository",
+		"Set up the harness of a skills repository: the [repo] section and the schema\ndirective of the skenv file, lefthook.yml, the CI pipeline, linter configs and\nthe managed blocks of AGENTS.md and .gitignore; then `lefthook install`.\nRefuses if [repo] exists.\n\n"+
+			"--ci picks the CI system: github (.github/workflows/check.yml) or gitlab\n(.gitlab-ci.yml). Without it, the host of origin decides: gitlab when origin\nis on gitlab.com or on a host declared with type \"gitlab\" in the manifest\n(this repository's own [environment], else the manifest in the config file),\ngithub otherwise, also when there is no origin.\n\n"+
+			"Without a skenv file it creates skenv.toml, or skenv.yaml or skenv.json with\n--format. An existing skenv file gets [repo] added in its own format;\n--format that disagrees with it is an error, and nothing is written.",
 		"# Set up the harness of a public skills repository in the current directory\n"+
-			"skenv repo init --visibility public")
+			"skenv repo init --visibility public\n"+
+			"# A private repository on GitLab, with jobs on runners tagged self-hosted, linux, docker\n"+
+			"skenv repo init --visibility private --ci gitlab")
 	initC.Flags().StringVar(&visibility, "visibility", "", "private or public (required)")
 	_ = initC.RegisterFlagCompletionFunc("visibility", cobra.FixedCompletions([]string{"private", "public"}, cobra.ShellCompDirectiveNoFileComp))
+	initC.Flags().StringVar(&ci, "ci", "", "CI system: github or gitlab (default: detected from the host of origin, else github)")
+	_ = initC.RegisterFlagCompletionFunc("ci", cobra.FixedCompletions(harness.CIs, cobra.ShellCompDirectiveNoFileComp))
 	formatFlag(initC, &format, "format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)")
 	apply := sub("apply", "apply", "Regenerate the managed files of the harness",
-		"Regenerate the managed files and blocks from the templates of this skenv\n(harness "+harness.Latest+"; an older repo.harness is moved to it) and point\nthe schema directive of the skenv file at that version; then\n`lefthook install`.",
+		"Regenerate the managed files and blocks from the templates of this skenv\n(harness "+harness.Latest+"; an older repo.harness is moved to it) and point\nthe schema directive of the skenv file at that version; then\n`lefthook install`.\n\nThe CI pipeline follows repo.ci of the skenv file. To switch CI systems, edit\nrepo.ci and run apply: it writes the pipeline of the new one and removes the\nmanaged file of the other (.github/workflows/check.yml or .gitlab-ci.yml).",
 		"# Restore a managed file edited by hand\nskenv repo apply")
 	check := sub("check", "check", "Compare the managed files with the harness templates",
 		"Compare the managed files and blocks with the templates of this skenv\n(harness "+harness.Latest+"). Exit code 0: in sync, 1: drift (files listed), 2: error.\nA missing or outdated schema directive in the skenv file is a warning that\ndoes not change the exit code.",
 		"# The managed files match the harness\nskenv repo check\n# A managed file was edited by hand\nskenv repo check")
 	c := group("repo", "Set up and check the harness of a skills repository", initC, apply, check)
-	c.Example = "skenv repo init --visibility private\nskenv repo check\nskenv repo apply"
+	c.Example = "skenv repo init --visibility private\nskenv repo init --visibility public --ci gitlab\nskenv repo check\nskenv repo apply"
 	c.PersistentFlags().StringVar(&dir, "dir", ".", "repository (any directory inside it)")
 	return c
 }
 
-func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, format string, dryRun, force bool) (int, error) {
+func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, format string, dryRun, force bool) (int, error) {
 	root, err := gitRoot(ctx, dir)
 	if err != nil {
 		return engine.ExitFatal, err
@@ -234,12 +243,22 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, format s
 		if err := fileformat.Valid(format); err != nil {
 			return engine.ExitFatal, usageError{"repo init: " + err.Error()}
 		}
-		c, changes, err := harness.Init(root, visibility, format, dryRun, force)
+		detected := ""
+		switch {
+		case ci == "":
+			ci, detected = detectCI(ctx, env, root)
+		case !slices.Contains(harness.CIs, ci):
+			return engine.ExitFatal, usageError{fmt.Sprintf("repo init: --ci must be github or gitlab, got %q", ci)}
+		}
+		c, changes, err := harness.Init(root, visibility, ci, format, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
 			return engine.ExitFatal, err
 		}
-		fmt.Fprintf(env.Stdout, "harness %s (%s) set up in %s\n", c.Harness, c.Visibility, root)
+		if detected != "" {
+			fmt.Fprintf(env.Stdout, "ci %s: %s; --ci overrides it\n", c.CI, detected)
+		}
+		fmt.Fprintf(env.Stdout, "harness %s (%s, ci %s) set up in %s\n", c.Harness, c.Visibility, c.CI, root)
 		return lefthookInstall(ctx, env, root, dryRun), nil
 	case "apply":
 		c, err := harness.LoadConfig(root)
@@ -296,6 +315,53 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, format s
 	}
 	fmt.Fprintln(env.Stdout, "repo check: managed files match the harness")
 	return engine.ExitOK, nil
+}
+
+// detectCI is repo.ci for `repo init` without --ci: gitlab when origin is
+// on a GitLab host, github otherwise. The hosts declared in the manifest
+// count: the [environment] of the repository itself, else the manifest of
+// the config file. The origin URL is never printed (it may carry
+// credentials); why says what decided.
+func detectCI(ctx context.Context, env engine.Env, root string) (ci, why string) {
+	origin, err := gitx.Git{}.Run(ctx, root, "config", "--get", "remote.origin.url")
+	if err != nil || strings.TrimSpace(origin) == "" {
+		return harness.CIGitHub, "the default, the repository has no origin"
+	}
+	r, err := declaredHosts(env, root).Resolve(origin)
+	if err != nil {
+		return harness.CIGitHub, "the default, origin is not a git URL skenv recognises"
+	}
+	ci = harness.DetectCI(r.Type)
+	if ci == harness.CIGitLab {
+		return ci, "detected from origin, on a GitLab host"
+	}
+	if r.Type == manifest.TypeGitHub {
+		return ci, "detected from origin, on GitHub"
+	}
+	return ci, "the default, origin is not on a GitLab host"
+}
+
+// declaredHosts are the hosts of the manifest that applies to root, nil
+// when there is none or it does not load.
+func declaredHosts(env engine.Env, root string) manifest.Hosts {
+	file, err := skenvfile.Find(root)
+	if err == nil && file != "" {
+		if doc, err := skenvfile.Read(file); err == nil && doc.Has(skenvfile.Environment) {
+			if m, err := manifest.Load(file); err == nil {
+				return m.Hosts
+			}
+			return nil
+		}
+	}
+	file, err = engine.ResolveManifest(env, "")
+	if err != nil {
+		return nil
+	}
+	m, err := manifest.Load(file)
+	if err != nil {
+		return nil
+	}
+	return m.Hosts
 }
 
 func printChanges(env engine.Env, changes []harness.Change, dryRun bool) {

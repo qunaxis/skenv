@@ -28,11 +28,12 @@ nothing to set up:
 A `skenv.toml` created by `skenv repo init` starts like this:
 
 ```toml
-#:schema https://qunaxis.github.io/skenv/schemas/v0.4.0/skenv.schema.json
+#:schema https://qunaxis.github.io/skenv/schemas/v0.5.0/skenv.schema.json
 # Repository harness: `skenv repo apply` regenerates the managed files.
 [repo]
-harness    = "0.4.0"
+harness    = "0.5.0"
 visibility = "private"
+ci         = "github"
 runner     = ["self-hosted", "linux", "docker"]  # runs-on of the CI jobs
 ```
 

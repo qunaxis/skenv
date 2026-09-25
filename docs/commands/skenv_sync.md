@@ -41,7 +41,7 @@ Pull, vendor and link:
 
 ```console
 $ skenv sync
-pull ~/src/skills (b9b3603 → 50d0cbb)
+pull ~/src/skills (b1e543d → c36c5ec)
 vendor diagrams from example-vendor/tools@ebb66f94cb1c (tools/diagrams)
 link ~/.agents/skills/write-tests → ~/src/skills/skills/write-tests
 link ~/.claude/skills/write-tests → ../../.agents/skills/write-tests

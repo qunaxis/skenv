@@ -295,7 +295,10 @@ repository at `--dir` (its `skenv.toml` decides the visibility there).
 ### `skenv repo init|apply|check`
 
 Set up, regenerate and verify the harness of a skills repository (lefthook,
-CI workflow, linter configs, managed blocks). See [harness](harness.md).
+the GitHub Actions or GitLab CI pipeline, linter configs, managed blocks).
+`repo init --ci github|gitlab` picks the CI system; without it, the host of
+`origin` decides. See [harness](harness.md) and
+[its CI section](harness.md#ci).
 
 ## JSON Schemas
 
