@@ -8,6 +8,12 @@ Show whether the autostart job is installed and loaded (exit 1 if not)
 skenv autostart status [flags]
 ```
 
+### Examples
+
+```console
+$ skenv autostart status
+```
+
 ### Options
 
 ```

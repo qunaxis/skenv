@@ -13,6 +13,34 @@ and agent directories, and remove managed paths that left the manifest.
 skenv sync [flags]
 ```
 
+### Examples
+
+Show what a sync would change:
+
+```console
+$ skenv sync --dry-run
+would pull --ff-only ~/src/skills
+would vendor release-notes from example-vendor/tools@27f221f8f2a4 (tools/release-notes)
+would link ~/.agents/skills/write-tests → ~/src/skills/skills/write-tests
+would link ~/.claude/skills/release-notes → ../../.agents/skills/release-notes
+would link ~/.pi/agent/skills/release-notes → ../../../.agents/skills/release-notes
+would link ~/.claude/skills/write-tests → ../../.agents/skills/write-tests
+would link ~/.pi/agent/skills/write-tests → ../../../.agents/skills/write-tests
+sync: 6 planned changes, 0 warnings, 0 errors
+```
+
+Pull, vendor and link:
+
+```console
+$ skenv sync
+pull ~/src/skills (b9b3603 → 50d0cbb)
+vendor diagrams from example-vendor/tools@ebb66f94cb1c (tools/diagrams)
+link ~/.agents/skills/write-tests → ~/src/skills/skills/write-tests
+link ~/.claude/skills/write-tests → ../../.agents/skills/write-tests
+link ~/.pi/agent/skills/write-tests → ../../../.agents/skills/write-tests
+sync: 5 changes, 0 warnings, 0 errors
+```
+
 ### Options
 
 ```

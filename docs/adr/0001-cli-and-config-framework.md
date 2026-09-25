@@ -314,7 +314,9 @@ a plain loader.** This is a partial adoption.
   into the static binary, and nothing new is needed on the machine.
 - `make docs` writes `docs/commands/*.md`, which the README links. A test
   regenerates the reference and fails when the committed copy is stale, so
-  CI catches a flag change made without `make docs`.
+  CI catches a flag change made without `make docs`. The output under
+  each example comes from recorded runs (`make examples`), checked the
+  same way.
 - `skenv completion bash|zsh|fish` is new.
 - The tool config can be `config.toml`, `config.yaml`, `config.yml` or
   `config.json`. `skenv init` creates `config.toml`, or updates an existing

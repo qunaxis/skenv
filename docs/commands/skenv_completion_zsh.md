@@ -34,6 +34,12 @@ You will need to start a new shell for this setup to take effect.
 skenv completion zsh [flags]
 ```
 
+### Examples
+
+```console
+$ skenv completion zsh > "${fpath[1]}/_skenv"
+```
+
 ### Options
 
 ```

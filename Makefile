@@ -3,7 +3,7 @@ GO            ?= go
 STATICCHECK   ?= $(GO) run honnef.co/go/tools/cmd/staticcheck@2026.2.1
 GOLANGCI_LINT ?= golangci-lint
 
-.PHONY: help build test lint docs schemas man check check-commits hooks release snapshot demo clean
+.PHONY: help build test lint docs examples schemas man check check-commits hooks release snapshot demo clean
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -22,6 +22,9 @@ lint: ## go mod tidy -diff, go vet, staticcheck, golangci-lint
 
 docs: ## regenerate the command reference in docs/commands
 	$(GO) run ./internal/tools/gendocs docs/commands
+
+examples: ## re-record the output of the command examples (docs/commands/examples); then make docs
+	$(GO) test ./internal/cli -run '^TestExamples$$' -count=1 -update
 
 schemas: ## regenerate the JSON Schemas in schemas/ from the Go types
 	$(GO) run ./internal/tools/genschemas schemas

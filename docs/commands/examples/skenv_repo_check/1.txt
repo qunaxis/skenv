@@ -1,0 +1,2 @@
+exit 0
+repo check: managed files match the harness

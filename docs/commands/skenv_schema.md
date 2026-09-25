@@ -21,9 +21,9 @@ skenv schema [skenv|config] [flags]
 
 ### Examples
 
-```
-skenv schema > skenv.schema.json
-skenv schema config
+```console
+$ skenv schema > skenv.schema.json
+$ skenv schema config
 ```
 
 ### Options

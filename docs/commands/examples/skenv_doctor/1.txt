@@ -1,0 +1,2 @@
+exit 0
+ok: 3 skills match ~/src/skills/skenv.toml (store ~/.agents/skills, targets ~/.claude/skills, ~/.pi/agent/skills)

@@ -15,6 +15,25 @@ does not change the exit code.
 skenv repo check [flags]
 ```
 
+### Examples
+
+The managed files match the harness:
+
+```console
+$ skenv repo check
+repo check: managed files match the harness
+```
+
+A managed file was edited by hand:
+
+```console
+$ skenv repo check
+lefthook.yml: differs from the harness 0.4.0 template
+repo check: 1 files differ; run `skenv repo apply` (templates live in skenv, not in this repository)
+```
+
+Exit code 1.
+
 ### Options
 
 ```

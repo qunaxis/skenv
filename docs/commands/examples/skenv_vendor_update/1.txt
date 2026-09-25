@@ -1,0 +1,9 @@
+exit 0
+diagrams 27f221f8f2a4..2571138a038f:
+2571138 docs(diagrams): list the shapes
+ebb66f9 feat(diagrams): prefer SVG
+update vendor diagrams 27f221f8f2a4 → 2571138a038f in ~/src/skills/skenv.toml
+vendor diagrams from example-vendor/tools@2571138a038f (tools/diagrams)
+manifest changed but not committed; to commit:
+  git -C ~/src/skills commit -m "chore(manifest): update vendor skill diagrams to 2571138a038f" -- skenv.toml
+vendor: 2 changes, 0 warnings, 0 errors

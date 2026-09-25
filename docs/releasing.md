@@ -10,6 +10,7 @@
 ```sh
 make hooks     # lefthook: commit-msg check, gofmt
 make check     # go vet, staticcheck, golangci-lint, go test -race, commit check
+make examples  # re-record the output of the command examples
 make docs      # regenerate the command reference in docs/commands
 make schemas   # regenerate the JSON Schemas in schemas/ from the Go types
 make snapshot  # local goreleaser build into dist/
@@ -18,11 +19,20 @@ make demo      # re-record docs/demo/demo.gif with vhs
 
 `make help` lists every target. The command reference and the JSON
 Schemas are generated and committed; tests fail when they are stale, so run
-`make docs` after changing a command and `make schemas` after changing the
+`make examples docs` after changing a command or its output and `make schemas` after changing the
 types or doc comments of the skenv file or the tool config
 (`internal/manifest`, `internal/harness`, `internal/config`). Integration tests run skenv against a
 temporary `$HOME` with local bare repositories standing in for GitHub; they
 never touch your real home.
+
+Each command has examples (cobra's `Example`, shown by `--help` and the
+man pages). `TestExamples` in `internal/cli/examples_test.go` runs every
+plain `skenv …` example against a fixed world (`example-org/skills`,
+`example-vendor/tools`, fixed commit dates, `$HOME` shown as `~`) and
+compares what it prints with `docs/commands/examples/<command>/<n>.txt`;
+the reference embeds that output under the example, the man pages and
+`--help` do not. A new example needs a scenario there, or a reason to
+skip it; lines with shell syntax (redirections, pipes) are not run.
 
 The README demo is recorded with [vhs](https://github.com/charmbracelet/vhs)
 from [`docs/demo/demo.tape`](demo/demo.tape). It runs in a throwaway `$HOME`

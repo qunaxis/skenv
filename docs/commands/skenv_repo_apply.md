@@ -15,6 +15,16 @@ the schema directive of the skenv file at that version; then
 skenv repo apply [flags]
 ```
 
+### Examples
+
+Restore a managed file edited by hand:
+
+```console
+$ skenv repo apply
+update lefthook.yml
+lefthook install: hooks active
+```
+
 ### Options
 
 ```

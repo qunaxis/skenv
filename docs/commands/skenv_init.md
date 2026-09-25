@@ -28,6 +28,38 @@ error (exit code 2), and nothing is written.
 skenv init [<owner/repo>] [flags]
 ```
 
+### Examples
+
+Clone the manifest repository into `./skills`, record it and sync:
+
+```console
+$ skenv init example-org/skills
+cloned example-org/skills into ~/src/skills
+manifest ~/src/skills/skenv.toml recorded in ~/.config/skenv/config.toml
+vendor diagrams from example-vendor/tools@27f221f8f2a4 (tools/diagrams)
+link ~/.agents/skills/code-review → ~/src/skills/skills/code-review
+link ~/.agents/skills/commit-message → ~/src/skills/skills/commit-message
+link ~/.claude/skills/code-review → ../../.agents/skills/code-review
+link ~/.pi/agent/skills/code-review → ../../../.agents/skills/code-review
+link ~/.claude/skills/commit-message → ../../.agents/skills/commit-message
+link ~/.pi/agent/skills/commit-message → ../../../.agents/skills/commit-message
+link ~/.claude/skills/diagrams → ../../.agents/skills/diagrams
+link ~/.pi/agent/skills/diagrams → ../../../.agents/skills/diagrams
+sync: 9 changes, 0 warnings, 0 errors
+```
+
+Start a manifest in the git repository of the current directory:
+
+```console
+$ skenv init
+create ~/src/my-skills/skenv.toml with [environment], example-org/my-skills as its first own repository
+manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
+next steps:
+  - skenv vendor add <owner/repo> --path <dir>   pin a third-party skill
+  - skenv sync                                  link the skills of the manifest
+  - commit skenv.toml; on another machine: skenv init <owner>/<repo>
+```
+
 ### Options
 
 ```

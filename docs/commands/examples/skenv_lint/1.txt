@@ -1,0 +1,2 @@
+exit 0
+lint: 2 skills, 0 problems

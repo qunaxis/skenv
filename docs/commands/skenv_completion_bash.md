@@ -32,6 +32,12 @@ You will need to start a new shell for this setup to take effect.
 skenv completion bash
 ```
 
+### Examples
+
+```console
+$ source <(skenv completion bash)
+```
+
 ### Options
 
 ```

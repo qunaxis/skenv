@@ -25,6 +25,21 @@ Exit codes: 0 success, 1 problems found, 2 error.
 skenv [flags]
 ```
 
+### Examples
+
+Set up a machine from the manifest repository:
+
+```console
+$ skenv init example-org/skills
+```
+
+Compare the machine with the manifest, then bring it in line:
+
+```console
+$ skenv doctor
+$ skenv sync
+```
+
 ### Options
 
 ```

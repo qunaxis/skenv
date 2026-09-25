@@ -12,6 +12,16 @@ Create store links for own skills and agent links for every skill.
 skenv link [flags]
 ```
 
+### Examples
+
+Recreate a link removed by hand, without pulling:
+
+```console
+$ skenv link
+link ~/.claude/skills/code-review → ../../.agents/skills/code-review
+link: 1 changes, 0 warnings, 0 errors
+```
+
 ### Options
 
 ```

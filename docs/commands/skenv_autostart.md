@@ -13,6 +13,14 @@ Run `skenv sync --quiet` at login and every hour (macOS LaunchAgent
 skenv autostart [flags]
 ```
 
+### Examples
+
+```console
+$ skenv autostart enable
+$ skenv autostart status
+$ skenv autostart disable
+```
+
 ### Options
 
 ```

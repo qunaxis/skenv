@@ -92,3 +92,13 @@ func TestSchemaCommand(t *testing.T) {
 		}
 	}
 }
+
+// --help shows the examples, indented like the usage line, without the
+// recorded output that the reference adds.
+func TestHelpExamples(t *testing.T) {
+	_, help, _ := runMain("doctor", "--help")
+	want := "Examples:\n  # The machine matches the manifest\n  skenv doctor\n"
+	if !strings.Contains(help, want) || strings.Contains(help, "ok: 3 skills") {
+		t.Errorf("doctor --help:\n%s", help)
+	}
+}

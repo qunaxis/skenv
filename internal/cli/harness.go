@@ -33,6 +33,12 @@ metadata.source not book/internal/third-party-copy, no stop-list phrase
 history. --hook is the Claude Code PostToolUse hook: it reads the event on stdin.
 Exit code 0: clean, 1: problems, 2: error (--hook: 2 with findings,
 so Claude Code shows them to the agent).`,
+		Example: `# Check every skill under the current directory
+skenv lint
+# A skill with problems
+skenv lint skills/draft
+# Before the repository goes public
+skenv lint --publish`,
 		RunE: a.action(func(ctx context.Context, env engine.Env, pos []string) (int, error) {
 			return runLint(ctx, env, pos, staged, publish, hook)
 		}),
@@ -179,12 +185,13 @@ func gitRoot(ctx context.Context, dir string) (string, error) {
 func repoCmd(a *app) *cobra.Command {
 	var dir, visibility, format string
 	var dryRun, force bool
-	sub := func(name, use, short, long string) *cobra.Command {
+	sub := func(name, use, short, long, example string) *cobra.Command {
 		c := &cobra.Command{
-			Use:   use,
-			Short: short,
-			Long:  long,
-			Args:  nArgs(0),
+			Use:     use,
+			Short:   short,
+			Long:    long,
+			Example: example,
+			Args:    nArgs(0),
 			RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
 				return runRepo(ctx, env, name, dir, visibility, format, dryRun, force)
 			}),
@@ -196,15 +203,20 @@ func repoCmd(a *app) *cobra.Command {
 		return c
 	}
 	initC := sub("init", "init --visibility private|public", "Set up the harness of a skills repository",
-		"Set up the harness of a skills repository: the [repo] section and the schema\ndirective of the skenv file, lefthook.yml, CI workflow, linter configs and the\nmanaged blocks of AGENTS.md and .gitignore; then `lefthook install`. Refuses\nif [repo] exists.\n\nWithout a skenv file it creates skenv.toml, or skenv.yaml or skenv.json with\n--format. An existing skenv file gets [repo] added in its own format;\n--format that disagrees with it is an error, and nothing is written.")
+		"Set up the harness of a skills repository: the [repo] section and the schema\ndirective of the skenv file, lefthook.yml, CI workflow, linter configs and the\nmanaged blocks of AGENTS.md and .gitignore; then `lefthook install`. Refuses\nif [repo] exists.\n\nWithout a skenv file it creates skenv.toml, or skenv.yaml or skenv.json with\n--format. An existing skenv file gets [repo] added in its own format;\n--format that disagrees with it is an error, and nothing is written.",
+		"# Set up the harness of a public skills repository in the current directory\n"+
+			"skenv repo init --visibility public")
 	initC.Flags().StringVar(&visibility, "visibility", "", "private or public (required)")
 	_ = initC.RegisterFlagCompletionFunc("visibility", cobra.FixedCompletions([]string{"private", "public"}, cobra.ShellCompDirectiveNoFileComp))
 	formatFlag(initC, &format, "format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)")
 	apply := sub("apply", "apply", "Regenerate the managed files of the harness",
-		"Regenerate the managed files and blocks from the templates of this skenv\n(harness "+harness.Latest+"; an older repo.harness is moved to it) and point\nthe schema directive of the skenv file at that version; then\n`lefthook install`.")
+		"Regenerate the managed files and blocks from the templates of this skenv\n(harness "+harness.Latest+"; an older repo.harness is moved to it) and point\nthe schema directive of the skenv file at that version; then\n`lefthook install`.",
+		"# Restore a managed file edited by hand\nskenv repo apply")
 	check := sub("check", "check", "Compare the managed files with the harness templates",
-		"Compare the managed files and blocks with the templates of this skenv\n(harness "+harness.Latest+"). Exit code 0: in sync, 1: drift (files listed), 2: error.\nA missing or outdated schema directive in the skenv file is a warning that\ndoes not change the exit code.")
+		"Compare the managed files and blocks with the templates of this skenv\n(harness "+harness.Latest+"). Exit code 0: in sync, 1: drift (files listed), 2: error.\nA missing or outdated schema directive in the skenv file is a warning that\ndoes not change the exit code.",
+		"# The managed files match the harness\nskenv repo check\n# A managed file was edited by hand\nskenv repo check")
 	c := group("repo", "Set up and check the harness of a skills repository", initC, apply, check)
+	c.Example = "skenv repo init --visibility private\nskenv repo check\nskenv repo apply"
 	c.PersistentFlags().StringVar(&dir, "dir", ".", "repository (any directory inside it)")
 	return c
 }
