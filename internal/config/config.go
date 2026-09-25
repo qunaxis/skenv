@@ -106,7 +106,7 @@ func decode(path string, data []byte) (map[string]any, error) {
 // String returns key from the file; ok is false when it is not set.
 func (f *File) String(key string) (string, bool, error) {
 	v, ok := f.values[key]
-	if !ok {
+	if !ok || v == nil { // absent, or null in YAML and JSON
 		return "", false, nil
 	}
 	s, isString := v.(string)

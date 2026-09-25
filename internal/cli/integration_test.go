@@ -599,9 +599,14 @@ func TestConfigFormats(t *testing.T) {
 			w.mustRun(0, "sync", "--quiet")
 
 			writeFile(t, w.path(".config/skenv/config.toml"), "manifest = \"/elsewhere/env.toml\"\n")
-			_, errOut := w.mustRun(2, "doctor")
-			if !strings.Contains(errOut, "several config files") {
-				t.Errorf("two config files: %s", errOut)
+			for _, args := range [][]string{{"doctor"}, {"init", "me/skills", "--path", "~/" + ownPath, "--dry-run"}, {"init", "me/skills", "--path", "~/other"}} {
+				_, errOut := w.mustRun(2, args...)
+				if !strings.Contains(errOut, "several config files") {
+					t.Errorf("skenv %s with two config files: %s", strings.Join(args, " "), errOut)
+				}
+			}
+			if w.exists("other") {
+				t.Error("init cloned although the config cannot be updated")
 			}
 			// --manifest wins over the config files and does not read them.
 			w.mustRun(0, "doctor", "--manifest", "~/"+ownPath+"/env.toml")

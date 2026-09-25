@@ -42,12 +42,22 @@ func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, er
 	}
 	manifestPath := filepath.Join(dir, ManifestFile)
 	show := func(p string) string { return paths.Collapse(env.Home, p) }
+	// A config that cannot be updated fails before anything is cloned, and
+	// --dry-run reports the same error the real run would.
+	cfg, err := config.Load(env.Home)
+	if err != nil {
+		return ExitFatal, err
+	}
+	cfgPath := cfg.Path
+	if cfgPath == "" {
+		cfgPath = filepath.Join(config.Dir(env.Home), config.Names[0])
+	}
 
 	cloned := false
 	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
 		if opts.DryRun {
 			fmt.Fprintf(env.Stdout, "would clone %s into %s, record %s in %s and run sync\n",
-				repo, show(dir), show(manifestPath), show(configFile(env.Home)))
+				repo, show(dir), show(manifestPath), show(cfgPath))
 			return ExitOK, nil
 		}
 		if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
@@ -65,7 +75,7 @@ func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, er
 		return ExitFatal, err
 	}
 	if opts.DryRun {
-		fmt.Fprintf(env.Stdout, "would record %s in %s\n", show(manifestPath), show(configFile(env.Home)))
+		fmt.Fprintf(env.Stdout, "would record %s in %s\n", show(manifestPath), show(cfgPath))
 		return ExitOK, nil
 	}
 	cfgFile, err := config.Set(env.Home, "manifest", show(manifestPath))
@@ -84,13 +94,4 @@ func Init(ctx context.Context, env Env, repo, dir string, opts Options) (int, er
 	}
 	defer e.Close()
 	return e.Sync()
-}
-
-// configFile is the config file init writes to: the existing one, or
-// config.toml.
-func configFile(home string) string {
-	if p, err := config.Find(config.Dir(home)); err == nil && p != "" {
-		return p
-	}
-	return filepath.Join(config.Dir(home), config.Names[0])
 }

@@ -100,6 +100,12 @@ func TestBadFiles(t *testing.T) {
 	if got, src, err := Resolve(home, env(nil), "manifest", "", ""); err != nil || got != "" || src != FromDefault {
 		t.Errorf("Manifest must not match manifest: %q from %s (%v)", got, src, err)
 	}
+	// null is the same as not set.
+	home = t.TempDir()
+	write(t, home, "config.yaml", "manifest: null\n")
+	if got, src, err := Resolve(home, env(nil), "manifest", "", "d"); err != nil || got != "d" || src != FromDefault {
+		t.Errorf("manifest: null: %q from %s (%v)", got, src, err)
+	}
 	// Empty files are valid.
 	for _, name := range Names {
 		home := t.TempDir()
