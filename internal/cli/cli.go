@@ -3,8 +3,6 @@ package cli
 
 import (
 	"context"
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +11,9 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+
 	"github.com/qunaxis/skenv/internal/autostart"
 	"github.com/qunaxis/skenv/internal/buildinfo"
 	"github.com/qunaxis/skenv/internal/engine"
@@ -20,38 +21,137 @@ import (
 	"github.com/qunaxis/skenv/internal/paths"
 )
 
-const usage = `skenv keeps agent skills (Claude Code, Codex, pi) in sync with a manifest.
-
-Usage:
-  skenv init <owner/repo> [--path P]      clone the manifest repository and sync
-  skenv sync [--adopt] [--dry-run] [--quiet]
-  skenv link [--adopt] [--dry-run]
-  skenv doctor [--json]                   exit 0: in sync, 1: discrepancies, 2: error
-  skenv vendor add <owner/repo> [--path P] [--name N] [--rev SHA] [--dry-run]
-  skenv vendor bump <name> [--rev SHA] [--dry-run]
-  skenv vendor remove <name> [--dry-run]
-  skenv autostart enable|disable|status
-  skenv lint [path...] [--staged] [--publish]  check skills (L1-L6, P1)
-  skenv new <name> [--repo private|public]      scaffold a skill
-  skenv repo init --visibility private|public | apply [--upgrade] | check
-  skenv version
-
-Every command that reads the manifest accepts --manifest FILE (also
-$SKENV_MANIFEST or "manifest" in ~/.config/skenv/config.toml).
-Run "skenv <command> --help" for details.
-`
-
 // Main runs skenv with args (without the program name) and returns the
 // exit code.
 func Main(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	code, err := run(ctx, args, stdout, stderr)
-	if errors.Is(err, flag.ErrHelp) {
-		return engine.ExitOK
-	}
+	return execute(ctx, &app{stdout: stdout, stderr: stderr}, args)
+}
+
+func execute(ctx context.Context, a *app, args []string) int {
+	root := newRoot(a)
+	root.SetArgs(legacyDashes(root, args))
+	err := root.ExecuteContext(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "skenv: %s\n", gitx.Mask(err.Error()))
+		fmt.Fprintf(a.stderr, "skenv: %s\n", gitx.Mask(err.Error()))
+		if !a.ran {
+			// Parse and usage errors never reach a command.
+			a.code = engine.ExitFatal
+		}
 	}
-	return code
+	return a.code
+}
+
+// app carries the exit code of the command that ran: cobra only knows
+// about errors, skenv has three exit codes.
+type app struct {
+	stdout, stderr io.Writer
+	code           int
+	ran            bool
+	// probe, when set, replaces every command action: the compatibility
+	// test uses it to see what an invocation parses to without running it.
+	probe func(cmd *cobra.Command, args []string)
+}
+
+// action adapts a skenv command to cobra's RunE.
+func (a *app) action(fn func(ctx context.Context, env engine.Env, args []string) (int, error)) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		a.ran = true
+		if a.probe != nil {
+			a.probe(cmd, args)
+			return nil
+		}
+		env, err := newEnv(a.stdout, a.stderr)
+		if err != nil {
+			a.code = engine.ExitFatal
+			return err
+		}
+		a.code, err = fn(cmd.Context(), env, args)
+		return err
+	}
+}
+
+// Command returns the skenv command tree for the reference generator.
+func Command() *cobra.Command {
+	root := newRoot(&app{stdout: io.Discard, stderr: io.Discard})
+	root.InitDefaultCompletionCmd()
+	return root
+}
+
+func newRoot(a *app) *cobra.Command {
+	root := &cobra.Command{
+		Use:   "skenv",
+		Short: "Keep agent skills (Claude Code, Codex, pi) in sync with a manifest",
+		Long: `skenv keeps agent skills (Claude Code, Codex, pi) in sync with a manifest.
+
+Every command that reads the manifest accepts --manifest FILE (also
+$SKENV_MANIFEST or "manifest" in ~/.config/skenv/config.toml).
+Exit codes: 0 success, 1 problems found, 2 error.`,
+		Version:           buildinfo.Get().String(),
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		DisableAutoGenTag: true,
+		Args:              cobra.NoArgs,
+		// Without a command: usage on stderr and exit 2, as before.
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			a.ran = true
+			a.code = engine.ExitFatal
+			cmd.SetOut(a.stderr)
+			return cmd.Help()
+		},
+	}
+	root.SetOut(a.stdout)
+	root.SetErr(a.stderr)
+	root.SetVersionTemplate("{{.Version}}\n")
+	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		return usageError{fmt.Sprintf("%s (see `%s --help`)", err, cmd.CommandPath())}
+	})
+	root.AddCommand(
+		initCmd(a), syncCmd(a, "sync"), syncCmd(a, "link"), doctorCmd(a),
+		vendorCmd(a), autostartCmd(a), lintCmd(a), newCmd(a), repoCmd(a),
+		&cobra.Command{
+			Use:   "version",
+			Short: "Print the skenv version",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				a.ran = true
+				fmt.Fprintln(cmd.OutOrStdout(), buildinfo.Get())
+				return nil
+			},
+		},
+	)
+	return root
+}
+
+// legacyDashes rewrites single-dash long flags (-quiet, -path=x), which
+// Go's flag package accepted, into the double-dash form pflag expects.
+// Only names of real flags are rewritten; everything after "--" is left
+// alone.
+func legacyDashes(root *cobra.Command, args []string) []string {
+	long := map[string]bool{"help": true, "version": true}
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		visit := func(f *pflag.Flag) { long[f.Name] = true }
+		c.LocalFlags().VisitAll(visit)
+		c.PersistentFlags().VisitAll(visit)
+		for _, s := range c.Commands() {
+			walk(s)
+		}
+	}
+	walk(root)
+	out := make([]string, 0, len(args))
+	for i, arg := range args {
+		if arg == "--" {
+			return append(out, args[i:]...)
+		}
+		if len(arg) > 2 && arg[0] == '-' && arg[1] != '-' {
+			name, _, _ := strings.Cut(arg[1:], "=")
+			if long[name] {
+				arg = "-" + arg
+			}
+		}
+		out = append(out, arg)
+	}
+	return out
 }
 
 func newEnv(stdout, stderr io.Writer) (engine.Env, error) {
@@ -67,219 +167,210 @@ type usageError struct{ msg string }
 
 func (u usageError) Error() string { return u.msg }
 
-func run(ctx context.Context, args []string, stdout, stderr io.Writer) (int, error) {
-	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
-		return engine.ExitFatal, nil
-	}
-	cmd, rest := args[0], args[1:]
-	switch cmd {
-	case "-h", "--help", "help":
-		fmt.Fprint(stdout, usage)
-		return engine.ExitOK, nil
-	case "version", "--version":
-		fmt.Fprintln(stdout, buildinfo.Get())
-		return engine.ExitOK, nil
-	}
-	env, err := newEnv(stdout, stderr)
-	if err != nil {
-		return engine.ExitFatal, err
-	}
-	switch cmd {
-	case "init":
-		return cmdInit(ctx, env, rest)
-	case "sync", "link":
-		return cmdSync(ctx, env, cmd, rest)
-	case "doctor":
-		return cmdDoctor(ctx, env, rest)
-	case "vendor":
-		return cmdVendor(ctx, env, rest)
-	case "autostart":
-		return cmdAutostart(ctx, env, rest)
-	case "lint":
-		return cmdLint(ctx, env, rest)
-	case "repo":
-		return cmdRepo(ctx, env, rest)
-	case "new":
-		return cmdNew(ctx, env, rest)
-	}
-	fmt.Fprint(stderr, usage)
-	return engine.ExitFatal, fmt.Errorf("unknown command %q", cmd)
-}
-
-// parse parses flags that may appear before or after positional arguments.
-func parse(fs *flag.FlagSet, args []string) ([]string, error) {
-	var pos []string
-	for {
-		if err := fs.Parse(args); err != nil {
-			return nil, err
+// nArgs requires exactly n positional arguments.
+func nArgs(n int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) != n {
+			return usageError{fmt.Sprintf("%s: expected %d argument(s), got %d (see `%s --help`)", cmd.Name(), n, len(args), cmd.CommandPath())}
 		}
-		args = fs.Args()
-		if len(args) == 0 {
-			return pos, nil
-		}
-		if args[0] == "--" {
-			return append(pos, args[1:]...), nil
-		}
-		pos = append(pos, args[0])
-		args = args[1:]
+		return nil
 	}
 }
 
-func newFlags(env engine.Env, name, synopsis string) *flag.FlagSet {
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(env.Stderr)
-	fs.Usage = func() {
-		fmt.Fprintf(env.Stderr, "Usage: %s\n\nFlags:\n", synopsis)
-		fs.PrintDefaults()
+// group is a command that only holds subcommands.
+func group(use, short string, subs ...*cobra.Command) *cobra.Command {
+	c := &cobra.Command{
+		Use:   use,
+		Short: short,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				var names []string
+				for _, s := range cmd.Commands() {
+					names = append(names, s.Name())
+				}
+				return usageError{fmt.Sprintf("%s: unknown subcommand %q (%s)", cmd.Name(), args[0], strings.Join(names, ", "))}
+			}
+			return usageError{fmt.Sprintf("%s: missing subcommand (see `%s --help`)", cmd.Name(), cmd.CommandPath())}
+		},
 	}
-	return fs
+	c.AddCommand(subs...)
+	return c
 }
 
-func manifestFlag(fs *flag.FlagSet, o *engine.Options) {
+func manifestFlag(fs *pflag.FlagSet, o *engine.Options) {
 	fs.StringVar(&o.Manifest, "manifest", "", "path to env.toml")
 }
 
-func wantArgs(fs *flag.FlagSet, pos []string, n int) error {
-	if len(pos) != n {
-		fs.Usage()
-		return usageError{fmt.Sprintf("%s: expected %d argument(s), got %d", fs.Name(), n, len(pos))}
-	}
-	return nil
+func dryRunFlag(fs *pflag.FlagSet, p *bool) {
+	fs.BoolVar(p, "dry-run", false, "print the plan, change nothing")
 }
 
-func cmdInit(ctx context.Context, env engine.Env, args []string) (int, error) {
+func initCmd(a *app) *cobra.Command {
 	var o engine.Options
 	var dir string
-	fs := newFlags(env, "init", "skenv init <owner/repo> [--path P] [--dry-run]\n\nClone the manifest repository into P (default ./<repo> in the current\ndirectory, like git clone), record its env.toml in ~/.config/skenv/config.toml\nand run sync. If the repository is already cloned, only the path is recorded.")
-	fs.StringVar(&dir, "path", "", "where to clone the repository (default ./<repo>)")
-	fs.BoolVar(&o.DryRun, "dry-run", false, "print the plan, change nothing")
-	fs.BoolVar(&o.Adopt, "adopt", false, "back up and replace unmanaged paths that conflict with the manifest")
-	pos, err := parse(fs, args)
-	if err != nil {
-		return engine.ExitFatal, err
+	c := &cobra.Command{
+		Use:   "init <owner/repo>",
+		Short: "Clone the manifest repository and sync",
+		Long: `Clone the manifest repository into --path (default ./<repo> in the current
+directory, like git clone), record its env.toml in ~/.config/skenv/config.toml
+and run sync. If the repository is already cloned, only the path is recorded.`,
+		Args: nArgs(1),
+		RunE: a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
+			return engine.Init(ctx, env, args[0], dir, o)
+		}),
 	}
-	if err := wantArgs(fs, pos, 1); err != nil {
-		return engine.ExitFatal, err
-	}
-	return engine.Init(ctx, env, pos[0], dir, o)
+	c.Flags().StringVar(&dir, "path", "", "where to clone the repository (default ./<repo>)")
+	dryRunFlag(c.Flags(), &o.DryRun)
+	c.Flags().BoolVar(&o.Adopt, "adopt", false, "back up and replace unmanaged paths that conflict with the manifest")
+	return c
 }
 
-func cmdSync(ctx context.Context, env engine.Env, name string, args []string) (int, error) {
+func syncCmd(a *app, name string) *cobra.Command {
 	var o engine.Options
-	synopsis := "skenv sync [--adopt] [--dry-run] [--quiet] [--manifest FILE]\n\nPull own repositories, vendor pinned skills, link everything into the store\nand agent directories, and remove managed paths that left the manifest."
-	if name == "link" {
-		synopsis = "skenv link [--adopt] [--dry-run] [--manifest FILE]\n\nCreate store links for own skills and agent links for every skill."
+	c := &cobra.Command{
+		Use:   name,
+		Short: "Pull, vendor and link every skill of the manifest",
+		Long: `Pull own repositories, vendor pinned skills, link everything into the store
+and agent directories, and remove managed paths that left the manifest.`,
+		Args: nArgs(0),
+		RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
+			e, err := engine.Open(ctx, env, o)
+			if err != nil {
+				return engine.ExitFatal, err
+			}
+			defer e.Close()
+			if name == "link" {
+				return e.Link()
+			}
+			return e.Sync()
+		}),
 	}
-	fs := newFlags(env, name, synopsis)
-	manifestFlag(fs, &o)
-	fs.BoolVar(&o.DryRun, "dry-run", false, "print the plan, change nothing")
-	fs.BoolVar(&o.Adopt, "adopt", false, "move conflicting unmanaged paths to ~/.local/state/skenv/backup/<ts>/ and replace them")
+	if name == "link" {
+		c.Short = "Create store and agent links without pulling"
+		c.Long = "Create store links for own skills and agent links for every skill."
+	}
+	manifestFlag(c.Flags(), &o)
+	dryRunFlag(c.Flags(), &o.DryRun)
+	c.Flags().BoolVar(&o.Adopt, "adopt", false, "move conflicting unmanaged paths to ~/.local/state/skenv/backup/<ts>/ and replace them")
 	if name == "sync" {
-		fs.BoolVar(&o.Quiet, "quiet", false, "print only warnings and errors")
+		c.Flags().BoolVar(&o.Quiet, "quiet", false, "print only warnings and errors")
 	}
-	pos, err := parse(fs, args)
-	if err != nil {
-		return engine.ExitFatal, err
-	}
-	if err := wantArgs(fs, pos, 0); err != nil {
-		return engine.ExitFatal, err
-	}
-	e, err := engine.Open(ctx, env, o)
-	if err != nil {
-		return engine.ExitFatal, err
-	}
-	defer e.Close()
-	if name == "link" {
-		return e.Link()
-	}
-	return e.Sync()
+	return c
 }
 
-func cmdDoctor(ctx context.Context, env engine.Env, args []string) (int, error) {
-	var o engine.Options
+func doctorCmd(a *app) *cobra.Command {
+	o := engine.Options{ReadOnly: true}
 	var asJSON bool
-	fs := newFlags(env, "doctor", "skenv doctor [--json] [--manifest FILE]\n\nCompare the machine with the manifest without changing it.\nClasses: missing, extra-managed, unmanaged, wrong-rev, broken-link, conflict,\ndirty, unpushed, behind, agent-mismatch.\nExit code: 0 in sync, 1 discrepancies, 2 error.")
-	manifestFlag(fs, &o)
-	fs.BoolVar(&asJSON, "json", false, "print the report as JSON")
-	o.ReadOnly = true
-	pos, err := parse(fs, args)
-	if err != nil {
-		return engine.ExitFatal, err
+	c := &cobra.Command{
+		Use:   "doctor",
+		Short: "Compare the machine with the manifest",
+		Long: `Compare the machine with the manifest without changing it.
+Classes: missing, extra-managed, unmanaged, wrong-rev, broken-link, conflict,
+dirty, unpushed, behind, agent-mismatch.
+Exit code: 0 in sync, 1 discrepancies, 2 error.`,
+		Args: nArgs(0),
+		RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
+			e, err := engine.Open(ctx, env, o)
+			if err != nil {
+				return engine.ExitFatal, err
+			}
+			defer e.Close()
+			return e.Doctor(asJSON)
+		}),
 	}
-	if err := wantArgs(fs, pos, 0); err != nil {
-		return engine.ExitFatal, err
-	}
-	e, err := engine.Open(ctx, env, o)
-	if err != nil {
-		return engine.ExitFatal, err
-	}
-	defer e.Close()
-	return e.Doctor(asJSON)
+	manifestFlag(c.Flags(), &o)
+	c.Flags().BoolVar(&asJSON, "json", false, "print the report as JSON")
+	return c
 }
 
-func cmdVendor(ctx context.Context, env engine.Env, args []string) (int, error) {
-	if len(args) == 0 {
-		fmt.Fprint(env.Stderr, "Usage: skenv vendor add|bump|remove ...\n")
-		return engine.ExitFatal, usageError{"vendor: missing subcommand"}
+func vendorCmd(a *app) *cobra.Command {
+	// open wires the flags every vendor subcommand shares.
+	shared := func(c *cobra.Command, o *engine.Options) {
+		manifestFlag(c.Flags(), o)
+		dryRunFlag(c.Flags(), &o.DryRun)
+		c.Flags().BoolVar(&o.Adopt, "adopt", false, "move conflicting unmanaged paths to the backup directory and replace them")
 	}
-	sub, args := args[0], args[1:]
-	var o engine.Options
+	withEngine := func(o *engine.Options, fn func(e *engine.Engine, args []string) (int, error)) func(*cobra.Command, []string) error {
+		return a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
+			e, err := engine.Open(ctx, env, *o)
+			if err != nil {
+				return engine.ExitFatal, err
+			}
+			defer e.Close()
+			return fn(e, args)
+		})
+	}
+	revUsage := "commit to pin (default: HEAD of the default branch)"
+
+	var addO engine.Options
 	var va engine.VendorAddOptions
-	var synopsis string
-	n := 1
-	switch sub {
-	case "add":
-		synopsis = "skenv vendor add <owner/repo> [--path P] [--name N] [--rev SHA] [--dry-run]\n\nPin a third-party skill in the manifest (HEAD of the default branch unless\n--rev) and sync it. The manifest change is not committed."
-	case "bump":
-		synopsis = "skenv vendor bump <name> [--rev SHA] [--dry-run]\n\nMove a vendored skill to a new commit (default: HEAD), show the log, sync."
-	case "remove":
-		synopsis = "skenv vendor remove <name> [--dry-run]\n\nRemove a vendored skill from the manifest and its managed paths."
-	default:
-		return engine.ExitFatal, usageError{fmt.Sprintf("vendor: unknown subcommand %q (add, bump, remove)", sub)}
+	add := &cobra.Command{
+		Use:   "add <owner/repo>",
+		Short: "Pin a third-party skill in the manifest and sync it",
+		Long: `Pin a third-party skill in the manifest (HEAD of the default branch unless
+--rev) and sync it. The manifest change is not committed.`,
+		Args: nArgs(1),
+		RunE: withEngine(&addO, func(e *engine.Engine, args []string) (int, error) {
+			va.Repo = args[0]
+			return e.VendorAdd(va)
+		}),
 	}
-	fs := newFlags(env, "vendor "+sub, synopsis)
-	manifestFlag(fs, &o)
-	fs.BoolVar(&o.DryRun, "dry-run", false, "print the plan, change nothing")
-	fs.BoolVar(&o.Adopt, "adopt", false, "move conflicting unmanaged paths to the backup directory and replace them")
-	if sub == "add" {
-		fs.StringVar(&va.Path, "path", "", "directory with SKILL.md inside the repository (\".\" for the root)")
-		fs.StringVar(&va.Name, "name", "", "skill name (default: last element of --path)")
+	shared(add, &addO)
+	add.Flags().StringVar(&va.Path, "path", "", `directory with SKILL.md inside the repository ("." for the root)`)
+	add.Flags().StringVar(&va.Name, "name", "", "skill name (default: last element of --path)")
+	add.Flags().StringVar(&va.Rev, "rev", "", revUsage)
+
+	var bumpO engine.Options
+	var rev string
+	bump := &cobra.Command{
+		Use:   "bump <name>",
+		Short: "Move a vendored skill to a new commit",
+		Long:  "Move a vendored skill to a new commit (default: HEAD), show the log, sync.",
+		Args:  nArgs(1),
+		RunE: withEngine(&bumpO, func(e *engine.Engine, args []string) (int, error) {
+			return e.VendorBump(args[0], rev)
+		}),
 	}
-	if sub != "remove" {
-		fs.StringVar(&va.Rev, "rev", "", "commit to pin (default: HEAD of the default branch)")
+	shared(bump, &bumpO)
+	bump.Flags().StringVar(&rev, "rev", "", revUsage)
+
+	var rmO engine.Options
+	remove := &cobra.Command{
+		Use:   "remove <name>",
+		Short: "Remove a vendored skill and its managed paths",
+		Long:  "Remove a vendored skill from the manifest and its managed paths.",
+		Args:  nArgs(1),
+		RunE: withEngine(&rmO, func(e *engine.Engine, args []string) (int, error) {
+			return e.VendorRemove(args[0])
+		}),
 	}
-	pos, err := parse(fs, args)
-	if err != nil {
-		return engine.ExitFatal, err
-	}
-	if err := wantArgs(fs, pos, n); err != nil {
-		return engine.ExitFatal, err
-	}
-	e, err := engine.Open(ctx, env, o)
-	if err != nil {
-		return engine.ExitFatal, err
-	}
-	defer e.Close()
-	switch sub {
-	case "add":
-		va.Repo = pos[0]
-		return e.VendorAdd(va)
-	case "bump":
-		return e.VendorBump(pos[0], va.Rev)
-	}
-	return e.VendorRemove(pos[0])
+	shared(remove, &rmO)
+
+	return group("vendor", "Pin, bump and remove third-party skills", add, bump, remove)
 }
 
-func cmdAutostart(ctx context.Context, env engine.Env, args []string) (int, error) {
-	fs := newFlags(env, "autostart", "skenv autostart enable|disable|status\n\nRun `skenv sync --quiet` at login and every hour (macOS LaunchAgent\n"+autostart.Label+", Linux systemd user timer). Log: ~/.local/state/skenv/autostart.log.")
-	pos, err := parse(fs, args)
-	if err != nil {
-		return engine.ExitFatal, err
+func autostartCmd(a *app) *cobra.Command {
+	sub := func(action, short string) *cobra.Command {
+		return &cobra.Command{
+			Use:   action,
+			Short: short,
+			Args:  nArgs(0),
+			RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
+				return runAutostart(ctx, env, action)
+			}),
+		}
 	}
-	if err := wantArgs(fs, pos, 1); err != nil {
-		return engine.ExitFatal, err
-	}
+	c := group("autostart", "Run `skenv sync --quiet` at login and every hour",
+		sub("enable", "Install and load the autostart job"),
+		sub("disable", "Unload and remove the autostart job"),
+		sub("status", "Show whether the autostart job is installed and loaded (exit 1 if not)"),
+	)
+	c.Long = "Run `skenv sync --quiet` at login and every hour (macOS LaunchAgent\n" +
+		autostart.Label + ", Linux systemd user timer). Log: ~/.local/state/skenv/autostart.log."
+	return c
+}
+
+func runAutostart(ctx context.Context, env engine.Env, action string) (int, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return engine.ExitFatal, err
@@ -296,7 +387,7 @@ func cmdAutostart(ctx context.Context, env engine.Env, args []string) (int, erro
 		UID:  os.Getuid(),
 		Run:  autostart.ExecRunner,
 	}
-	switch pos[0] {
+	switch action {
 	case "enable":
 		if err := cfg.Enable(ctx); err != nil {
 			return engine.ExitFatal, err
@@ -307,7 +398,7 @@ func cmdAutostart(ctx context.Context, env engine.Env, args []string) (int, erro
 			return engine.ExitFatal, err
 		}
 		fmt.Fprintln(env.Stdout, "autostart disabled")
-	case "status":
+	default:
 		st, err := cfg.Status(ctx)
 		if err != nil {
 			return engine.ExitFatal, err
@@ -316,8 +407,6 @@ func cmdAutostart(ctx context.Context, env engine.Env, args []string) (int, erro
 		if !st.Installed || !st.Loaded {
 			return engine.ExitProblems, nil
 		}
-	default:
-		return engine.ExitFatal, usageError{fmt.Sprintf("autostart: unknown action %q (enable, disable, status)", pos[0])}
 	}
 	return engine.ExitOK, nil
 }

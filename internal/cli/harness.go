@@ -11,22 +11,39 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/qunaxis/skenv/internal/engine"
 	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/lint"
 )
 
-func cmdLint(ctx context.Context, env engine.Env, args []string) (int, error) {
+func lintCmd(a *app) *cobra.Command {
 	var staged, publish, hook bool
-	fs := newFlags(env, "lint", "skenv lint [path...] [--staged] [--publish]\n       skenv lint --hook   (Claude Code PostToolUse hook, reads the event on stdin)\n\nCheck skills (directories with SKILL.md) under each path (default \".\"):\nL1 frontmatter, L2 name, L3 Agent Skills limits, L4 relative links,\nL5 file size and secret-like files, L6 shebangs. --publish adds P1: a license,\nmetadata.source not book/internal/third-party-copy, no stop-list phrase\n($SKENV_DENYLIST or ~/.config/skenv/denylist.txt) and gitleaks over the whole\nhistory. Exit code 0: clean, 1: problems, 2: error (--hook: 2 with findings,\nso Claude Code shows them to the agent).")
-	fs.BoolVar(&staged, "staged", false, "only skills with files changed in the git index")
-	fs.BoolVar(&publish, "publish", false, "also run the publication checks (P1)")
-	fs.BoolVar(&hook, "hook", false, "lint the skill of the file named in a Claude Code hook event on stdin")
-	pos, err := parse(fs, args)
-	if err != nil {
-		return engine.ExitFatal, err
+	c := &cobra.Command{
+		Use:   "lint [path...]",
+		Short: "Check skills (L1-L6, P1)",
+		Long: `Check skills (directories with SKILL.md) under each path (default "."):
+L1 frontmatter, L2 name, L3 Agent Skills limits, L4 relative links,
+L5 file size and secret-like files, L6 shebangs. --publish adds P1: a license,
+metadata.source not book/internal/third-party-copy, no stop-list phrase
+($SKENV_DENYLIST or ~/.config/skenv/denylist.txt) and gitleaks over the whole
+history. --hook is the Claude Code PostToolUse hook: it reads the event on stdin.
+Exit code 0: clean, 1: problems, 2: error (--hook: 2 with findings,
+so Claude Code shows them to the agent).`,
+		RunE: a.action(func(ctx context.Context, env engine.Env, pos []string) (int, error) {
+			return runLint(ctx, env, pos, staged, publish, hook)
+		}),
 	}
+	c.Flags().BoolVar(&staged, "staged", false, "only skills with files changed in the git index")
+	c.Flags().BoolVar(&publish, "publish", false, "also run the publication checks (P1)")
+	c.Flags().BoolVar(&hook, "hook", false, "lint the skill of the file named in a Claude Code hook event on stdin")
+	return c
+}
+
+func runLint(ctx context.Context, env engine.Env, pos []string, staged, publish, hook bool) (int, error) {
+	var err error
 	if hook {
 		return lintHook(env)
 	}
@@ -158,44 +175,39 @@ func gitRoot(ctx context.Context, dir string) (string, error) {
 	return root, nil
 }
 
-func cmdRepo(ctx context.Context, env engine.Env, args []string) (int, error) {
-	if len(args) == 0 {
-		fmt.Fprint(env.Stderr, "Usage: skenv repo init|apply|check [--dir D]\n")
-		return engine.ExitFatal, usageError{"repo: missing subcommand"}
-	}
-	sub, args := args[0], args[1:]
+func repoCmd(a *app) *cobra.Command {
 	var dir, visibility string
 	var dryRun, upgrade, force bool
-	var synopsis string
-	switch sub {
-	case "init":
-		synopsis = "skenv repo init --visibility private|public [--dir D] [--dry-run]\n\nSet up the harness of a skills repository: skenv.toml, lefthook.yml, CI\nworkflow, linter configs and the managed blocks of AGENTS.md and .gitignore;\nthen `lefthook install`. Refuses if skenv.toml exists."
-	case "apply":
-		synopsis = "skenv repo apply [--upgrade] [--dir D] [--dry-run]\n\nRegenerate the managed files and blocks for the harness version in skenv.toml\n(--upgrade moves it to " + harness.Latest + " first); then `lefthook install`."
-	case "check":
-		synopsis = "skenv repo check [--dir D]\n\nCompare the managed files and blocks with the templates of the harness version.\nExit code 0: in sync, 1: drift (files listed), 2: error."
-	default:
-		return engine.ExitFatal, usageError{fmt.Sprintf("repo: unknown subcommand %q (init, apply, check)", sub)}
+	sub := func(name, use, short, long string) *cobra.Command {
+		c := &cobra.Command{
+			Use:   use,
+			Short: short,
+			Long:  long,
+			Args:  nArgs(0),
+			RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
+				return runRepo(ctx, env, name, dir, visibility, dryRun, upgrade, force)
+			}),
+		}
+		if name != "check" {
+			dryRunFlag(c.Flags(), &dryRun)
+			c.Flags().BoolVar(&force, "force", false, "replace existing files that skenv does not manage yet")
+		}
+		return c
 	}
-	fs := newFlags(env, "repo "+sub, synopsis)
-	fs.StringVar(&dir, "dir", ".", "repository (any directory inside it)")
-	if sub == "init" {
-		fs.StringVar(&visibility, "visibility", "", "private or public (required)")
-	}
-	if sub != "check" {
-		fs.BoolVar(&dryRun, "dry-run", false, "print the plan, change nothing")
-		fs.BoolVar(&force, "force", false, "replace existing files that skenv does not manage yet")
-	}
-	if sub == "apply" {
-		fs.BoolVar(&upgrade, "upgrade", false, "move harness to "+harness.Latest+" (the templates of this skenv)")
-	}
-	pos, err := parse(fs, args)
-	if err != nil {
-		return engine.ExitFatal, err
-	}
-	if err := wantArgs(fs, pos, 0); err != nil {
-		return engine.ExitFatal, err
-	}
+	initC := sub("init", "init --visibility private|public", "Set up the harness of a skills repository",
+		"Set up the harness of a skills repository: skenv.toml, lefthook.yml, CI\nworkflow, linter configs and the managed blocks of AGENTS.md and .gitignore;\nthen `lefthook install`. Refuses if skenv.toml exists.")
+	initC.Flags().StringVar(&visibility, "visibility", "", "private or public (required)")
+	apply := sub("apply", "apply", "Regenerate the managed files of the harness",
+		"Regenerate the managed files and blocks for the harness version in skenv.toml\n(--upgrade moves it to "+harness.Latest+" first); then `lefthook install`.")
+	apply.Flags().BoolVar(&upgrade, "upgrade", false, "move harness to "+harness.Latest+" (the templates of this skenv)")
+	check := sub("check", "check", "Compare the managed files with the harness templates",
+		"Compare the managed files and blocks with the templates of the harness version.\nExit code 0: in sync, 1: drift (files listed), 2: error.")
+	c := group("repo", "Set up and check the harness of a skills repository", initC, apply, check)
+	c.PersistentFlags().StringVar(&dir, "dir", ".", "repository (any directory inside it)")
+	return c
+}
+
+func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility string, dryRun, upgrade, force bool) (int, error) {
 	root, err := gitRoot(ctx, dir)
 	if err != nil {
 		return engine.ExitFatal, err
@@ -203,7 +215,6 @@ func cmdRepo(ctx context.Context, env engine.Env, args []string) (int, error) {
 	switch sub {
 	case "init":
 		if visibility == "" {
-			fs.Usage()
 			return engine.ExitFatal, usageError{"repo init: --visibility private|public is required"}
 		}
 		c, changes, err := harness.Init(root, visibility, dryRun, force)
