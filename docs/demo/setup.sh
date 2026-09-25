@@ -71,5 +71,11 @@ cat >"$sandbox/.demorc" <<RC
 export HOME="$sandbox" PATH="$sandbox/.local/bin:\$PATH" GIT_CONFIG_NOSYSTEM=1
 unset CLAUDE_CONFIG_DIR SKENV_MANIFEST XDG_CONFIG_HOME GIT_CONFIG_GLOBAL PROMPT_COMMAND
 export PS1='\$ ' LC_ALL=C
+# An empty line after each command's output, so the blocks read apart; not
+# after a caption comment (nothing runs) or a clear.
+__demo_ran=
+trap 'case \$BASH_COMMAND in __demo_gap) ;; clear) __demo_ran= ;; *) __demo_ran=1 ;; esac' DEBUG
+__demo_gap() { if [[ -n \$__demo_ran ]]; then echo; fi; __demo_ran=; }
+PROMPT_COMMAND=__demo_gap
 cd "$sandbox/src"
 RC
