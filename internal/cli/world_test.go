@@ -38,6 +38,7 @@ func newWorld(t *testing.T) *world {
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("SKENV_MANIFEST", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("XDG_STATE_HOME", "")
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(w.home, ".gitconfig"))
 	writeFile(t, filepath.Join(w.home, ".gitconfig"), `[user]

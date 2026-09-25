@@ -111,7 +111,7 @@ skenv sync`,
 	})
 	root.AddCommand(
 		initCmd(a), syncCmd(a, "sync"), syncCmd(a, "link"), doctorCmd(a),
-		vendorCmd(a), autostartCmd(a), lintCmd(a), newCmd(a), repoCmd(a), schemaCmd(a),
+		vendorCmd(a), importCmd(a), autostartCmd(a), lintCmd(a), newCmd(a), repoCmd(a), schemaCmd(a),
 		&cobra.Command{
 			Use:     "version",
 			Short:   "Print the skenv version",
@@ -237,6 +237,7 @@ func dryRunFlag(fs *pflag.FlagSet, p *bool) {
 func initCmd(a *app) *cobra.Command {
 	var o engine.Options
 	var dir, here, format string
+	var imp bool
 	c := &cobra.Command{
 		Use:   "init [<owner/repo>]",
 		Short: "Clone the manifest repository and sync, or start a manifest",
@@ -255,12 +256,18 @@ as "manifest" in the config file (a new one in the same format), and nothing
 is synced. It refuses when the file has [environment] already or its [repo]
 is public.
 
+With --import (no <owner/repo>): start the manifest, import the skills
+already installed on this machine into it (see "skenv import") and run
+"skenv sync --adopt": one command to adopt an existing setup.
+
 An existing file keeps its format: --format that disagrees with it is an
 error (exit code 2), and nothing is written.`,
 		Example: `# Clone the manifest repository into ./skills, record it and sync
 skenv init example-org/skills
 # Start a manifest in the git repository of the current directory
-skenv init`,
+skenv init
+# Start one with the skills already installed here, and take them over
+skenv init --import`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return usageError{fmt.Sprintf("init: expected at most 1 argument, got %d (see `%s --help`)", len(args), cmd.CommandPath())}
@@ -275,7 +282,13 @@ skenv init`,
 				if dir != "" || o.Adopt {
 					return engine.ExitFatal, usageError{"init: --path and --adopt need <owner/repo>; without it, --dir names the repository"}
 				}
+				if imp {
+					return engine.InitImport(ctx, env, here, format, o.DryRun)
+				}
 				return engine.NewManifest(ctx, env, here, format, o.DryRun)
+			}
+			if imp {
+				return engine.ExitFatal, usageError{"init: --import starts a new manifest, without <owner/repo>; after cloning one, run `skenv import`"}
 			}
 			if here != "" {
 				return engine.ExitFatal, usageError{"init: --dir is for starting a manifest without <owner/repo>; use --path"}
@@ -288,6 +301,54 @@ skenv init`,
 	formatFlag(c, &format, "format of a new file: toml, yaml or json (default toml; an existing file keeps its format)")
 	dryRunFlag(c.Flags(), &o.DryRun)
 	c.Flags().BoolVar(&o.Adopt, "adopt", false, "back up and replace unmanaged paths that conflict with the manifest")
+	c.Flags().BoolVar(&imp, "import", false, "without <owner/repo>: import the installed skills into the new manifest and run sync --adopt")
+	return c
+}
+
+func importCmd(a *app) *cobra.Command {
+	var o engine.Options
+	var sync bool
+	c := &cobra.Command{
+		Use:   "import",
+		Short: "Add the skills already installed on this machine to the manifest",
+		Long: `Add the skills installed on this machine that the manifest does not have
+yet, so adopting skenv on a machine with skills is one command. It reads the
+store (~/.agents/skills), the agent directories and the global lock of the
+vercel skills CLI, ~/.agents/.skill-lock.json (or
+` + "`$XDG_STATE_HOME/skills/.skill-lock.json`" + `):
+
+- A skill of the lock becomes ` + "`[[environment.vendor]]`" + `: repo from source,
+  path from skillPath. Its rev is the commit whose tree of that path is the
+  skillFolderHash of the lock (a git tree id for GitHub installs), searched
+  on the ref of the lock (or the default branch) from updatedAt back. When no commit matches: the commit
+  whose files match the installed copy, else HEAD; both are warnings.
+- A link into a git working copy becomes ` + "`[[environment.own]]`" + ` (repo from
+  its origin, path of the working copy), with ` + "`skills = [...]`" + ` when only
+  some of its skills are linked.
+- Anything else is reported as unmanaged, with a hint.
+
+~/.claude/skills/synced, skills of Claude Code plugins, layout.ignore
+matches and skills in the manifest are skipped. It prints the manifest
+diff and writes the manifest in place, keeping comments; a skenv file
+without [environment] gets one, as "skenv init" adds it. The skills now in
+the manifest leave the lock, so ` + "`npx skills update`" + ` does not overwrite them;
+a copy of the lock goes to ~/.local/state/skenv/backup/<ts>/. A second run
+imports nothing.
+
+The installed copies stay until ` + "`skenv sync --adopt`" + ` (or --sync) backs them up
+and replaces them. The manifest change is not committed.`,
+		Example: `# Show the manifest diff and the lock changes, write nothing
+skenv import --dry-run
+# Write the manifest and clean the lock of the skills CLI
+skenv import`,
+		Args: nArgs(0),
+		RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
+			return engine.Import(ctx, env, o, sync)
+		}),
+	}
+	manifestFlag(c.Flags(), &o)
+	dryRunFlag(c.Flags(), &o.DryRun)
+	c.Flags().BoolVar(&sync, "sync", false, "run skenv sync --adopt after the import")
 	return c
 }
 

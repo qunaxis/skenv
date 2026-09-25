@@ -21,6 +21,10 @@ as `manifest` in the config file (a new one in the same format), and nothing
 is synced. It refuses when the file has `[environment]` already or its `[repo]`
 is public.
 
+With `--import` (no `<owner/repo>`): start the manifest, import the skills
+already installed on this machine into it (see `skenv import`) and run
+"skenv sync `--adopt`": one command to adopt an existing setup.
+
 An existing file keeps its format: `--format` that disagrees with it is an
 error (exit code 2), and nothing is written.
 
@@ -60,6 +64,64 @@ next steps:
   - commit skenv.toml; on another machine: skenv init <owner>/<repo>
 ```
 
+Start one with the skills already installed here, and take them over:
+
+```console
+$ skenv init --import
+import vendor release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
+  its skillFolderHash 2e46bd8f52d2 is the tree of tools/release-notes at that commit
+unmanaged ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
+add own example-org/my-skills at ~/src/my-skills (the repository of the manifest)
+--- ~/src/my-skills/skenv.toml
++++ ~/src/my-skills/skenv.toml
++#:schema https://qunaxis.github.io/skenv/schemas/skenv.schema.json
++# The manifest of your machines: `skenv sync` links the skills listed here
++# into the agent directories. Reference: https://qunaxis.github.io/skenv/manifest
++[environment]
++
++# Your own skills repositories, kept as working copies: every skill in
++# <path>/skills/ is linked.
++# [[environment.own]]
++# repo = "<owner>/<skills-repo>"
++# path = "~/src/<skills-repo>"
++# skills  = ["<skill>"]         # only these skills (default: all)
++# exclude = ["experimental-*"]  # not these
++
++# Third-party skills pinned to a commit; `skenv vendor add <owner/repo> --path <dir>`
++# adds one:
++# [[environment.vendor]]
++# name = "<skill>"
++# repo = "<owner>/<repo>"
++# path = "<directory of the skill in the repository>"
++# rev  = "<full 40-character commit SHA>"
++
++[[environment.vendor]]
++name = "release-notes"
++repo = "example-vendor/tools"
++path = "tools/release-notes"
++rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
++
++[[environment.own]]
++repo = "example-org/my-skills"
++path = "~/src/my-skills"
+create ~/src/my-skills/skenv.toml with [environment]
+manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
+remove release-notes from ~/.agents/.skill-lock.json (a copy goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
+import: 1 manifest entry, 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
+manifest changed but not committed; to commit:
+  git -C ~/src/my-skills commit -m "chore(manifest): import installed skills" -- skenv.toml
+warning: ~/src/my-skills has uncommitted changes; not pulling (commit or stash, then rerun sync)
+adopt ~/.agents/skills/release-notes (old content → ~/.local/state/skenv/backup/<timestamp>/.agents/skills/release-notes)
+vendor release-notes from example-vendor/tools@27f221f8f2a4 (tools/release-notes)
+link ~/.agents/skills/code-review → ~/src/my-skills/skills/code-review
+link ~/.claude/skills/code-review → ../../.agents/skills/code-review
+link ~/.pi/agent/skills/code-review → ../../../.agents/skills/code-review
+adopt ~/.claude/skills/release-notes (old content → ~/.local/state/skenv/backup/<timestamp>/.claude/skills/release-notes)
+link ~/.claude/skills/release-notes → ../../.agents/skills/release-notes
+link ~/.pi/agent/skills/release-notes → ../../../.agents/skills/release-notes
+sync: 8 changes, 1 warnings, 0 errors
+```
+
 ### Options
 
 ```
@@ -68,6 +130,7 @@ next steps:
       --dry-run         print the plan, change nothing
       --format string   format of a new file: toml, yaml or json (default toml; an existing file keeps its format)
   -h, --help            help for init
+      --import          without <owner/repo>: import the installed skills into the new manifest and run sync --adopt
       --path string     where to clone the repository (default ./<repo>)
 ```
 

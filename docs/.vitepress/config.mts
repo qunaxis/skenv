@@ -81,6 +81,7 @@ function commandItems(): DefaultTheme.SidebarItem[] {
 const guide: DefaultTheme.SidebarItem[] = [
   { text: 'Install', link: '/install' },
   { text: 'Getting started', link: '/getting-started' },
+  { text: 'Adopting an existing setup', link: '/adopting' },
   { text: 'The skenv file', link: '/skenv-file' },
   { text: 'Editor support', link: '/editor-support' },
   { text: 'Manifest', link: '/manifest' },

@@ -14,7 +14,7 @@ import (
 
 // The editing helpers below work on the TOML text rather than on the
 // decoded structure so that comments, ordering and formatting survive
-// `skenv vendor add|update|remove`. YAML and JSON skenv files are edited with
+// `skenv vendor add|update|remove` and `skenv import`. YAML and JSON skenv files are edited with
 // internal/docedit, which keeps comments and key order as well.
 
 var (
@@ -63,6 +63,46 @@ func AppendVendor(data []byte, ext string, v Vendor) ([]byte, error) {
 		})
 	}
 	var b bytes.Buffer
+	appendTable(&b, data)
+	fmt.Fprintf(&b, "[[environment.vendor]]\nname = %s\nrepo = %s\npath = %s\nrev  = %s\n",
+		quote(v.Name), quote(v.Repo), quote(v.Path), quote(v.Rev))
+	return checked(b.Bytes(), ext)
+}
+
+// AppendOwn returns data with a new own entry appended; skills_dir and
+// skills are written only when they are set and not the default.
+func AppendOwn(data []byte, ext string, o Own) ([]byte, error) {
+	if ext != ".toml" {
+		item := docedit.Map{{Key: "repo", Value: o.Repo}, {Key: "path", Value: o.Path}}
+		if o.SkillsDir != "" && o.SkillsDir != DefaultSkillsDir {
+			item = append(item, docedit.Field{Key: "skills_dir", Value: o.SkillsDir})
+		}
+		if o.Skills != nil {
+			item = append(item, docedit.Field{Key: "skills", Value: o.Skills})
+		}
+		return editDoc(data, ext, func(d docedit.Doc) error {
+			return d.Append([]string{skenvfile.Environment, "own"}, item)
+		})
+	}
+	var b bytes.Buffer
+	appendTable(&b, data)
+	fmt.Fprintf(&b, "[[environment.own]]\nrepo = %s\npath = %s\n", quote(o.Repo), quote(o.Path))
+	if o.SkillsDir != "" && o.SkillsDir != DefaultSkillsDir {
+		fmt.Fprintf(&b, "skills_dir = %s\n", quote(o.SkillsDir))
+	}
+	if o.Skills != nil {
+		q := make([]string, len(o.Skills))
+		for i, n := range o.Skills {
+			q[i] = quote(n)
+		}
+		fmt.Fprintf(&b, "skills = [%s]\n", strings.Join(q, ", "))
+	}
+	return checked(b.Bytes(), ext)
+}
+
+// appendTable writes data to b followed by a blank line, so that a table
+// appended next is separated from the rest.
+func appendTable(b *bytes.Buffer, data []byte) {
 	b.Write(data)
 	if len(data) > 0 && !bytes.HasSuffix(data, []byte("\n")) {
 		b.WriteByte('\n')
@@ -70,9 +110,6 @@ func AppendVendor(data []byte, ext string, v Vendor) ([]byte, error) {
 	if len(bytes.TrimSpace(data)) > 0 {
 		b.WriteByte('\n')
 	}
-	fmt.Fprintf(&b, "[[environment.vendor]]\nname = %s\nrepo = %s\npath = %s\nrev  = %s\n",
-		quote(v.Name), quote(v.Repo), quote(v.Path), quote(v.Rev))
-	return checked(b.Bytes(), ext)
 }
 
 // SetVendorRev returns data with the rev of vendor name replaced.

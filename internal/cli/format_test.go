@@ -216,6 +216,12 @@ func TestWritesKeepFormat(t *testing.T) {
 					}
 					return vendorsAre("archify")(data, ext)
 				}},
+				{"import", func() {
+					tools := filepath.Join(w.work, "ext__tools")
+					w.installed("other", map[string]string{"SKILL.md": skillMD("other", "v2")})
+					w.writeLock(map[string]lockEntry{"other": githubEntry("ext/tools", "tools/other/SKILL.md", w.git(tools, "rev-parse", "HEAD:tools/other"))})
+					w.mustRun(0, "import", "--sync")
+				}, own, "skenv", comments(format), vendorsAre("archify", "other")},
 			}
 			for _, s := range steps {
 				t.Run(s.name, func(t *testing.T) {

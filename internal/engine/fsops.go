@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/qunaxis/skenv/internal/agents"
 	"github.com/qunaxis/skenv/internal/state"
@@ -73,16 +72,9 @@ func (e *Engine) claim(p, skill string) bool {
 	return true
 }
 
-// backup moves p to backup/<ts>/<path relative to home>.
+// backup moves p to its backupPath.
 func (e *Engine) backup(p string) error {
-	if e.backupDir == "" {
-		e.backupDir = filepath.Join(e.layout.Backup(), e.env.Now().UTC().Format("20060102T150405Z"))
-	}
-	rel, err := filepath.Rel(e.env.Home, p)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		rel = strings.TrimPrefix(p, string(filepath.Separator))
-	}
-	dst := filepath.Join(e.backupDir, rel)
+	dst := e.backupPath(p)
 	e.changef("adopt %s (old content → %s)", e.show(p), e.show(dst))
 	if e.opts.DryRun {
 		return nil

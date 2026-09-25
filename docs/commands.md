@@ -8,7 +8,7 @@ shipped in the release archives (`make man` writes them into `man/`; see
 [Install](../README.md#install)); shell completion comes from
 `skenv completion bash|zsh|fish`.
 
-- [Machine: init, sync, link, doctor, vendor, autostart](#machine)
+- [Machine: init, import, sync, link, doctor, vendor, autostart](#machine)
 - [`--dry-run` and `--adopt`](#--dry-run-and---adopt)
 - [`doctor` classes](#doctor-classes)
 - [Skills repositories: lint, new, repo](#skills-repositories)
@@ -46,7 +46,28 @@ It adds `[environment]` to the skenv file of the repository (or creates
 one), records it in the tool config and prints the next steps; see
 [Creating the file](skenv-file.md#creating-the-file). An existing file
 keeps its format: `--format` that disagrees with it exits 2.
+
+`skenv init --import` also imports the skills already installed on the
+machine into the new manifest and runs `sync --adopt`; see
+[Adopting an existing setup](adopting.md).
 Reference: [skenv init](commands/skenv_init.md).
+
+### `skenv import`
+
+```sh
+skenv import --dry-run   # the manifest diff and the lock changes, nothing written
+skenv import
+skenv import --sync      # then skenv sync --adopt
+```
+
+Adds the skills installed on the machine that the manifest does not have
+yet: entries of the lock of the `skills` CLI (`~/.agents/.skill-lock.json`)
+become vendor entries pinned to the commit their `skillFolderHash` names,
+links into git working copies become own repositories, and anything else is
+reported as `unmanaged`. It then removes the skills now in the manifest from
+that lock, after a backup. Idempotent. See
+[Adopting an existing setup](adopting.md). Reference:
+[skenv import](commands/skenv_import.md).
 
 ### `skenv sync`
 

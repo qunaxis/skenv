@@ -1,5 +1,5 @@
-// Package engine implements the skenv commands: sync, link, doctor, vendor
-// and init.
+// Package engine implements the skenv commands: sync, link, doctor, vendor,
+// init and import.
 package engine
 
 import (
@@ -72,6 +72,9 @@ type Engine struct {
 	// selected by skills/exclude of its own repository, or skipped on this
 	// host. Set by skills.
 	unselected map[string]string
+	// fetched maps a repository to its clone cache, fetched once per
+	// import.
+	fetched map[string]string
 }
 
 // ErrNoManifest means no manifest location is configured. skenv does not
@@ -99,9 +102,6 @@ func Open(ctx context.Context, env Env, opts Options) (*Engine, error) {
 	if err := gitx.Available(); err != nil {
 		return nil, err
 	}
-	if env.Now == nil {
-		env.Now = time.Now
-	}
 	mp, err := ResolveManifest(env, opts.Manifest)
 	if err != nil {
 		return nil, err
@@ -109,6 +109,15 @@ func Open(ctx context.Context, env Env, opts Options) (*Engine, error) {
 	m, err := manifest.Load(mp)
 	if err != nil {
 		return nil, err
+	}
+	return open(ctx, env, opts, mp, m)
+}
+
+// open takes the lock and loads the state for the manifest m of the skenv
+// file mp, which need not exist yet (`init --import`).
+func open(ctx context.Context, env Env, opts Options, mp string, m *manifest.Manifest) (*Engine, error) {
+	if env.Now == nil {
+		env.Now = time.Now
 	}
 	layout := paths.Layout{Home: env.Home}
 	e := &Engine{env: env, opts: opts, layout: layout, manifestPath: mp, ctx: ctx}

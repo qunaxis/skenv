@@ -265,6 +265,10 @@ so a manifest can be translated if skenv is ever replaced by it:
 | `rev`                    | `ref`                                | skenv requires a full SHA; `ref` also accepts branches and tags               |
 | —                        | `computedHash`                       | not recorded by skenv; the SHA pins the content                               |
 
+The other direction, from the global lock `~/.agents/.skill-lock.json` to
+the manifest, is `skenv import`; see
+[Adopting an existing setup](adopting.md#what-import-reads).
+
 `[[environment.own]]` has no equivalent: the `skills` CLI does not manage
 working copies. A translation would list each skill an own entry selects
 (after `skills` and `exclude`) as an entry of its own, pinned to the commit
