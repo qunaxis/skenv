@@ -8,9 +8,9 @@ Install agent skills (Claude Code, Codex, pi) from a manifest in git
 
 skenv installs agent skills (Claude Code, Codex, pi) from a manifest you
 keep in git, and keeps every machine in line with it. The manifest is the
-`[environment]` section of `skenv.toml` in a git repository: your own skills
-come from editable git working copies (`own` repositories), third-party
-skills are copies pinned to a commit (`vendor` entries).
+`[user]` section of `skenv.toml` in a git repository: skills of editable git
+working copies (`checkouts`) are linked, other skills are copies pinned to
+a commit (`dependencies`).
 
 First steps, by situation:
 - No manifest yet: `skenv init` in a git repository starts one.

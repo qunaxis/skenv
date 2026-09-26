@@ -14,15 +14,18 @@ out when the repository has exactly one `SKILL.md`. The skill is installed
 under `--name`, by default the last element of that directory (the
 repository name when the skill is at its root), lowercased.
 
-`<repo>` is written to the manifest as given: owner/repo on `github.com`,
+It adds a `[user.dependencies.<name>]` table with repo, skill_dir and commit.
+`<repo>` is written as given: owner/repo (or github:owner/repo) on `github.com`,
 gitlab:group/sub/repo, codeberg:owner/repo, `<alias>:path` of a host declared
-under `[environment.hosts.<alias>]`, or a full git URL. An unknown prefix is
-an error. See https://qunaxis.github.io/skenv/git-hosts
+under `[user.git_hosts.<alias>]`, or a full git URL; a relative local path is
+written absolute. An unknown prefix is an error. See
+https://qunaxis.github.io/skenv/git-hosts
 
-With `--project`: add a [[project.vendor]] entry to the skenv file of the
-current repository and sync the project, which copies the skill into its
-dir and mirrors. Its hosts are the ones declared under
-`[project.hosts.<alias>]`. Commit the file and the copies with the project.
+With `--project`: add a `[project.dependencies.<name>]` table to the skenv file
+of the current repository and sync the project, which copies the skill into
+its dir and mirrors. Its hosts are the ones declared under
+`[project.git_hosts.<alias>]`. Commit the file and the copies with the
+project.
 
 - Reads: the manifest (or `[project]`) and the repository of the skill.
 - Changes: the manifest (or `[project]`), the copy of the skill in the store
@@ -43,12 +46,12 @@ Pin the skill in `tools/release-notes/` at HEAD of the default branch:
 
 ```console
 $ skenv vendor add example-vendor/tools --path tools/release-notes
-add vendor release-notes (example-vendor/tools@27f221f8f2a4, tools/release-notes) to ~/src/skills/skenv.toml
+add dependency release-notes (example-vendor/tools@27f221f8f2a4, tools/release-notes) to ~/src/skills/skenv.toml
 vendor release-notes from example-vendor/tools@27f221f8f2a4 (tools/release-notes)
 link ~/.claude/skills/release-notes → ../../.agents/skills/release-notes
 link ~/.pi/agent/skills/release-notes → ../../../.agents/skills/release-notes
 manifest changed but not committed; to commit:
-  git -C ~/src/skills commit -m "chore(manifest): add vendor skill release-notes" -- skenv.toml
+  git -C ~/src/skills commit -m "chore(manifest): add dependency release-notes" -- skenv.toml
 vendor: 4 changes, 0 warnings, 0 errors
 ```
 
@@ -56,12 +59,12 @@ A skill from a GitLab subgroup:
 
 ```console
 $ skenv vendor add gitlab:example-org/team/tools --path release-notes
-add vendor release-notes (gitlab:example-org/team/tools@db393f044b07, release-notes) to ~/src/skills/skenv.toml
+add dependency release-notes (gitlab:example-org/team/tools@db393f044b07, release-notes) to ~/src/skills/skenv.toml
 vendor release-notes from gitlab:example-org/team/tools@db393f044b07 (release-notes)
 link ~/.claude/skills/release-notes → ../../.agents/skills/release-notes
 link ~/.pi/agent/skills/release-notes → ../../../.agents/skills/release-notes
 manifest changed but not committed; to commit:
-  git -C ~/src/skills commit -m "chore(manifest): add vendor skill release-notes" -- skenv.toml
+  git -C ~/src/skills commit -m "chore(manifest): add dependency release-notes" -- skenv.toml
 vendor: 4 changes, 0 warnings, 0 errors
 ```
 
@@ -69,12 +72,12 @@ A skill from a self-hosted host declared as `work` in the manifest:
 
 ```console
 $ skenv vendor add work:platform/skills --path deploy
-add vendor deploy (work:platform/skills@343046eaee2f, deploy) to ~/src/skills/skenv.toml
+add dependency deploy (work:platform/skills@343046eaee2f, deploy) to ~/src/skills/skenv.toml
 vendor deploy from work:platform/skills@343046eaee2f (deploy)
 link ~/.claude/skills/deploy → ../../.agents/skills/deploy
 link ~/.pi/agent/skills/deploy → ../../../.agents/skills/deploy
 manifest changed but not committed; to commit:
-  git -C ~/src/skills commit -m "chore(manifest): add vendor skill deploy" -- skenv.toml
+  git -C ~/src/skills commit -m "chore(manifest): add dependency deploy" -- skenv.toml
 vendor: 4 changes, 0 warnings, 0 errors
 ```
 
@@ -82,12 +85,12 @@ Pin it in the current project instead:
 
 ```console
 $ skenv vendor add example-vendor/tools --path tools/release-notes --project
-add vendor release-notes (example-vendor/tools@27f221f8f2a4, tools/release-notes) to [project] of ~/src/web-app/skenv.toml
+add dependency release-notes (example-vendor/tools@27f221f8f2a4, tools/release-notes) to [project] of ~/src/web-app/skenv.toml
 copy .agents/skills/release-notes from example-vendor/tools@27f221f8f2a4 (tools/release-notes)
 link .claude/skills/release-notes → ../../.agents/skills/release-notes
 the project skills changed; to commit them:
   git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
-  git -C ~/src/web-app commit -m "chore(skills): add vendor skill release-notes"
+  git -C ~/src/web-app commit -m "chore(skills): add dependency release-notes"
 vendor: 3 changes, 0 warnings, 0 errors
 ```
 
@@ -97,7 +100,7 @@ vendor: 3 changes, 0 warnings, 0 errors
       --adopt             move conflicting unmanaged paths to the backup directory and replace them
       --dry-run           print the plan; write nothing except the clone cache ~/.cache/skenv/repos, fetched to resolve commits
   -h, --help              help for add
-      --manifest string   skenv file with the [environment] section, or its directory
+      --manifest string   skenv file with the [user] section, or its directory
       --name string       skill name (default: last element of --path, lowercased)
       --path string       directory with SKILL.md inside the repository ("." for the root; default: the only one)
       --project           edit [project] of the current repository instead of the manifest, and sync the project

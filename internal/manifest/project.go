@@ -3,6 +3,7 @@ package manifest
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -28,7 +29,7 @@ var MirrorModes = []string{MirrorSymlink, MirrorCopy}
 // (and CI, and cloud agents) gets them. `skenv sync` inside the repository
 // copies the pinned skills into dir and keeps the mirrors in line.
 //
-// The section is independent of [repo] and [environment]: a user-level
+// The section is independent of [repository] and [user]: a user-level
 // sync never reads it. Paths are relative to the repository root.
 type Project struct {
 	// Dir is the directory, relative to the repository root, that holds
@@ -44,48 +45,52 @@ type Project struct {
 	// copy for tools that do not follow symlinks (or Windows checkouts).
 	// Default: "symlink".
 	MirrorsMode string `toml:"mirrors_mode" yaml:"mirrors_mode" json:"mirrors_mode"`
-	// Hosts declares git servers by alias for the repo values of this
-	// section, as environment.hosts does for the manifest: the project
+	// GitHosts declares git servers by alias for the repo values of this
+	// section, as user.git_hosts does for the manifest: the project
 	// resolves them the same for everyone who clones it, without anyone's
 	// manifest.
-	Hosts Hosts `toml:"hosts" yaml:"hosts" json:"hosts"`
-	// Vendor lists third-party skills, each pinned to a commit and copied
-	// into dir.
-	Vendor []Vendor `toml:"vendor" yaml:"vendor" json:"vendor"`
+	GitHosts Hosts `toml:"git_hosts" yaml:"git_hosts" json:"git_hosts"`
+	// Dependencies are third-party skills, each pinned to a commit and
+	// copied into dir, keyed by the skill name.
+	Dependencies map[string]Dependency `toml:"dependencies" yaml:"dependencies" json:"dependencies"`
 	// From lists skills repositories (your own, for example) to copy some
-	// of their skills from, each pinned to a commit.
-	From []From `toml:"from" yaml:"from" json:"from"`
+	// of their skills from, each pinned to one commit, by an ID of your
+	// choice.
+	From map[string]From `toml:"from" yaml:"from" json:"from"`
 }
 
 // From names skills of a skills repository, copied into the project at a
 // pinned commit.
 type From struct {
-	// Repo is the repository: "owner/repo" on github.com,
-	// "gitlab:group/sub/repo", "codeberg:owner/repo", "<alias>:path" of a
-	// host in project.hosts, or a full git URL.
+	// Repo is the repository: "owner/repo" or "github:owner/repo" on
+	// github.com, "gitlab:group/sub/repo", "codeberg:owner/repo",
+	// "<alias>:path" of a host in project.git_hosts, or a full git URL.
 	Repo string `toml:"repo" yaml:"repo" json:"repo"`
 	// SkillsDir is the directory inside the repository whose
 	// subdirectories are the skills. Default: "skills".
 	SkillsDir string `toml:"skills_dir" yaml:"skills_dir" json:"skills_dir"`
-	// Skills lists the skills to copy, by directory name under skills_dir.
-	// Required: every copy is committed to the project, so each is named.
+	// Skills lists the skills to copy, by directory name under skills_dir
+	// (no patterns). Required: every copy is committed to the project, so
+	// each is named.
 	Skills []string `toml:"skills" yaml:"skills" json:"skills"`
-	// Rev is the full 40-character lowercase commit SHA to copy the skills
-	// at.
-	Rev string `toml:"rev" yaml:"rev" json:"rev"`
+	// Commit is the full 40-character lowercase commit SHA to copy the
+	// skills at.
+	Commit string `toml:"commit" yaml:"commit" json:"commit"`
+
+	// ID is the key of the entry in project.from.
+	ID string `toml:"-" yaml:"-" json:"-"`
 }
 
 // ProjectSkill is one skill that [project] copies into dir, whichever
 // entry it comes from.
 type ProjectSkill struct {
-	Name string
-	Repo string
-	Path string // directory with SKILL.md inside the repository
-	Rev  string
-	// Vendor or From is the entry, From with the index of the entry.
-	Vendor *Vendor
-	From   *From
-	FromAt int
+	Name   string
+	Repo   string
+	Path   string // directory with SKILL.md inside the repository
+	Commit string
+	// Dependency or From is the entry.
+	Dependency *Dependency
+	From       *From
 }
 
 // LoadProject reads and validates the [project] section of the skenv file
@@ -125,16 +130,20 @@ func ParseProject(data []byte, ext string) (*Project, error) {
 	if p.MirrorsMode == "" {
 		p.MirrorsMode = MirrorSymlink
 	}
-	p.Hosts.fillDefaults()
-	for i := range p.Vendor {
-		if p.Vendor[i].Path == "" {
-			p.Vendor[i].Path = "."
+	p.GitHosts.fillDefaults()
+	for name, d := range p.Dependencies {
+		d.Name = name
+		if d.SkillDir == "" {
+			d.SkillDir = "."
 		}
+		p.Dependencies[name] = d
 	}
-	for i := range p.From {
-		if p.From[i].SkillsDir == "" {
-			p.From[i].SkillsDir = DefaultSkillsDir
+	for id, f := range p.From {
+		f.ID = id
+		if f.SkillsDir == "" {
+			f.SkillsDir = DefaultSkillsDir
 		}
+		p.From[id] = f
 	}
 	if err := p.Validate(); err != nil {
 		return nil, err
@@ -163,26 +172,25 @@ func (p *Project) Validate() error {
 		}
 		dirs = append(dirs, m)
 	}
-	for _, err := range p.Hosts.validate() {
+	for _, err := range p.GitHosts.validate() {
 		errs = append(errs, fmt.Errorf("project.%w", err))
 	}
 	if !slices.Contains(MirrorModes, p.MirrorsMode) {
 		errs = append(errs, fmt.Errorf("project.mirrors_mode %q must be %s", p.MirrorsMode, strings.Join(quoted(MirrorModes), " or ")))
 	}
-	for i, v := range p.Vendor {
-		where := fmt.Sprintf("project.vendor[%d]", i)
-		if v.Name != "" {
-			where = fmt.Sprintf("project.vendor %q", v.Name)
-		}
-		for _, err := range checkVendor(where, v, p.Hosts) {
+	for _, d := range p.DependencyList() {
+		for _, err := range checkDependency("project.dependencies", d, p.GitHosts, "") {
 			errs = append(errs, projectHosts(err))
 		}
 	}
-	for i, f := range p.From {
-		where := fmt.Sprintf("project.from[%d] (%s)", i, f.Repo)
+	for _, f := range p.FromList() {
+		where := fmt.Sprintf("project.from.%s (%s)", f.ID, f.Repo)
+		if !idRe.MatchString(f.ID) {
+			errs = append(errs, fmt.Errorf("project.from.%s: the ID must be lowercase letters, digits, \"-\" and \"_\", starting with a letter or digit", f.ID))
+		}
 		if f.Repo == "" {
-			errs = append(errs, fmt.Errorf("project.from[%d]: repo is required", i))
-		} else if _, err := p.Hosts.Resolve(f.Repo); err != nil {
+			errs = append(errs, fmt.Errorf("project.from.%s: repo is required", f.ID))
+		} else if _, err := p.GitHosts.Resolve(f.Repo); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", where, projectHosts(err)))
 		}
 		if !cleanRel(f.SkillsDir) {
@@ -200,8 +208,8 @@ func (p *Project) Validate() error {
 			}
 			seen[n] = true
 		}
-		if !shaRe.MatchString(f.Rev) {
-			errs = append(errs, fmt.Errorf("%s: rev %q must be a full 40-character lowercase commit SHA", where, f.Rev))
+		if !shaRe.MatchString(f.Commit) {
+			errs = append(errs, fmt.Errorf("%s: commit %q must be a full 40-character lowercase commit SHA", where, f.Commit))
 		}
 	}
 	if len(errs) > 0 {
@@ -209,9 +217,9 @@ func (p *Project) Validate() error {
 	}
 	origin := map[string]string{}
 	for _, s := range p.Skills() {
-		from := "vendor " + s.Repo
+		from := "dependency " + s.Name + " (" + s.Repo + ")"
 		if s.From != nil {
-			from = "from " + s.Repo
+			from = "from." + s.From.ID + " (" + s.Repo + ")"
 		}
 		if prev, ok := origin[s.Name]; ok {
 			errs = append(errs, fmt.Errorf("project skill %q is defined twice: %s and %s", s.Name, prev, from))
@@ -224,30 +232,32 @@ func (p *Project) Validate() error {
 // projectHosts points an error of Hosts.Resolve at project.hosts, where a
 // project declares its hosts.
 func projectHosts(err error) error {
-	msg := strings.ReplaceAll(err.Error(), "[environment.hosts.", "[project.hosts.")
+	msg := strings.ReplaceAll(err.Error(), "[user.git_hosts.", "[project.git_hosts.")
 	if msg == err.Error() {
 		return err
 	}
 	return errors.New(msg)
 }
 
-// checkVendor validates one vendor entry of [environment] or [project]:
-// the name, a repo that hosts resolve, the path and a full SHA.
-func checkVendor(where string, v Vendor, hosts Hosts) []error {
+// checkDependency validates one dependency of [user] or [project] (in
+// section where): the name, a repo that hosts resolve (a local path
+// against base), the skill directory and a full SHA.
+func checkDependency(where string, d *Dependency, hosts Hosts, base string) []error {
 	var errs []error
-	if err := ValidName(v.Name); err != nil {
+	where = fmt.Sprintf("%s.%s", where, quoteKey(d.Name))
+	if err := ValidName(d.Name); err != nil {
 		errs = append(errs, fmt.Errorf("%s: %w", where, err))
 	}
-	if v.Repo == "" {
+	if d.Repo == "" {
 		errs = append(errs, fmt.Errorf("%s: repo is required", where))
-	} else if _, err := hosts.Resolve(v.Repo); err != nil {
+	} else if _, err := hosts.ResolveIn(base, d.Repo); err != nil {
 		errs = append(errs, fmt.Errorf("%s: %w", where, err))
 	}
-	if !cleanRel(v.Path) {
-		errs = append(errs, fmt.Errorf("%s: path %q must be a relative path inside the repository (\".\" for the root)", where, v.Path))
+	if !cleanRel(d.SkillDir) {
+		errs = append(errs, fmt.Errorf("%s: skill_dir %q must be a relative path inside the repository (\".\" for the root)", where, d.SkillDir))
 	}
-	if !shaRe.MatchString(v.Rev) {
-		errs = append(errs, fmt.Errorf("%s: rev %q must be a full 40-character lowercase commit SHA", where, v.Rev))
+	if !shaRe.MatchString(d.Commit) {
+		errs = append(errs, fmt.Errorf("%s: commit %q must be a full 40-character lowercase commit SHA", where, d.Commit))
 	}
 	return errs
 }
@@ -266,18 +276,36 @@ func quoted(ss []string) []string {
 	return out
 }
 
+// DependencyList returns the dependencies sorted by name.
+func (p *Project) DependencyList() []*Dependency {
+	out := make([]*Dependency, 0, len(p.Dependencies))
+	for _, name := range slices.Sorted(maps.Keys(p.Dependencies)) {
+		d := p.Dependencies[name]
+		out = append(out, &d)
+	}
+	return out
+}
+
+// FromList returns the from entries sorted by ID.
+func (p *Project) FromList() []*From {
+	out := make([]*From, 0, len(p.From))
+	for _, id := range slices.Sorted(maps.Keys(p.From)) {
+		f := p.From[id]
+		out = append(out, &f)
+	}
+	return out
+}
+
 // Skills lists every skill the section copies, sorted by name. A name
 // defined twice appears twice; Validate reports it.
 func (p *Project) Skills() []ProjectSkill {
 	var out []ProjectSkill
-	for i := range p.Vendor {
-		v := &p.Vendor[i]
-		out = append(out, ProjectSkill{Name: v.Name, Repo: v.Repo, Path: v.Path, Rev: v.Rev, Vendor: v})
+	for _, d := range p.DependencyList() {
+		out = append(out, ProjectSkill{Name: d.Name, Repo: d.Repo, Path: d.SkillDir, Commit: d.Commit, Dependency: d})
 	}
-	for i := range p.From {
-		f := &p.From[i]
+	for _, f := range p.FromList() {
 		for _, n := range f.Skills {
-			out = append(out, ProjectSkill{Name: n, Repo: f.Repo, Path: path.Join(f.SkillsDir, n), Rev: f.Rev, From: f, FromAt: i})
+			out = append(out, ProjectSkill{Name: n, Repo: f.Repo, Path: path.Join(f.SkillsDir, n), Commit: f.Commit, From: f})
 		}
 	}
 	sort.SliceStable(out, func(a, b int) bool { return out[a].Name < out[b].Name })

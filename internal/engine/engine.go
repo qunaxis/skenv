@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -63,8 +65,10 @@ type base struct {
 	lockFile  *os.File
 	backupDir string
 	// hosts resolve the repo values of the skenv file: the declared hosts
-	// of the manifest, or of [project].
-	hosts manifest.Hosts
+	// of the manifest, or of [project]; a relative local path resolves
+	// against hostsDir, the directory of the skenv file.
+	hosts    manifest.Hosts
+	hostsDir string
 	// pending is the edited skenv file under --dry-run, which is never
 	// written: the next edit of the same command builds on it.
 	pending []byte
@@ -114,12 +118,19 @@ type Engine struct {
 	st           *state.State
 	stateDirty   bool
 
-	// ownUnavailable is set when an own repository could not be listed;
+	// machine is the name of this machine, machineFrom where it came
+	// from, and rules its user.machines entry (hasRules false: none).
+	machine     string
+	machineFrom string
+	rules       manifest.Machine
+	hasRules    bool
+
+	// checkoutUnavailable is set when a checkout could not be listed;
 	// pruning is skipped then so its links are not mistaken for stale ones.
-	ownUnavailable bool
+	checkoutUnavailable bool
 	// unselected says why a skill that exists is not installed here: not
-	// selected by skills/exclude of its own repository, or skipped on this
-	// host. Set by skills.
+	// selected by include/exclude of its checkout, or by the rules of this
+	// machine. Set by skills.
 	unselected map[string]string
 }
 
@@ -129,7 +140,7 @@ var ErrNoManifest = errors.New("no manifest configured: start one with `skenv in
 	"connect an existing one with `skenv clone <repo>` or, for a checkout you already have, `skenv use <path>`; " +
 	"or pass --manifest FILE (or set $SKENV_MANIFEST)")
 
-// ResolveManifest picks the manifest, the skenv file with [environment]:
+// ResolveManifest picks the manifest, the skenv file with [user]:
 // --manifest, $SKENV_MANIFEST, then `manifest` in the config file
 // (~/.config/skenv/config.{toml,yaml,yml,json}). Each may name the file or
 // the directory that holds it. Without any of them it returns ErrNoManifest.
@@ -160,7 +171,7 @@ func noManifest(ctx context.Context, env Env) error {
 	if err != nil || file == "" {
 		return ErrNoManifest
 	}
-	if doc, err := skenvfile.Read(file); err != nil || !doc.Has(skenvfile.Environment) {
+	if doc, err := skenvfile.Read(file); err != nil || !doc.Has(skenvfile.User) {
 		return ErrNoManifest
 	}
 	return fmt.Errorf("%w\nthis repository has a manifest (%s): run `skenv use .` to use it on this machine", ErrNoManifest, filepath.Base(file))
@@ -198,56 +209,131 @@ func open(ctx context.Context, env Env, opts Options, mp string, m *manifest.Man
 		return nil, err
 	}
 	e.st = st
-	e.setManifest(m)
+	if err := e.setManifest(m); err != nil {
+		e.Close()
+		return nil, err
+	}
 	return e, nil
 }
 
-func (e *Engine) setManifest(m *manifest.Manifest) {
+// setManifest resolves m on this machine: the machine and its rules, the
+// store and the agent directories.
+func (e *Engine) setManifest(m *manifest.Manifest) error {
 	e.m = m
-	e.hosts = m.Hosts
+	e.hosts = m.GitHosts
+	e.hostsDir = m.Dir
 	e.store = e.layout.DefaultStore()
-	if m.Layout.Store != "" {
-		e.store = paths.Expand(e.env.Home, m.Layout.Store)
+	if m.Storage.Dir != "" {
+		e.store = m.Path(e.env.Home, m.Storage.Dir)
 	}
-	e.targets = agents.Targets(e.env.Home, e.env.Getenv, m.Layout.Targets, e.store)
+	e.targets = agents.Targets(e.env.Home, e.env.Getenv, e.agentSelection(), e.store)
+	return e.resolveMachine()
 }
 
-// Skill is a manifest skill resolved against the file system: Own and
-// OwnDir for an own skill, Vendor for a vendored one.
-type Skill struct {
-	Name   string
-	Own    *manifest.Own
-	OwnDir string // <own.path>/<skills_dir>/<name>
-	Vendor *manifest.Vendor
+// agentSelection is user.agents with its paths resolved.
+func (e *Engine) agentSelection() agents.Selection {
+	a := e.m.Agents
+	sel := agents.Selection{Enabled: a.Enabled, Paths: map[string]string{}}
+	for name, p := range a.Paths {
+		sel.Paths[name] = e.m.Path(e.env.Home, p)
+	}
+	for _, d := range a.ExtraDirs {
+		sel.ExtraDirs = append(sel.ExtraDirs, e.m.Path(e.env.Home, d))
+	}
+	return sel
 }
 
-// skipped maps the skills skipped on this host to the host key that skips
-// them: the full hostname, or the short one.
-func (e *Engine) skipped() map[string]string {
-	skip := map[string]string{}
-	if short, _, ok := strings.Cut(e.env.Hostname, "."); ok {
-		for k := range e.m.Skipped(short) {
-			skip[k] = short
+// resolveMachine sets the machine of e and its rules (see machineOf).
+func (e *Engine) resolveMachine() error {
+	mc, err := machineOf(e.env, e.m)
+	if err != nil {
+		return fmt.Errorf("%w (manifest %s)", err, e.show(e.manifestPath))
+	}
+	e.machine, e.machineFrom, e.rules, e.hasRules = mc.name, mc.from, mc.rules, mc.has
+	return nil
+}
+
+// machine is the machine of a run and its rules.
+type machine struct {
+	name, from string
+	rules      manifest.Machine
+	has        bool
+}
+
+// machineOf picks the name of this machine and its rules in m: the tool
+// config `machine` (or $SKENV_MACHINE), which m must know; otherwise the
+// rules of the full hostname, else of the short hostname, never both.
+func machineOf(env Env, m *manifest.Manifest) (machine, error) {
+	name, src, err := config.Resolve(env.Home, env.Getenv, "machine", "", "")
+	if err != nil {
+		return machine{}, err
+	}
+	if name != "" {
+		mc := machine{name: name, from: "tool config `machine`"}
+		if src == config.FromEnv {
+			mc.from = "$" + config.EnvVar("machine")
+		}
+		rules, ok := m.Machines[name]
+		if !ok {
+			known := slices.Sorted(maps.Keys(m.Machines))
+			if len(known) == 0 {
+				known = []string{"none"}
+			}
+			return machine{}, fmt.Errorf("machine %q (%s) has no user.machines.%s entry; add one (it may be empty) or fix the name (known: %s)",
+				name, mc.from, name, strings.Join(known, ", "))
+		}
+		mc.rules, mc.has = rules, true
+		return mc, nil
+	}
+	mc := machine{name: env.Hostname, from: "hostname"}
+	if rules, ok := m.Machines[env.Hostname]; ok {
+		mc.rules, mc.has = rules, true
+		return mc, nil
+	}
+	if short, _, ok := strings.Cut(env.Hostname, "."); ok {
+		if rules, ok := m.Machines[short]; ok {
+			return machine{name: short, from: "short hostname", rules: rules, has: true}, nil
 		}
 	}
-	for k := range e.m.Skipped(e.env.Hostname) {
-		skip[k] = e.env.Hostname
+	return mc, nil
+}
+
+// checkoutPathOf returns the resolved working copy path of a checkout of
+// m on this machine: its checkout_dir, or the override of the machine's
+// rules.
+func checkoutPathOf(env Env, m *manifest.Manifest, mc machine) func(*manifest.Checkout) string {
+	return func(c *manifest.Checkout) string {
+		if p, ok := mc.rules.CheckoutDirs[c.ID]; ok && mc.has {
+			return m.Path(env.Home, p)
+		}
+		return m.Path(env.Home, c.CheckoutDir)
 	}
-	return skip
 }
 
-// ownPath is the expanded working copy path of o.
-func (e *Engine) ownPath(o *manifest.Own) string { return paths.Expand(e.env.Home, o.Path) }
-
-// ownSkillsDir is the expanded <own.path>/<skills_dir> of o.
-func (e *Engine) ownSkillsDir(o *manifest.Own) string {
-	return filepath.Join(e.ownPath(o), filepath.FromSlash(o.SkillsDir))
+// Skill is a manifest skill resolved against the file system: Checkout
+// and CheckoutDir for a skill of a checkout, Dependency for a pinned one.
+type Skill struct {
+	Name        string
+	Checkout    *manifest.Checkout
+	CheckoutDir string // <checkout_dir>/<skills_dir>/<name>
+	Dependency  *manifest.Dependency
 }
 
-// ownFound lists the skills in dir, the skills directory of an own
-// repository: its subdirectories with a SKILL.md. It fails when dir cannot
+// checkoutPath is the resolved working copy path of c: its checkout_dir,
+// or the override of this machine.
+func (e *Engine) checkoutPath(c *manifest.Checkout) string {
+	return checkoutPathOf(e.env, e.m, machine{name: e.machine, rules: e.rules, has: e.hasRules})(c)
+}
+
+// checkoutSkillsDir is <checkout path>/<skills_dir> of c.
+func (e *Engine) checkoutSkillsDir(c *manifest.Checkout) string {
+	return filepath.Join(e.checkoutPath(c), filepath.FromSlash(c.SkillsDir))
+}
+
+// checkoutFound lists the skills in dir, the skills directory of a
+// checkout: its subdirectories with a SKILL.md. It fails when dir cannot
 // be read, as before the repository is cloned.
-func ownFound(dir string) ([]string, error) {
+func checkoutFound(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -265,72 +351,73 @@ func ownFound(dir string) ([]string, error) {
 	return found, nil
 }
 
-// ownSkills lists the skills of the own repository o. A working copy
+// checkoutSkills lists the skills of the checkout c. A working copy
 // without its skills directory has no skills yet; only a working copy that
 // is missing (not cloned yet) or unreadable is an error.
-func (e *Engine) ownSkills(o *manifest.Own) ([]string, error) {
-	found, err := ownFound(e.ownSkillsDir(o))
+func (e *Engine) checkoutSkills(c *manifest.Checkout) ([]string, error) {
+	found, err := checkoutFound(e.checkoutSkillsDir(c))
 	if errors.Is(err, fs.ErrNotExist) {
-		if fi, serr := os.Stat(e.ownPath(o)); serr == nil && fi.IsDir() {
+		if fi, serr := os.Stat(e.checkoutPath(c)); serr == nil && fi.IsDir() {
 			return nil, nil
 		}
 	}
 	return found, err
 }
 
-// skills lists every skill of the manifest that applies to this host.
-// Own repositories that are not cloned yet contribute no skills.
+// machineRule names the rules of this machine in messages.
+func (e *Engine) machineRule() string { return fmt.Sprintf("user.machines.%q", e.machine) }
+
+// skills lists every skill of the manifest that this machine installs.
+// Checkouts that are not cloned yet contribute no skills.
 func (e *Engine) skills() ([]Skill, error) {
-	own := map[int][]string{}
-	e.ownUnavailable = false
+	selected := map[string][]string{}
+	e.checkoutUnavailable = false
 	e.unselected = map[string]string{}
-	for i := range e.m.Own {
-		o := &e.m.Own[i]
-		dir := e.ownSkillsDir(o)
-		found, err := e.ownSkills(o)
+	for _, c := range e.m.CheckoutList() {
+		dir := e.checkoutSkillsDir(c)
+		found, err := e.checkoutSkills(c)
 		if err != nil {
-			e.ownUnavailable = true
+			e.checkoutUnavailable = true
 			continue
 		}
-		// skills and exclude select from the repository; M1 is checked on
-		// the selection, before host.skip, so the manifest is valid or not
-		// the same way on every host.
-		selected, err := o.Select(found)
+		// include and exclude select from the repository; M1 is checked on
+		// the selection, before the machine rules, so the manifest is valid
+		// or not the same way on every machine.
+		sel, err := c.Select(found)
 		if err != nil {
 			return nil, fmt.Errorf("manifest %s: %w", e.show(e.manifestPath), err)
 		}
-		for _, name := range selected {
+		for _, name := range sel {
 			if err := manifest.ValidName(name); err != nil {
 				e.warnf("skipping %s: %v", e.show(filepath.Join(dir, name)), err)
 				continue
 			}
-			own[i] = append(own[i], name)
+			selected[c.ID] = append(selected[c.ID], name)
 		}
 		for _, name := range found {
-			if !o.Selects(name) {
-				e.unselected[name] = fmt.Sprintf("not selected by own %s (skills/exclude)", o.Repo)
+			if !c.Selects(name) {
+				e.unselected[name] = fmt.Sprintf("not selected by checkout %s (include/exclude)", c.ID)
 			}
 		}
 	}
-	refs, err := e.m.CheckNames(own)
+	refs, err := e.m.CheckNames(selected)
 	if err != nil {
 		return nil, fmt.Errorf("manifest %s: %w", e.show(e.manifestPath), err)
 	}
-	skip := e.skipped()
 	var out []Skill
 	for _, r := range refs {
-		// A name that another own repository or a vendor entry installs is
-		// not "unselected".
+		// A name that another checkout or a dependency installs is not
+		// "unselected".
 		delete(e.unselected, r.Name)
 	}
 	for _, r := range refs {
-		if host, ok := skip[r.Name]; ok {
-			e.unselected[r.Name] = fmt.Sprintf("skipped on this host (host.%q.skip)", host)
+		if e.hasRules && !e.rules.Selects(r.Name) {
+			e.unselected[r.Name] = fmt.Sprintf("excluded on this machine (%s)", e.machineRule())
 			continue
 		}
-		s := Skill{Name: r.Name, Vendor: r.Vendor, Own: r.Own}
-		if r.Own != nil {
-			s.OwnDir = filepath.Join(e.ownSkillsDir(r.Own), r.Name)
+		s := Skill{Name: r.Name, Dependency: r.Dependency, Checkout: r.Checkout}
+		if r.Checkout != nil {
+			s.CheckoutDir = filepath.Join(e.checkoutSkillsDir(r.Checkout), r.Name)
 		}
 		out = append(out, s)
 	}
@@ -355,7 +442,7 @@ func (e *Engine) desired(skills []Skill) map[string]state.Entry {
 	out := map[string]state.Entry{}
 	for _, s := range skills {
 		kind := state.Link
-		if s.Vendor != nil {
+		if s.Dependency != nil {
 			kind = state.VendorDir
 		}
 		out[e.storePath(s.Name)] = state.Entry{Kind: kind, Skill: s.Name}
@@ -450,20 +537,20 @@ func (e *base) summary(cmd string) int {
 	return ExitOK
 }
 
-// OwnDir is an own repository of the manifest resolved on this machine.
-type OwnDir struct {
+// CheckoutDir is a checkout of the manifest resolved on this machine.
+type CheckoutDir struct {
+	ID        string
 	Repo      string
-	Path      string // expanded working copy path
+	Path      string // resolved working copy path
 	SkillsDir string
-	Own       manifest.Own
+	Checkout  manifest.Checkout
 }
 
-// OwnDirs lists the own repositories of the manifest.
-func (e *Engine) OwnDirs() []OwnDir {
-	out := make([]OwnDir, 0, len(e.m.Own))
-	for i := range e.m.Own {
-		o := &e.m.Own[i]
-		out = append(out, OwnDir{Repo: o.Repo, Path: e.ownPath(o), SkillsDir: o.SkillsDir, Own: *o})
+// CheckoutDirs lists the checkouts of the manifest.
+func (e *Engine) CheckoutDirs() []CheckoutDir {
+	out := make([]CheckoutDir, 0, len(e.m.Checkouts))
+	for _, c := range e.m.CheckoutList() {
+		out = append(out, CheckoutDir{ID: c.ID, Repo: c.Repo, Path: e.checkoutPath(c), SkillsDir: c.SkillsDir, Checkout: *c})
 	}
 	return out
 }

@@ -22,6 +22,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/qunaxis/skenv/internal/agents"
 	"github.com/qunaxis/skenv/internal/config"
 	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/manifest"
@@ -158,18 +159,35 @@ type gen struct {
 }
 
 func (g *gen) skenv() *Schema {
-	environment := g.object(reflect.TypeFor[manifest.Manifest]())
-	layout := g.object(reflect.TypeFor[manifest.Layout]())
-	own := g.object(reflect.TypeFor[manifest.Own]())
-	vendor := g.object(reflect.TypeFor[manifest.Vendor]())
-	host := g.object(reflect.TypeFor[manifest.Host]())
+	user := g.object(reflect.TypeFor[manifest.Manifest]())
+	checkout := g.object(reflect.TypeFor[manifest.Checkout]())
+	dependency := g.object(reflect.TypeFor[manifest.Dependency]())
+	machine := g.object(reflect.TypeFor[manifest.Machine]())
+	agentsDef := g.object(reflect.TypeFor[manifest.Agents]())
+	storage := g.object(reflect.TypeFor[manifest.Storage]())
 	gitHost := g.object(reflect.TypeFor[manifest.GitHost]())
 	repo := g.object(reflect.TypeFor[harness.Config]())
+	ci := g.object(reflect.TypeFor[harness.CIConfig]())
+	github := g.object(reflect.TypeFor[harness.GitHubCI]())
+	gitlab := g.object(reflect.TypeFor[harness.GitLabCI]())
 	project := g.object(reflect.TypeFor[manifest.Project]())
 	from := g.object(reflect.TypeFor[manifest.From]())
 
-	environment.Properties.get("host").AdditionalProperties = &Schema{Ref: "#/$defs/host"}
-	hosts := environment.Properties.get("hosts")
+	idNames := &Schema{Pattern: manifest.IDPattern, PatternErrorMessage: `An ID is lowercase letters, digits, "-" and "_", starting with a letter or digit.`}
+	skillNames := skillName()
+	skillNames.Type = ""
+
+	checkouts := user.Properties.get("checkouts")
+	checkouts.AdditionalProperties = &Schema{Ref: "#/$defs/checkout"}
+	checkouts.PropertyNames = idNames
+	deps := user.Properties.get("dependencies")
+	deps.AdditionalProperties = &Schema{Ref: "#/$defs/dependency"}
+	deps.PropertyNames = skillNames
+	user.Properties.get("machines").AdditionalProperties = &Schema{Ref: "#/$defs/machine"}
+	unmanaged := user.Properties.get("unmanaged").Items
+	unmanaged.Pattern = `^[^/]+$`
+	unmanaged.PatternErrorMessage = `A glob over entry names, without "/".`
+	hosts := user.Properties.get("git_hosts")
 	hosts.AdditionalProperties = &Schema{Ref: "#/$defs/gitHost"}
 	hosts.PropertyNames = &Schema{
 		Pattern:             manifest.AliasPattern,
@@ -177,53 +195,66 @@ func (g *gen) skenv() *Schema {
 		Not:                 &Schema{Enum: manifest.ReservedAliases, ErrorMessage: "This prefix is built in and cannot be declared."},
 	}
 
-	gitHost.Required = []string{"url"}
-	hostURL := gitHost.Properties.get("url")
-	hostURL.Pattern = `^[A-Za-z][A-Za-z0-9+.-]*://[^/@?#]+(/[^?#]*)?$`
-	hostURL.PatternErrorMessage = `A base URL such as "https://git.example.com", without credentials.`
-	hostURL.Examples = []any{"https://git.example.com"}
-	hostType := gitHost.Properties.get("type")
-	hostType.Enum = manifest.HostTypes
-	hostType.Default = manifest.TypeGeneric
-	gitHost.Properties.get("ssh").Examples = []any{"git@git.example.com"}
+	gitHost.Required = []string{"base_url"}
+	hostURL := gitHost.Properties.get("base_url")
+	hostURL.Pattern = `^([Hh][Tt][Tt][Pp][Ss]?://[^/@?#]+|[Ss][Ss][Hh]://([^/:@?#]+@)?[^/@?#]+)(/[^?#]*)?$`
+	hostURL.PatternErrorMessage = `A base URL such as "https://git.example.com" (no credentials) or "ssh://git@git.example.com".`
+	hostURL.Examples = []any{"https://git.example.com", "ssh://git@git.example.com"}
+	provider := gitHost.Properties.get("provider")
+	provider.Enum = manifest.HostTypes
+	provider.Default = manifest.TypeGeneric
 
-	layout.Properties.get("store").Examples = []any{"~/.agents/skills"}
-	ignore := layout.Properties.get("ignore").Items
-	ignore.Pattern = `^[^/]+$`
-	ignore.PatternErrorMessage = `A glob over entry names, without "/".`
+	storage.Properties.get("dir").Examples = []any{"~/.agents/skills", "~/.local/share/skenv/skills"}
+	enabled := agentsDef.Properties.get("enabled")
+	enabled.UniqueItems = true
+	enabled.Items.Enum = agents.Names
+	agentPaths := agentsDef.Properties.get("paths")
+	agentPaths.AdditionalProperties = &Schema{Type: "string", MinLength: 1}
+	agentPaths.PropertyNames = &Schema{Enum: agents.Names}
+	agentsDef.Properties.get("extra_dirs").Items.MinLength = 1
 
-	own.Required = []string{"repo", "path"}
-	own.Properties.get("repo").MinLength = 1
-	own.Properties.get("path").MinLength = 1
-	skillsDir := own.Properties.get("skills_dir")
+	selection := func(s *Schema) {
+		include := s.Properties.get("include")
+		include.UniqueItems = true
+		include.Items.Pattern = `^[^/]+$`
+		include.Items.PatternErrorMessage = `A skill name or a glob over names, without "/".`
+		exclude := s.Properties.get("exclude").Items
+		exclude.Pattern = `^[^/]+$`
+		exclude.PatternErrorMessage = `A skill name or a glob over names, without "/".`
+	}
+	selection(checkout)
+	selection(machine)
+	machineDirs := machine.Properties.get("checkout_dirs")
+	machineDirs.AdditionalProperties = &Schema{Type: "string", MinLength: 1}
+	machineDirs.PropertyNames = idNames
+
+	checkout.Required = []string{"repo", "checkout_dir"}
+	checkout.Properties.get("repo").MinLength = 1
+	checkout.Properties.get("checkout_dir").MinLength = 1
+	skillsDir := checkout.Properties.get("skills_dir")
 	skillsDir.Pattern = RelPathPattern
 	skillsDir.PatternErrorMessage = relPathMessage
 	skillsDir.Default = manifest.DefaultSkillsDir
-	skills := own.Properties.get("skills")
-	skills.MinItems = 1
-	skills.UniqueItems = true
-	skills.Items = skillName()
-	exclude := own.Properties.get("exclude").Items
-	exclude.Pattern = `^[^/]+$`
-	exclude.PatternErrorMessage = `A glob over skill names, without "/".`
 
-	vendor.Required = []string{"name", "repo", "rev"}
-	name := vendor.Properties.get("name")
-	desc := name.Description
-	*name = *skillName()
-	name.Description = desc
-	vendor.Properties.get("repo").MinLength = 1
-	path := vendor.Properties.get("path")
-	path.Pattern = RelPathPattern
-	path.PatternErrorMessage = relPathMessage
-	path.Default = "."
-	rev := vendor.Properties.get("rev")
-	rev.Pattern = manifest.RevPattern
-	rev.PatternErrorMessage = "A full 40-character lowercase commit SHA; branches, tags and short SHAs are not allowed."
+	dependency.Required = []string{"repo", "commit"}
+	dependency.Properties.get("repo").MinLength = 1
+	skillDir := dependency.Properties.get("skill_dir")
+	skillDir.Pattern = RelPathPattern
+	skillDir.PatternErrorMessage = relPathMessage
+	skillDir.Default = "."
+	commit := dependency.Properties.get("commit")
+	commit.Pattern = manifest.RevPattern
+	commit.PatternErrorMessage = "A full 40-character lowercase commit SHA; branches, tags and short SHAs are not allowed."
 
-	projectHosts := project.Properties.get("hosts")
+	projectHosts := project.Properties.get("git_hosts")
 	projectHosts.AdditionalProperties = hosts.AdditionalProperties
 	projectHosts.PropertyNames = hosts.PropertyNames
+	projectDeps := project.Properties.get("dependencies")
+	projectDeps.AdditionalProperties = deps.AdditionalProperties
+	projectDeps.PropertyNames = skillNames
+	projectFrom := project.Properties.get("from")
+	projectFrom.AdditionalProperties = &Schema{Ref: "#/$defs/from"}
+	projectFrom.PropertyNames = idNames
 	dir := project.Properties.get("dir")
 	dir.Pattern = RelPathPattern
 	dir.PatternErrorMessage = relPathMessage
@@ -240,7 +271,7 @@ func (g *gen) skenv() *Schema {
 	mode.Enum = manifest.MirrorModes
 	mode.Default = manifest.MirrorSymlink
 
-	from.Required = []string{"repo", "skills", "rev"}
+	from.Required = []string{"repo", "skills", "commit"}
 	from.Properties.get("repo").MinLength = 1
 	fromDir := from.Properties.get("skills_dir")
 	fromDir.Pattern = RelPathPattern
@@ -250,54 +281,64 @@ func (g *gen) skenv() *Schema {
 	fromSkills.MinItems = 1
 	fromSkills.UniqueItems = true
 	fromSkills.Items = skillName()
-	fromRev := from.Properties.get("rev")
-	*fromRev = Schema{Type: "string", Description: fromRev.Description, Pattern: rev.Pattern, PatternErrorMessage: rev.PatternErrorMessage}
+	fromCommit := from.Properties.get("commit")
+	*fromCommit = Schema{Type: "string", Description: fromCommit.Description, Pattern: commit.Pattern, PatternErrorMessage: commit.PatternErrorMessage}
 
-	repo.Required = []string{"harness", "visibility"}
-	h := repo.Properties.get("harness")
+	repo.Required = []string{"template_version", "visibility"}
+	h := repo.Properties.get("template_version")
 	h.Pattern = harness.VersionPattern
 	h.PatternErrorMessage = "A version such as " + harness.Latest + "."
 	h.Examples = []any{harness.Latest}
 	repo.Properties.get("visibility").Enum = []string{"private", "public"}
-	repo.Properties.get("runner").Default = harness.DefaultRunner
-	ci := repo.Properties.get("ci")
-	ci.Enum = harness.CIs
-	ci.Default = harness.CIGitHub
+	ci.Not = &Schema{Required: []string{harness.CIGitHub, harness.CIGitLab}, ErrorMessage: "Keep one CI table: github or gitlab."}
+	runner := func(s *Schema, key string) {
+		p := s.Properties.get(key)
+		p.Default = harness.DefaultRunner
+		p.MinItems = 1
+		p.Items.Pattern = `^[A-Za-z0-9._:/-]+$`
+		p.Items.PatternErrorMessage = "A runner label: letters, digits and . _ : / -"
+	}
+	runner(github, "runs_on")
+	runner(gitlab, "tags")
 
 	return &Schema{
 		Title: "skenv file",
 		Description: "The skenv file of a repository: skenv.toml, skenv.yaml, skenv.yml or skenv.json in its root. " +
-			"[repo] is the harness of a skills repository, [environment] the manifest of your machines, " +
+			"[repository] is the development tooling of a skills repository, [user] the manifest (the skills of your agents), " +
 			"[project] the skills a project repository carries. " +
-			"Rules the schema cannot check are enforced by skenv: skill names are unique across own and vendor skills " +
-			"(and across vendor and from skills of [project]), layout.ignore must not match a manifest skill, " +
+			"Rules the schema cannot check are enforced by skenv: skill names are unique across checkouts and dependencies " +
+			"(and across dependencies and from entries of [project]), user.unmanaged must not match a selected skill, " +
 			"project.dir and project.mirrors do not overlap, and a directory holds only one skenv file. " +
 			"Docs: https://qunaxis.github.io/skenv/skenv-file",
 		Type: "object",
 		Properties: Props{
 			{schemaKey, &Schema{Type: "string", Description: "The URL of this schema, for editors. skenv ignores it."}},
-			{"repo", &Schema{Ref: "#/$defs/repo"}},
-			{"environment", &Schema{Ref: "#/$defs/environment"}},
+			{"repository", &Schema{Ref: "#/$defs/repository"}},
+			{"user", &Schema{Ref: "#/$defs/user"}},
 			{"project", &Schema{Ref: "#/$defs/project"}},
 		},
 		AdditionalProperties: false,
 		If: &Schema{
-			Required:   []string{"repo"},
-			Properties: Props{{"repo", &Schema{Required: []string{"visibility"}, Properties: Props{{"visibility", &Schema{Const: "public"}}}}}},
+			Required:   []string{"repository"},
+			Properties: Props{{"repository", &Schema{Required: []string{"visibility"}, Properties: Props{{"visibility", &Schema{Const: "public"}}}}}},
 		},
-		Then: &Schema{Properties: Props{{"environment", &Schema{
-			Description: "A public repository must not carry [environment]: the manifest is personal " +
-				"(home paths, host names, which skills you use). Keep it in a private repository.",
+		Then: &Schema{Properties: Props{{"user", &Schema{
+			Description: "A public repository must not carry [user]: the manifest is personal " +
+				"(home paths, machine names, which skills you use). Keep it in a private repository.",
 			Not:          &Schema{},
-			ErrorMessage: "A public repository must not carry [environment]: the manifest is personal. Keep it in a private repository.",
+			ErrorMessage: "A public repository must not carry [user]: the manifest is personal. Keep it in a private repository.",
 		}}}},
 		Defs: Props{
-			{"repo", repo},
-			{"environment", environment},
-			{"layout", layout},
-			{"own", own},
-			{"vendor", vendor},
-			{"host", host},
+			{"repository", repo},
+			{"ci", ci},
+			{"github", github},
+			{"gitlab", gitlab},
+			{"user", user},
+			{"checkout", checkout},
+			{"dependency", dependency},
+			{"machine", machine},
+			{"agents", agentsDef},
+			{"storage", storage},
 			{"gitHost", gitHost},
 			{"project", project},
 			{"from", from},

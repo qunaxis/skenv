@@ -7,26 +7,29 @@ it would stop Claude Code from loading this file.
   dependency: `git` only. No network services, no other executables.
 - Layout: `internal/cli` (flags, integration tests), `internal/engine`
   (sync, link, doctor, list, vendor, init, clone, use, import; `project*.go`: `[project]` in a
-  project repository), `internal/cli/new.go` (`skenv new`), `internal/skenvfile` (the skenv file: `[repo]`, `[environment]` and `[project]`,
-  TOML/YAML/JSON), `internal/manifest` (`[environment]` and `[project]`
+  project repository), `internal/cli/new.go` (`skenv new`), `internal/skenvfile` (the skenv file: `[repository]`, `[user]` and `[project]`,
+  TOML/YAML/JSON; `legacy.go`: errors for the keys before 0.6), `internal/manifest` (`[user]` and `[project]`
   parsing and in-place editing), `internal/config` (tool config), `internal/fileformat` (`--format`
   of new files; no write changes a file's format, `TestWritesKeepFormat`
   covers every write path), `internal/agents`, `internal/state`,
   `internal/autostart`, `internal/gitx`, `internal/buildinfo`,
   `internal/lint` (L1-L6; `publish.go`: P1 publication check, stop-list
-  phrases are never printed), `internal/harness` (`[repo]`, `repo
-  init|apply|check`, templates in `internal/harness/templates/`),
+  phrases are never printed), `internal/harness` (`[repository]`, `repo
+  init|apply|upgrade|check`, templates in `internal/harness/templates/`),
   `internal/release` (tests for `cliff.toml` and the commit check).
 - One template set is embedded, version `harness.Latest`. A template change
   bumps `harness.Latest` to the release that ships it; `skenv repo check`
-  then reports older repositories and `skenv repo apply` moves them.
+  then reports older repositories and `skenv repo upgrade` moves them
+  (`repository.template_version` is desired state: `repo apply` never
+  edits it).
 - The harness version doubles as the skenv release that generated CI
   installs (`SKENV_VERSION` in `check.yml` and `gitlab-ci.yml`): release
-  it before any repository runs `repo apply`; lint changes reach CI only
+  it before any repository runs `repo upgrade`; lint changes reach CI only
   through a new harness version.
 - No backward-compatibility guarantee before 1.0: breaking CLI, config and
   file-format changes are allowed and marked `!` (see
-  `docs/adr/0001-cli-and-config-framework.md`).
+  `docs/adr/0001-cli-and-config-framework.md`; the format of the skenv file:
+  `docs/adr/0002-config-format.md`).
 - Safety rules: never delete or replace a path that is not recorded in
   `state.json` unless the user passed `--adopt`; never touch
   `~/.claude/skills/synced`; mask credentials in any URL that reaches output.

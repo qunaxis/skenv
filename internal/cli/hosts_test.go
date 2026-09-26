@@ -12,19 +12,18 @@ import (
 // declared as "work", an own repository and a vendored skill in a subgroup
 // on it.
 func selfHosted(rev string) string {
-	return `[environment.hosts.work]
-url  = "https://git.example.com"
-type = "gitlab"
+	return `[user.git_hosts.work]
+base_url = "https://git.example.com"
+provider = "gitlab"
 
-[[environment.own]]
-repo = "work:team/skills"
-path = "~/` + ownPath + `"
+[user.checkouts.skills]
+repo         = "work:team/skills"
+checkout_dir = "~/` + ownPath + `"
 
-[[environment.vendor]]
-name = "tool"
-repo = "work:team/sub/tools"
-path = "tool"
-rev  = "` + rev + `"
+[user.dependencies.tool]
+repo      = "work:team/sub/tools"
+skill_dir = "tool"
+commit    = "` + rev + `"
 `
 }
 
@@ -106,7 +105,7 @@ func TestDeclaredHost(t *testing.T) {
 	w.pushTool("selfhosted/team/other", "other")
 	w.mustRun(0, "vendor", "add", "work:team/other", "--path", "tool", "--name", "other")
 	manifest := readFile(t, w.path(ownPath+"/skenv.toml"))
-	if !strings.Contains(manifest, `repo = "work:team/other"`) {
+	if !strings.Contains(manifest, `repo      = "work:team/other"`) {
 		t.Errorf("manifest after vendor add:\n%s", manifest)
 	}
 	if !strings.Contains(w.vendored("other"), "other") {
@@ -136,15 +135,15 @@ func TestUnknownHostPrefix(t *testing.T) {
 	w.initStandard("")
 	before := readFile(t, w.path(ownPath+"/skenv.toml"))
 	_, errOut := w.mustRun(2, "vendor", "add", "acme:team/tools")
-	if !strings.Contains(errOut, `unknown host prefix "acme:"`) || !strings.Contains(errOut, "[environment.hosts.acme]") {
+	if !strings.Contains(errOut, `unknown host prefix "acme:"`) || !strings.Contains(errOut, "[user.git_hosts.acme]") {
 		t.Errorf("vendor add:\n%s", errOut)
 	}
 	if readFile(t, w.path(ownPath+"/skenv.toml")) != before {
 		t.Error("the manifest changed")
 	}
 
-	writeFile(t, w.path(ownPath+"/skenv.toml"), before+"\n[[environment.own]]\nrepo = \"acme:team/more\"\npath = \"~/src/more\"\n")
-	if _, errOut := w.mustRun(2, "sync"); !strings.Contains(errOut, `own[1]: repo "acme:team/more": unknown host prefix`) {
+	writeFile(t, w.path(ownPath+"/skenv.toml"), before+"\n[user.checkouts.more]\nrepo = \"acme:team/more\"\ncheckout_dir = \"~/src/more\"\n")
+	if _, errOut := w.mustRun(2, "sync"); !strings.Contains(errOut, `user.checkouts.more: repo "acme:team/more": unknown host prefix`) {
 		t.Errorf("sync:\n%s", errOut)
 	}
 }
@@ -154,11 +153,11 @@ func TestUnknownHostPrefix(t *testing.T) {
 // another host, credentials removed.
 func TestInitStartsManifestOnOtherHosts(t *testing.T) {
 	for origin, want := range map[string]string{
-		"https://gitlab.com/example-org/team/skills.git":      `repo = "gitlab:example-org/team/skills"`,
-		"git@gitlab.com:example-org/skills.git":               `repo = "gitlab:example-org/skills"`,
-		"https://codeberg.org/example-org/skills.git":         `repo = "codeberg:example-org/skills"`,
-		"git@git.example.com:team/sub/skills.git":             `repo = "git@git.example.com:team/sub/skills.git"`,
-		"https://user:secret@git.example.com/team/skills.git": `repo = "https://git.example.com/team/skills.git"`,
+		"https://gitlab.com/example-org/team/skills.git":      "gitlab:example-org/team/skills",
+		"git@gitlab.com:example-org/skills.git":               "gitlab:example-org/skills",
+		"https://codeberg.org/example-org/skills.git":         "codeberg:example-org/skills",
+		"git@git.example.com:team/sub/skills.git":             "git@git.example.com:team/sub/skills.git",
+		"https://user:secret@git.example.com/team/skills.git": "https://git.example.com/team/skills.git",
 	} {
 		t.Run(origin, func(t *testing.T) {
 			w := newWorld(t)
@@ -167,16 +166,15 @@ func TestInitStartsManifestOnOtherHosts(t *testing.T) {
 			w.git(repo, "init", "--quiet")
 			w.git(repo, "remote", "add", "origin", origin)
 			out, _ := w.mustRun(0, "init", "--dir", repo)
-			if !strings.Contains(out, "as its first own repository") {
+			if !strings.Contains(out, "as its first checkout (skills)") {
 				t.Errorf("init:\n%s", out)
 			}
 			text := readFile(t, filepath.Join(repo, "skenv.toml"))
-			if !strings.Contains(text, want+"\npath = \"~/src/skills\"\n") || strings.Contains(text+out, "secret") {
+			if !strings.Contains(text, "[user.checkouts.skills]\nrepo         = \""+want+"\"\ncheckout_dir = \".\"\n") || strings.Contains(text+out, "secret") {
 				t.Errorf("skenv.toml:\n%s", text)
 			}
 			// The hint for the next machine names the same repository.
-			repoValue := strings.Trim(strings.TrimPrefix(want, "repo = "), `"`)
-			if !strings.Contains(out, "on another machine: skenv clone "+repoValue+"\n") {
+			if !strings.Contains(out, "on another machine: skenv clone "+want+"\n") {
 				t.Errorf("init hint:\n%s", out)
 			}
 		})
@@ -189,7 +187,7 @@ func TestInitStartsManifestOnOtherHosts(t *testing.T) {
 	w.git(repo, "init", "--quiet")
 	w.git(repo, "remote", "add", "origin", "https://user:p%zz@git.example.com/team/skills.git")
 	out, _ := w.mustRun(0, "init", "--dir", repo)
-	if text := readFile(t, filepath.Join(repo, "skenv.toml")); strings.Contains(text+out, "p%zz") || strings.Contains(out, "first own repository") {
+	if text := readFile(t, filepath.Join(repo, "skenv.toml")); strings.Contains(text+out, "p%zz") || strings.Contains(out, "first checkout") {
 		t.Errorf("unparsable origin written:\n%s\n%s", out, text)
 	}
 }
@@ -220,7 +218,7 @@ func TestMarkerIdentity(t *testing.T) {
 	}
 
 	alsoMap("https://mirror.example.com/")
-	writeFile(t, manifest, strings.Replace(text, `url  = "https://git.example.com"`, `url  = "https://mirror.example.com"`, 1))
+	writeFile(t, manifest, strings.Replace(text, `base_url = "https://git.example.com"`, `base_url = "https://mirror.example.com"`, 1))
 	out, _ := w.mustRun(0, "sync")
 	if !strings.Contains(out, "vendor tool from work:team/sub/tools") {
 		t.Errorf("a mirror did not copy the skill again:\n%s", out)
@@ -235,11 +233,11 @@ func TestMarkerIdentity(t *testing.T) {
 // for a local path it is an error.
 func TestInitRemote(t *testing.T) {
 	for remote, want := range map[string]string{
-		"example-org/skills":                                  `repo = "example-org/skills"`,
-		"gitlab:example-group/sub/skills":                     `repo = "gitlab:example-group/sub/skills"`,
-		"https://gitlab.com/example-group/skills.git":         `repo = "gitlab:example-group/skills"`,
-		"codeberg:example-org/skills":                         `repo = "codeberg:example-org/skills"`,
-		"https://user:secret@git.example.com/team/skills.git": `repo = "https://git.example.com/team/skills.git"`,
+		"example-org/skills":                                  "example-org/skills",
+		"gitlab:example-group/sub/skills":                     "gitlab:example-group/sub/skills",
+		"https://gitlab.com/example-group/skills.git":         "gitlab:example-group/skills",
+		"codeberg:example-org/skills":                         "codeberg:example-org/skills",
+		"https://user:secret@git.example.com/team/skills.git": "https://git.example.com/team/skills.git",
 	} {
 		t.Run(remote, func(t *testing.T) {
 			w := newWorld(t)
@@ -248,7 +246,7 @@ func TestInitRemote(t *testing.T) {
 			w.git(repo, "init", "--quiet")
 			out, _ := w.mustRun(0, "init", "--dir", repo, "--remote", remote)
 			text := readFile(t, filepath.Join(repo, "skenv.toml"))
-			if !strings.Contains(text, want+"\npath = \"~/src/skills\"\n") || strings.Contains(text+out, "secret") {
+			if !strings.Contains(text, "repo         = \""+want+"\"\ncheckout_dir = \".\"\n") || strings.Contains(text+out, "secret") {
 				t.Errorf("skenv.toml:\n%s\n%s", text, out)
 			}
 		})

@@ -6,7 +6,7 @@
 // lowercase and case-sensitive in every format. At most one config file may
 // exist; skenv refuses to guess between two.
 //
-// The skenv file of a repository (skenv.toml with [repo], [environment] and
+// The skenv file of a repository (skenv.toml with [repository], [user] and
 // [project]) is not configuration of the tool and is read by
 // internal/skenvfile.
 //
@@ -41,11 +41,15 @@ import (
 // descriptions of the JSON Schema (`make schemas`), which adds the flag, the
 // environment variable and the precedence of each key.
 type Config struct {
-	// Manifest is the skenv file with the [environment] section, or the
-	// directory that holds it ("~" allowed). `skenv init`, `skenv clone`
-	// and `skenv use` record it. There is no default: without it, commands
-	// that need the manifest stop with an error.
+	// Manifest is the skenv file with the [user] section, or the directory
+	// that holds it ("~" allowed). `skenv init`, `skenv clone` and `skenv
+	// use` record it. There is no default: without it, commands that need
+	// the manifest stop with an error.
 	Manifest string `toml:"manifest" yaml:"manifest" json:"manifest"`
+	// Machine is the name of this machine for user.machines.<name> of the
+	// manifest, which must then have that entry. Default: the full
+	// hostname if the manifest has rules for it, else the short hostname.
+	Machine string `toml:"machine" yaml:"machine" json:"machine"`
 }
 
 // Keys are the keys of Config, in order.

@@ -218,9 +218,22 @@ func (d *jsonDoc) Append(path []string, item Map) error {
 }
 
 func (d *jsonDoc) Remove(path []any) error {
+	if key, ok := path[len(path)-1].(string); ok {
+		obj, err := d.find(path[:len(path)-1])
+		if err != nil {
+			return err
+		}
+		i, _ := obj.get(key)
+		if obj.kind != 'o' || i < 0 {
+			return fmt.Errorf("%s does not exist", pathString(path))
+		}
+		obj.keys = append(obj.keys[:i], obj.keys[i+1:]...)
+		obj.vals = append(obj.vals[:i], obj.vals[i+1:]...)
+		return nil
+	}
 	idx, ok := path[len(path)-1].(int)
 	if !ok {
-		return errors.New("docedit: Remove needs an index")
+		return errors.New("docedit: Remove needs an index or a key")
 	}
 	seq, err := d.find(path[:len(path)-1])
 	if err != nil {

@@ -11,52 +11,52 @@ import (
 	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
-// Comments of the [environment] section that `skenv init` adds. The TOML
+// Comments of the [user] section that `skenv init` adds. The TOML
 // skeleton carries them inside the section; YAML gets the lead above
 // the section only (JSON has no comments).
 const (
-	envLead = "# The manifest of your machines: `skenv sync` links the skills listed here\n" +
-		"# into the agent directories. Reference: https://qunaxis.github.io/skenv/manifest\n"
-	envYAMLHint = "# Own repositories go under own, third-party skills pinned to a commit under\n" +
-		"# vendor: `skenv vendor add <owner/repo> --path <dir>` adds one.\n"
-	ownComment = "# Your own skills repositories, kept as working copies: every skill in\n" +
-		"# <path>/skills/ is linked.\n"
-	ownSelection = "# skills  = [\"<skill>\"]         # only these skills (default: all)\n" +
+	userLead = "# The manifest: `skenv sync` links the skills listed here into the agent\n" +
+		"# directories of this user. Reference: https://qunaxis.github.io/skenv/manifest\n"
+	userYAMLHint = "# Git repositories kept as working copies go under checkouts, third-party skills\n" +
+		"# pinned to a commit under dependencies: `skenv vendor add <owner/repo> --path <dir>`\n" +
+		"# adds one.\n"
+	checkoutComment = "# Git repositories kept as editable working copies: every skill in\n" +
+		"# <checkout_dir>/skills/ is linked. checkout_dir \".\" is this repository.\n"
+	checkoutSelection = "# include = [\"<skill>\"]         # only these skills (default: all)\n" +
 		"# exclude = [\"experimental-*\"]  # not these\n"
-	ownExample = "# [[environment.own]]\n" +
-		"# repo = \"<owner>/<skills-repo>\"\n" +
-		"# path = \"~/src/<skills-repo>\"\n" + ownSelection
-	vendorExample = "# Third-party skills pinned to a commit; `skenv vendor add <owner/repo> --path <dir>`\n" +
+	checkoutExample = "# [user.checkouts.<id>]\n" +
+		"# repo         = \"<owner>/<skills-repo>\"\n" +
+		"# checkout_dir = \"~/src/<skills-repo>\"\n" + checkoutSelection
+	dependencyExample = "# Third-party skills pinned to a commit; `skenv vendor add <owner/repo> --path <dir>`\n" +
 		"# adds one:\n" +
-		"# [[environment.vendor]]\n" +
-		"# name = \"<skill>\"\n" +
-		"# repo = \"<owner>/<repo>\"\n" +
-		"# path = \"<directory of the skill in the repository>\"\n" +
-		"# rev  = \"<full 40-character commit SHA>\"\n"
+		"# [user.dependencies.<skill>]\n" +
+		"# repo      = \"<owner>/<repo>\"\n" +
+		"# skill_dir = \"<directory of the skill in the repository>\"\n" +
+		"# commit    = \"<full 40-character commit SHA>\"\n"
 )
 
-// AddEnvironment returns data, a skenv file in the format of ext (empty
-// for a new file), with an [environment] section added: a commented
-// skeleton, and own as the first [[environment.own]] entry when it is not
-// nil. The file must not have [environment] yet. TOML is appended to as
-// text; YAML and JSON are edited in place, so comments and key order of
-// the rest stay. The caller adds the schema directive.
-func AddEnvironment(data []byte, ext string, own *Own) ([]byte, error) {
-	section := envLead + "[environment]\n\n" + ownComment
-	env := docedit.Map{}
-	if own != nil {
-		section += fmt.Sprintf("[[environment.own]]\nrepo = %s\npath = %s\n", quote(own.Repo), quote(own.Path)) + ownSelection
-		env = docedit.Map{{Key: "own", Value: []docedit.Map{{{Key: "repo", Value: own.Repo}, {Key: "path", Value: own.Path}}}}}
+// AddUser returns data, a skenv file in the format of ext (empty for a new
+// file), with a [user] section added: a commented skeleton, and c as the
+// first checkout when it is not nil. The file must not have [user] yet.
+// TOML is appended to as text; YAML and JSON are edited in place, so
+// comments and key order of the rest stay. The caller adds the schema
+// directive.
+func AddUser(data []byte, ext string, c *Checkout) ([]byte, error) {
+	section := userLead + "[user]\n\n" + checkoutComment
+	user := docedit.Map{}
+	if c != nil {
+		section += checkoutTable(*c) + checkoutSelection
+		user = docedit.Map{{Key: "checkouts", Value: docedit.Map{{Key: c.ID, Value: docedit.Map{{Key: "repo", Value: c.Repo}, {Key: "checkout_dir", Value: c.CheckoutDir}}}}}}
 	} else {
-		section += ownExample
+		section += checkoutExample
 	}
-	out, err := addSection(data, ext, skenvfile.Environment, section+"\n"+vendorExample, env, envLead+envYAMLHint)
+	out, err := addSection(data, ext, skenvfile.User, section+"\n"+dependencyExample, user, userLead+userYAMLHint)
 	if err != nil {
 		return nil, err
 	}
 	// The result must read back as a manifest.
 	if _, err := Parse(out, ext); err != nil {
-		return nil, fmt.Errorf("adding [environment] would make the file invalid: %w", err)
+		return nil, fmt.Errorf("adding [user] would make the file invalid: %w", err)
 	}
 	return out, nil
 }

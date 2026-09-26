@@ -3,6 +3,7 @@ package manifest
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/url"
 	"path/filepath"
 	"regexp"
@@ -121,4 +122,24 @@ func ownerRepo(repo string) (owner, name string) {
 		owner = parts[len(parts)-2]
 	}
 	return owner, name
+}
+
+var idCharsRe = regexp.MustCompile(`[^a-z0-9_-]+`)
+
+// NewID derives an ID for a checkout or a [project.from] entry from the
+// repository URL or repo value: its name, lowercased, with other characters
+// replaced by "-". taken holds the IDs in use; a clash gets a number.
+func NewID(repo string, taken map[string]bool) string {
+	id := strings.Trim(idCharsRe.ReplaceAllString(strings.ToLower(strings.TrimSuffix(RepoName(repo), ".git")), "-"), "-_")
+	if len(id) > 60 {
+		id = strings.Trim(id[:60], "-_")
+	}
+	if id == "" {
+		id = "skills"
+	}
+	out := id
+	for n := 2; taken[out]; n++ {
+		out = fmt.Sprintf("%s-%d", id, n)
+	}
+	return out
 }

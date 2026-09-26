@@ -9,7 +9,7 @@ create .markdownlint.yaml
 create AGENTS.md
 create .gitignore
 create .claude/settings.json
-harness 0.5.0 (private, ci gitlab) set up in ~/src/team-skills
-CI jobs run on runners self-hosted, linux, docker (repo.runner); to change them, edit repo.runner and run `skenv repo apply`
+harness 0.6.0 (private, ci gitlab) set up in ~/src/team-skills
+CI jobs run on runners self-hosted, linux, docker (repository.ci.gitlab.tags); to change them, edit it and run `skenv repo apply`
 git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active

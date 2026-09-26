@@ -37,16 +37,15 @@ func projectText(vendorRev, ownRev, extra string) string {
 [project]
 mirrors = [".claude/skills"] # Claude Code
 ` + extra + `
-[[project.vendor]]
-name = "archify"
-repo = "ext/tools"
-path = "tools/archify"
-rev  = "` + vendorRev + `" # pinned
+[project.dependencies.archify]
+repo      = "ext/tools"
+skill_dir = "tools/archify"
+commit    = "` + vendorRev + `" # pinned
 
-[[project.from]]
+[project.from.mine]
 repo   = "me/skills"
 skills = ["alpha"]
-rev    = "` + ownRev + `"
+commit = "` + ownRev + `"
 `
 }
 
@@ -150,7 +149,7 @@ func TestProjectVendorUpdateAndRemove(t *testing.T) {
 
 	out, _ := w.mustRun(0, "vendor", "update", "--project", "archify")
 	for _, want := range []string{
-		"update vendor archify " + vendorRev[:12] + " → " + next[:12] + " in [project] of ~/src/app/skenv.toml",
+		"update dependency archify " + vendorRev[:12] + " → " + next[:12] + " in [project] of ~/src/app/skenv.toml",
 		"update .agents/skills/archify " + vendorRev[:12] + " → " + next[:12] + " (ext/tools, tools/archify)",
 		`chore(skills): update archify to ` + next[:12],
 	} {
@@ -159,8 +158,8 @@ func TestProjectVendorUpdateAndRemove(t *testing.T) {
 		}
 	}
 	text := readFile(t, w.pp("skenv.toml"))
-	if !strings.Contains(text, `rev  = "`+next+`" # pinned`) || !strings.Contains(text, "# Claude Code") {
-		t.Errorf("rev not updated in place:\n%s", text)
+	if !strings.Contains(text, `commit    = "`+next+`" # pinned`) || !strings.Contains(text, "# Claude Code") {
+		t.Errorf("commit not updated in place:\n%s", text)
 	}
 	if !strings.Contains(readFile(t, w.pp(".agents/skills/archify/SKILL.md")), "v2") || !strings.Contains(w.projectMarker("archify"), next) {
 		t.Error("copy not updated")
@@ -173,7 +172,7 @@ func TestProjectVendorUpdateAndRemove(t *testing.T) {
 	if !strings.Contains(readFile(t, w.pp("skenv.toml")), ownNext) || !strings.Contains(readFile(t, w.pp(".agents/skills/alpha/SKILL.md")), "v2") {
 		t.Error("from entry not updated")
 	}
-	if code, _, errOut := w.run("vendor", "remove", "--project", "alpha"); code != 2 || !strings.Contains(errOut, "comes from [[project.from]]") {
+	if code, _, errOut := w.run("vendor", "remove", "--project", "alpha"); code != 2 || !strings.Contains(errOut, "comes from project.from.mine") {
 		t.Errorf("remove of a from skill: exit %d, %s", code, errOut)
 	}
 
@@ -389,10 +388,10 @@ func TestProjectScope(t *testing.T) {
 [project]
 mirrors = [".claude/skills"]
 
-[[project.from]]
+[project.from.mine]
 repo   = "me/skills"
 skills = ["beta"]
-rev    = "` + strings.Repeat("0", 40) + `"
+commit = "` + strings.Repeat("0", 40) + `"
 `)
 	w.cloneSync("me/skills", "~/"+ownPath)
 	if w.exists(ownPath+"/.agents") || w.exists(ownPath+"/.claude") {
@@ -451,8 +450,8 @@ func TestProjectWritesKeepFormat(t *testing.T) {
 						return err
 					}
 					var got []string
-					for _, v := range p.Vendor {
-						got = append(got, v.Name)
+					for _, d := range p.DependencyList() {
+						got = append(got, d.Name)
 					}
 					if strings.Join(got, ",") != strings.Join(names, ",") {
 						return &mismatch{"project vendors", strings.Join(got, ","), strings.Join(names, ",")}

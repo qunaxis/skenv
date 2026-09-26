@@ -20,7 +20,7 @@ import (
 // that the manifest does not have yet, vendored ones from the global lock
 // of the `skills` CLI and own ones from links into git working copies, and
 // removes the imported entries from that lock. A manifest file without
-// [environment] gets one first. With sync, `skenv sync --adopt` follows,
+// [user] gets one first. With sync, `skenv sync --adopt` follows,
 // leaving the skills pinned without a matching commit as installed.
 func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) {
 	if err := gitx.Available(); err != nil {
@@ -44,17 +44,17 @@ func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) 
 	if err != nil {
 		return ExitFatal, fmt.Errorf("manifest %s: %w", mp, err)
 	}
-	start, fresh := data, !doc.Has(skenvfile.Environment)
+	start, fresh := data, !doc.Has(skenvfile.User)
 	if fresh {
 		// `skenv init` semantics: the same skeleton and the same refusal.
 		if err := refusePublic(data, ext, mp); err != nil {
 			return ExitFatal, err
 		}
-		if start, err = manifest.AddEnvironment(data, ext, nil); err != nil {
+		if start, err = manifest.AddUser(data, ext, nil); err != nil {
 			return ExitFatal, fmt.Errorf("manifest %s: %w", mp, err)
 		}
 	}
-	m, err := manifest.Parse(start, ext)
+	m, err := manifest.ParseIn(start, ext, filepath.Dir(mp))
 	if err != nil {
 		return ExitFatal, fmt.Errorf("manifest %s: %w", mp, err)
 	}
@@ -69,7 +69,7 @@ func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) 
 	}
 	if r.changed() && !opts.DryRun {
 		if fresh {
-			e.infof("add [environment] to %s", e.show(mp))
+			e.infof("add [user] to %s", e.show(mp))
 		}
 		if err := manifest.WriteFile(mp, r.out); err != nil {
 			return ExitFatal, fmt.Errorf("write manifest %s: %w", e.show(mp), err)
@@ -85,20 +85,19 @@ func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) 
 
 // InitImport runs `skenv init --import`: start a manifest in the git
 // repository of dir, import into it and run `skenv sync --adopt` as
-// Import does with sync. The
-// repository itself becomes an own repository (from origin, or remote when
-// it has none) unless the import added it already.
+// Import does with sync. The repository itself becomes a checkout (from
+// origin, or remote when it has none) unless the import added it already.
 func InitImport(ctx context.Context, env Env, dir, format, remote string, dryRun bool) (int, error) {
 	p, err := planManifest(ctx, env, dir, format, remote)
 	if err != nil {
 		return ExitFatal, err
 	}
 	ext := filepath.Ext(p.file)
-	start, err := manifest.AddEnvironment(p.data, ext, nil)
+	start, err := manifest.AddUser(p.data, ext, nil)
 	if err != nil {
 		return ExitFatal, fmt.Errorf("%s: %w", p.show(p.file), err)
 	}
-	m, err := manifest.Parse(start, ext)
+	m, err := manifest.ParseIn(start, ext, filepath.Dir(p.file))
 	if err != nil {
 		return ExitFatal, err
 	}
@@ -145,10 +144,10 @@ func syncAdopt(ctx context.Context, env Env, mp string, r *imported) (int, error
 }
 
 // The groups of imported entries: revByHash, revByCopy and revByHead for
-// vendored skills, then own repositories.
+// dependencies, then checkouts.
 const byOwn = revByHead + 1
 
-var groupNames = [...]string{revByHash: "exact", revByCopy: "same files", revByHead: "unmatched", byOwn: "own"}
+var groupNames = [...]string{revByHash: "exact", revByCopy: "same files", revByHead: "unmatched", byOwn: "checkout"}
 
 var groupTitles = [...]string{
 	revByHash: "the commit has the hash recorded in the lock",
@@ -168,14 +167,14 @@ type imported struct {
 
 	managed   [byOwn + 1][]string // report lines of the entries, by group
 	names     []string            // the installed skills the entries cover
-	unmatched []string            // vendored skills of the revByHead group
+	unmatched []string            // dependencies of the revByHead group
 	skipped   []string            // what is not imported, and why
 	failed    []string            // lock entries that could not be imported
 }
 
-// addVendor records the vendor entry v, found by how.
-func (r *imported) addVendor(v manifest.Vendor, how int, note string) {
-	line := fmt.Sprintf("%s from %s (%s) at %.12s", v.Name, v.Repo, v.Path, v.Rev)
+// addVendor records the dependency v, found by how.
+func (r *imported) addVendor(v manifest.Dependency, how int, note string) {
+	line := fmt.Sprintf("%s from %s (%s) at %.12s", v.Name, v.Repo, v.SkillDir, v.Commit)
 	if note != "" {
 		line += ": " + note
 	}
@@ -186,7 +185,8 @@ func (r *imported) addVendor(v manifest.Vendor, how int, note string) {
 	}
 }
 
-// groups counts the entries per group, "(2 exact, 1 own)"; "" without any.
+// groups counts the entries per group, "(2 exact, 1 checkout)"; "" without
+// any.
 func (r *imported) groups() string {
 	var parts []string
 	for i, g := range r.managed {
@@ -213,17 +213,17 @@ type found struct {
 // ownGroup is the skills linked from one skills directory of a working
 // copy.
 type ownGroup struct {
-	own   manifest.Own
+	own   manifest.Checkout
 	top   string // the working copy
 	names []string
 }
 
 // importUser plans the import into the manifest text start (before is the
-// file as it is on disk; fresh when [environment] was just added), prints
-// the report and the manifest diff, and returns the new text and the lock
-// entries to remove. extraOwn is added as an own repository unless the
-// import adds its working copy already.
-func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest.Own) (*imported, error) {
+// file as it is on disk; fresh when [user] was just added), prints the
+// report and the manifest diff, and returns the new text and the lock
+// entries to remove. extraOwn is added as a checkout unless the import
+// adds its working copy already.
+func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest.Checkout) (*imported, error) {
 	r := &imported{before: before, out: start}
 	lock, err := readSkillsLock(e.skillsLockPath(), skillsLockVersion)
 	if err != nil {
@@ -256,7 +256,7 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 		for _, de := range entries {
 			name := de.Name()
 			p := filepath.Join(dir, name)
-			if strings.HasPrefix(name, ".") || e.isClaudeSynced(p) || e.m.Layout.Ignored(name) || e.owned(p) || inManifest[name] {
+			if strings.HasPrefix(name, ".") || e.isClaudeSynced(p) || e.m.IsUnmanaged(name) || e.owned(p) || inManifest[name] {
 				continue
 			}
 			resolved, err := filepath.EvalSymlinks(p)
@@ -309,21 +309,27 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 			vendors[f.name] = f
 			continue
 		}
-		unmanaged(f.path, fmt.Sprintf("not in %s and not a link into a git working copy; move it into an own repository, "+
-			"or add %q to layout.ignore", e.show(lock.path), f.name))
+		unmanaged(f.path, fmt.Sprintf("not in %s and not a link into a git working copy; move it into a checkout, "+
+			"or add %q to user.unmanaged", e.show(lock.path), f.name))
 	}
 
 	var own []ownGroup
+	taken := map[string]bool{}
+	for id := range e.m.Checkouts {
+		taken[id] = true
+	}
 	for _, k := range sortedKeys(groups) {
 		g := groups[k]
 		all := skillDirs(filepath.Join(g.top, filepath.FromSlash(g.own.SkillsDir)))
 		slices.Sort(g.names)
 		if len(g.names) < len(all) {
-			g.own.Skills = g.names
+			g.own.Include = g.names
 		}
+		g.own.ID = manifest.NewID(g.own.Repo, taken)
+		taken[g.own.ID] = true
 		own = append(own, *g)
 	}
-	var vend []manifest.Vendor
+	var vend []manifest.Dependency
 	for _, name := range sortedKeys(vendors) {
 		v, how, note, err := e.lockVendor(name, lock.entries[name], vendors[name].resolved)
 		if err != nil {
@@ -335,10 +341,10 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 	}
 	for _, g := range own {
 		detail := "every skill"
-		if g.own.Skills != nil {
-			detail = "skills " + strings.Join(g.own.Skills, ", ")
+		if g.own.Include != nil {
+			detail = "include " + strings.Join(g.own.Include, ", ")
 		}
-		r.managed[byOwn] = append(r.managed[byOwn], fmt.Sprintf("%s at %s (%s)", g.own.Repo, g.own.Path, detail))
+		r.managed[byOwn] = append(r.managed[byOwn], fmt.Sprintf("%s: %s at %s (%s)", g.own.ID, g.own.Repo, e.show(g.top), detail))
 		r.names = append(r.names, g.names...)
 	}
 	slices.Sort(r.names)
@@ -349,34 +355,37 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 		}
 	}
 
-	// The manifest text, validated with the own repositories listed.
+	// The manifest text, validated with the checkouts listed.
 	ext := filepath.Ext(e.manifestPath)
 	out := start
 	for _, g := range own {
 		var err error
-		if out, err = manifest.AppendOwn(out, ext, g.own); err != nil {
+		if out, err = manifest.AppendCheckout(out, ext, g.own); err != nil {
 			return nil, err
 		}
 		r.entries++
 	}
 	for _, v := range vend {
 		var err error
-		if out, err = manifest.AppendVendor(out, ext, skenvfile.Environment, v); err != nil {
+		if out, err = manifest.AppendDependency(out, ext, skenvfile.User, v); err != nil {
 			return nil, err
 		}
 		r.entries++
 	}
-	if extraOwn != nil && !slices.ContainsFunc(own, func(g ownGroup) bool { return g.own.Path == extraOwn.Path }) {
-		withExtra, err := manifest.AppendOwn(out, ext, *extraOwn)
+	resolved := func(c manifest.Checkout) string { return e.m.Path(e.env.Home, c.CheckoutDir) }
+	if extraOwn != nil && !slices.ContainsFunc(own, func(g ownGroup) bool { return samePath(resolved(g.own), resolved(*extraOwn)) }) {
+		extra := *extraOwn
+		extra.ID = manifest.NewID(extra.Repo, taken)
+		withExtra, err := manifest.AppendCheckout(out, ext, extra)
 		if err == nil {
 			err = e.checkManifest(withExtra)
 		}
 		if err != nil {
-			e.warnf("not adding %s as an own repository: %v", extraOwn.Repo, err)
+			e.warnf("not adding %s as a checkout: %v", extra.Repo, err)
 		} else {
 			out = withExtra
 			r.entries++
-			r.managed[byOwn] = append(r.managed[byOwn], fmt.Sprintf("%s at %s (the repository of the manifest)", extraOwn.Repo, extraOwn.Path))
+			r.managed[byOwn] = append(r.managed[byOwn], fmt.Sprintf("%s: %s at %s (the repository of the manifest)", extra.ID, extra.Repo, e.show(resolved(extra))))
 		}
 	}
 	if string(out) != string(start) || fresh {
@@ -407,16 +416,19 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 }
 
 // checkManifest parses the manifest text and makes it the engine's
-// manifest when its skills, own repositories listed, are valid.
+// manifest when its skills, checkouts listed, are valid.
 func (e *Engine) checkManifest(data []byte) error {
-	m, err := manifest.Parse(data, filepath.Ext(e.manifestPath))
+	m, err := manifest.ParseIn(data, filepath.Ext(e.manifestPath), filepath.Dir(e.manifestPath))
 	if err != nil {
 		return err
 	}
 	prev := e.m
-	e.setManifest(m)
+	if err := e.setManifest(m); err != nil {
+		_ = e.setManifest(prev)
+		return err
+	}
 	if _, err := e.skills(); err != nil {
-		e.setManifest(prev)
+		_ = e.setManifest(prev)
 		return err
 	}
 	return nil
@@ -435,8 +447,8 @@ func (e *Engine) claudePlugins() string {
 	return ""
 }
 
-// ownOf returns the own repository of an installed skill that links into a
-// git working copy: nil when it does not, why when such a skill cannot be
+// ownOf returns the checkout of an installed skill that links into a git
+// working copy: nil when it does not, why when such a skill cannot be
 // imported.
 func (e *Engine) ownOf(f found) (g *ownGroup, why string) {
 	if !f.link {
@@ -471,28 +483,32 @@ func (e *Engine) ownOf(f found) (g *ownGroup, why string) {
 	if err != nil || remote == "" {
 		return nil, where + " without an origin remote; push it somewhere, then import again"
 	}
-	repo, ok := e.m.Hosts.ShortForm(remote)
+	repo, ok := e.m.GitHosts.ShortForm(remote)
 	if !ok {
 		if hasCredentials(remote) {
-			return nil, where + " whose origin URL carries credentials; add the own repository by hand"
+			return nil, where + " whose origin URL carries credentials; add the checkout by hand"
 		}
 		repo = remote
 	}
-	for i := range e.m.Own {
-		if p, err := filepath.EvalSymlinks(e.ownPath(&e.m.Own[i])); err == nil && p == top {
-			return nil, fmt.Sprintf("%s, already own %s in the manifest; add %q to its skills or skills_dir", where, e.m.Own[i].Repo, f.name)
+	for _, c := range e.m.CheckoutList() {
+		if p, err := filepath.EvalSymlinks(e.checkoutPath(c)); err == nil && p == top {
+			return nil, fmt.Sprintf("%s, already checkout %s in the manifest; add %q to its include or skills_dir", where, c.ID, f.name)
 		}
 	}
+	dir := homeShow(e.env.Home)(top)
+	if samePath(top, filepath.Dir(e.manifestPath)) {
+		dir = "." // the repository of the manifest, wherever it is cloned
+	}
 	return &ownGroup{
-		own: manifest.Own{Repo: repo, Path: homeShow(e.env.Home)(top), SkillsDir: filepath.ToSlash(filepath.Dir(rel))},
+		own: manifest.Checkout{Repo: repo, CheckoutDir: dir, SkillsDir: filepath.ToSlash(filepath.Dir(rel))},
 		top: top,
 	}, ""
 }
 
-// lockVendor turns a lock entry into a vendor entry: how says how its rev
+// lockVendor turns a lock entry into a dependency: how says how its commit
 // was found, and note why it is not an exact match. dir is the installed
 // copy, "" when there is none.
-func (e *base) lockVendor(name string, le lockEntry, dir string) (v manifest.Vendor, how int, note string, err error) {
+func (e *base) lockVendor(name string, le lockEntry, dir string) (v manifest.Dependency, how int, note string, err error) {
 	if err := manifest.ValidName(name); err != nil {
 		return v, 0, "", err
 	}
@@ -516,7 +532,7 @@ func (e *base) lockVendor(name string, le lockEntry, dir string) (v manifest.Ven
 		return v, 0, "", err
 	}
 	folder := lockFolder(le.SkillPath)
-	v = manifest.Vendor{Name: name, Repo: repo, Path: vendorPath(folder), Rev: rev}
+	v = manifest.Dependency{Name: name, Repo: repo, SkillDir: vendorPath(folder), Commit: rev}
 	file := "SKILL.md"
 	if folder != "" {
 		file = folder + "/SKILL.md"

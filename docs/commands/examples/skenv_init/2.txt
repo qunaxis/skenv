@@ -2,46 +2,44 @@ exit 0
 becomes managed: 2 entries in ~/src/my-skills/skenv.toml
   exact: the commit has the hash recorded in the lock
     release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
-  own: repositories kept as git working copies
-    example-org/my-skills at ~/src/my-skills (the repository of the manifest)
+  checkout: repositories kept as git working copies
+    my-skills: example-org/my-skills at ~/src/my-skills (the repository of the manifest)
 not imported: 1
-  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
-create ~/src/my-skills/skenv.toml with [environment]
+  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into a checkout, or add "notes" to user.unmanaged
+create ~/src/my-skills/skenv.toml with [user]
 manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
 remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/my-skills/skenv.toml
 +++ ~/src/my-skills/skenv.toml
 +#:schema https://qunaxis.github.io/skenv/schemas/skenv.schema.json
-+# The manifest of your machines: `skenv sync` links the skills listed here
-+# into the agent directories. Reference: https://qunaxis.github.io/skenv/manifest
-+[environment]
++# The manifest: `skenv sync` links the skills listed here into the agent
++# directories of this user. Reference: https://qunaxis.github.io/skenv/manifest
++[user]
 +
-+[[environment.vendor]]
-+name = "release-notes"
-+repo = "example-vendor/tools"
-+path = "tools/release-notes"
-+rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
++[user.dependencies.release-notes]
++repo      = "example-vendor/tools"
++skill_dir = "tools/release-notes"
++commit    = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
 +
-+[[environment.own]]
-+repo = "example-org/my-skills"
-+path = "~/src/my-skills"
++[user.checkouts.my-skills]
++repo         = "example-org/my-skills"
++checkout_dir = "."
 +
-+# Your own skills repositories, kept as working copies: every skill in
-+# <path>/skills/ is linked.
-+# [[environment.own]]
-+# repo = "<owner>/<skills-repo>"
-+# path = "~/src/<skills-repo>"
-+# skills  = ["<skill>"]         # only these skills (default: all)
++# Git repositories kept as editable working copies: every skill in
++# <checkout_dir>/skills/ is linked. checkout_dir "." is this repository.
++# [user.checkouts.<id>]
++# repo         = "<owner>/<skills-repo>"
++# checkout_dir = "~/src/<skills-repo>"
++# include = ["<skill>"]         # only these skills (default: all)
 +# exclude = ["experimental-*"]  # not these
 +
 +# Third-party skills pinned to a commit; `skenv vendor add <owner/repo> --path <dir>`
 +# adds one:
-+# [[environment.vendor]]
-+# name = "<skill>"
-+# repo = "<owner>/<repo>"
-+# path = "<directory of the skill in the repository>"
-+# rev  = "<full 40-character commit SHA>"
-import: 2 manifest entries (1 exact, 1 own), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
++# [user.dependencies.<skill>]
++# repo      = "<owner>/<repo>"
++# skill_dir = "<directory of the skill in the repository>"
++# commit    = "<full 40-character commit SHA>"
+import: 2 manifest entries (1 exact, 1 checkout), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
 manifest changed but not committed; to commit:
   git -C ~/src/my-skills add -- skenv.toml
   git -C ~/src/my-skills commit -m "chore(manifest): import installed skills" -- skenv.toml

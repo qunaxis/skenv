@@ -15,14 +15,14 @@ import (
 
 // Kinds and states of `skenv list`.
 const (
-	KindEditable = "editable" // an own skill: linked from a git working copy
-	KindPinned   = "pinned"   // a vendored skill: a copy at a commit
+	KindEditable = "editable" // a skill of a checkout: linked from a git working copy
+	KindPinned   = "pinned"   // a dependency: a copy at a commit
 
 	StateInstalled   = "installed"
 	StateNotSynced   = "not synced"
 	StateConflict    = "conflict"
 	StateNotSelected = "not selected"
-	StateSkipped     = "skipped on this host"
+	StateSkipped     = "excluded on this machine"
 )
 
 // ListEntry is one skill of the manifest in `skenv list`.
@@ -30,6 +30,8 @@ type ListEntry struct {
 	Name   string `json:"name"`
 	Kind   string `json:"kind"`
 	Source string `json:"source"` // the repo value of the manifest
+	// Checkout is the ID of the checkout of an editable skill.
+	Checkout string `json:"checkout,omitempty"`
 	// Version is the commit of a pinned skill and the working copy of an
 	// editable one.
 	Version string `json:"version"`
@@ -42,10 +44,10 @@ type ListReport struct {
 	Store    string      `json:"store"`
 	Targets  []string    `json:"targets"`
 	Skills   []ListEntry `json:"skills"`
-	// NotCloned are own repositories without a working copy yet, whose
-	// skills are unknown until sync clones them.
+	// NotCloned are checkouts without a working copy yet, whose skills are
+	// unknown until sync clones them.
 	NotCloned []string `json:"not_cloned"`
-	// NoSkills are own repositories whose working copy has no skill yet.
+	// NoSkills are checkouts whose working copy has no skill yet.
 	NoSkills []string `json:"no_skills"`
 }
 
@@ -66,30 +68,29 @@ func (e *Engine) List(asJSON bool) (int, error) {
 	}
 	// The skills of the manifest that are not installed here: e.unselected
 	// holds them once skills() ran.
-	for i := range e.m.Own {
-		o := &e.m.Own[i]
-		found, err := e.ownSkills(o)
+	for _, c := range e.m.CheckoutList() {
+		found, err := e.checkoutSkills(c)
 		if err != nil {
-			r.NotCloned = append(r.NotCloned, fmt.Sprintf("%s (%s)", gitx.Mask(o.Repo), e.show(e.ownPath(o))))
+			r.NotCloned = append(r.NotCloned, fmt.Sprintf("%s: %s (%s)", c.ID, gitx.Mask(c.Repo), e.show(e.checkoutPath(c))))
 			continue
 		}
 		if len(found) == 0 {
-			r.NoSkills = append(r.NoSkills, fmt.Sprintf("%s (%s)", gitx.Mask(o.Repo), e.show(e.ownSkillsDir(o))))
+			r.NoSkills = append(r.NoSkills, fmt.Sprintf("%s: %s (%s)", c.ID, gitx.Mask(c.Repo), e.show(e.checkoutSkillsDir(c))))
 		}
 		for _, name := range found {
 			if _, ok := e.unselected[name]; !ok {
 				continue
 			}
 			state := StateSkipped
-			if !o.Selects(name) {
+			if !c.Selects(name) {
 				state = StateNotSelected
 			}
-			r.Skills = append(r.Skills, e.listEntry(Skill{Name: name, Own: o}, state))
+			r.Skills = append(r.Skills, e.listEntry(Skill{Name: name, Checkout: c}, state))
 		}
 	}
-	for i := range e.m.Vendor {
-		if v := &e.m.Vendor[i]; e.unselected[v.Name] != "" {
-			r.Skills = append(r.Skills, e.listEntry(Skill{Name: v.Name, Vendor: v}, StateSkipped))
+	for _, d := range e.m.DependencyList() {
+		if e.unselected[d.Name] != "" {
+			r.Skills = append(r.Skills, e.listEntry(Skill{Name: d.Name, Dependency: d}, StateSkipped))
 		}
 	}
 	sort.SliceStable(r.Skills, func(a, b int) bool { return r.Skills[a].Name < r.Skills[b].Name })
@@ -103,10 +104,10 @@ func (e *Engine) List(asJSON bool) (int, error) {
 }
 
 func (e *Engine) listEntry(s Skill, state string) ListEntry {
-	if s.Vendor != nil {
-		return ListEntry{Name: s.Name, Kind: KindPinned, Source: gitx.Mask(s.Vendor.Repo), Version: s.Vendor.Rev, State: state}
+	if s.Dependency != nil {
+		return ListEntry{Name: s.Name, Kind: KindPinned, Source: gitx.Mask(s.Dependency.Repo), Version: s.Dependency.Commit, State: state}
 	}
-	return ListEntry{Name: s.Name, Kind: KindEditable, Source: gitx.Mask(s.Own.Repo), Version: e.show(e.ownPath(s.Own)), State: state}
+	return ListEntry{Name: s.Name, Kind: KindEditable, Source: gitx.Mask(s.Checkout.Repo), Checkout: s.Checkout.ID, Version: e.show(e.checkoutPath(s.Checkout)), State: state}
 }
 
 // installState is StateInstalled when the store entry of s and its link in

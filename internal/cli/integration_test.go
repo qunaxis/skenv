@@ -129,7 +129,7 @@ func TestVendorUpdate(t *testing.T) {
 	}
 	manifestFile := w.path(ownPath + "/skenv.toml")
 	text := readFile(t, manifestFile)
-	if !strings.Contains(text, `rev  = "`+newRev+`" # keep this comment`) || strings.Contains(text, oldRev) {
+	if !strings.Contains(text, `commit    = "`+newRev+`" # keep this comment`) || strings.Contains(text, oldRev) {
 		t.Errorf("manifest not updated in place:\n%s", text)
 	}
 	if !strings.Contains(readFile(t, w.path(".agents/skills/archify/SKILL.md")), "v2") {
@@ -154,7 +154,7 @@ func TestVendorUpdate(t *testing.T) {
 	if strings.Count(readFile(t, manifestFile), nextRev) != 2 {
 		t.Errorf("update without names must move every vendored skill:\n%s", readFile(t, manifestFile))
 	}
-	if !strings.Contains(out, "update vendor skills archify to "+nextRev[:12]+", other to "+nextRev[:12]) {
+	if !strings.Contains(out, "update dependencies archify to "+nextRev[:12]+", other to "+nextRev[:12]) {
 		t.Errorf("commit hint must name both skills:\n%s", out)
 	}
 	for _, name := range []string{"archify", "other"} {
@@ -163,7 +163,7 @@ func TestVendorUpdate(t *testing.T) {
 		}
 	}
 	out, _ = w.mustRun(0, "vendor", "update")
-	if !strings.Contains(out, "vendor other is already at") {
+	if !strings.Contains(out, "dependency other is already at") {
 		t.Errorf("second update must be a no-op:\n%s", out)
 	}
 
@@ -258,19 +258,17 @@ func doctorClasses(t *testing.T, out string) map[string]bool {
 func TestDoctorFindsEveryClass(t *testing.T) {
 	w := newWorld(t)
 	rev := w.standard(`
-[[environment.vendor]]
-name = "other"
-repo = "ext/tools"
-path = "tools/other"
-rev  = "PLACEHOLDER"
+[user.dependencies.other]
+repo      = "ext/tools"
+skill_dir = "tools/other"
+commit    = "PLACEHOLDER"
 `)
 	// Pin "other" at the same commit.
 	w.push("me/skills", map[string]string{"skenv.toml": strings.ReplaceAll(manifestText(rev, `
-[[environment.vendor]]
-name = "other"
-repo = "ext/tools"
-path = "tools/other"
-rev  = "`+rev+`"
+[user.dependencies.other]
+repo      = "ext/tools"
+skill_dir = "tools/other"
+commit    = "`+rev+`"
 `), "PLACEHOLDER", rev)}, "chore: fix manifest")
 	w.cloneSync("me/skills", "~/"+ownPath)
 	w.mustRun(0, "doctor")
@@ -316,16 +314,16 @@ rev  = "`+rev+`"
 	}
 }
 
-func TestHostSkip(t *testing.T) {
+func TestMachineExclude(t *testing.T) {
 	w := newWorld(t)
 	host, err := os.Hostname()
 	if err != nil {
 		t.Skip("no hostname")
 	}
-	w.initStandard("\n[environment.host.\"" + host + "\"]\nskip = [\"beta\", \"archify\"]\n")
+	w.initStandard("\n[user.machines.\"" + host + "\"]\nexclude = [\"beta\", \"archify\"]\n")
 	for _, p := range []string{".agents/skills/beta", ".claude/skills/beta", ".agents/skills/archify", ".pi/agent/skills/archify"} {
 		if w.exists(p) {
-			t.Errorf("%s must be skipped on this host", p)
+			t.Errorf("%s must be excluded on this machine", p)
 		}
 	}
 	if !w.exists(".claude/skills/alpha") {
@@ -358,7 +356,7 @@ func TestVendorAddAndRemove(t *testing.T) {
 	}
 	w.mustRun(0, "vendor", "add", "solo/one")
 	text := readFile(t, w.path(ownPath+"/skenv.toml"))
-	for _, s := range []string{"# test manifest", "# keep this comment", `name = "other"`, `path = "tools/other"`, `name = "one"`, `path = "."`} {
+	for _, s := range []string{"# test manifest", "# keep this comment", "[user.dependencies.other]", `skill_dir = "tools/other"`, "[user.dependencies.one]", `skill_dir = "."`} {
 		if !strings.Contains(text, s) {
 			t.Errorf("manifest lacks %q:\n%s", s, text)
 		}
@@ -375,7 +373,7 @@ func TestVendorAddAndRemove(t *testing.T) {
 		t.Error("removed vendor still present")
 	}
 	text = readFile(t, w.path(ownPath+"/skenv.toml"))
-	if strings.Contains(text, `"other"`) || !strings.Contains(text, `name = "one"`) || !strings.Contains(text, "# keep this comment") {
+	if strings.Contains(text, "dependencies.other") || !strings.Contains(text, "[user.dependencies.one]") || !strings.Contains(text, "# keep this comment") {
 		t.Errorf("manifest after remove:\n%s", text)
 	}
 }
@@ -473,15 +471,14 @@ func TestInitCustomRepositoryAndPath(t *testing.T) {
 	rev := w.push("ext/tools", map[string]string{"tools/archify/SKILL.md": skillMD("archify", "v1")}, "feat: initial")
 	const kit = "work/team/kit"
 	w.push("acme/agent-kit", map[string]string{
-		"skenv.toml": `[[environment.own]]
-repo = "acme/agent-kit"
-path = "~/` + kit + `"
+		"skenv.toml": `[user.checkouts.kit]
+repo         = "acme/agent-kit"
+checkout_dir = "~/` + kit + `"
 
-[[environment.vendor]]
-name = "archify"
-repo = "ext/tools"
-path = "tools/archify"
-rev  = "` + rev + `"
+[user.dependencies.archify]
+repo      = "ext/tools"
+skill_dir = "tools/archify"
+commit    = "` + rev + `"
 `,
 		"skills/gamma/SKILL.md": skillMD("gamma", ""),
 	}, "feat: initial")
@@ -581,29 +578,29 @@ func TestConcurrentRunIsRejected(t *testing.T) {
 	w.mustRun(0, "doctor") // read-only commands do not need the lock
 }
 
-// doctor warns about own repositories whose harness is older than the
+// doctor warns about checkouts whose template_version is older than the
 // templates of the installed skenv (PRD v0.2).
 func TestDoctorWarnsAboutOldHarness(t *testing.T) {
 	w := newWorld(t)
-	w.standard("\n[repo]\nharness = \"0.1.0\"\nvisibility = \"private\"\n")
+	w.standard("\n[repository]\ntemplate_version = \"0.1.0\"\nvisibility = \"private\"\n")
 	w.cloneSync("me/skills", "~/"+ownPath)
 	_, errOut := w.mustRun(0, "doctor")
-	if !strings.Contains(errOut, "harness 0.1.0 is older than "+harness.Latest) {
+	if !strings.Contains(errOut, "template_version 0.1.0 is older than "+harness.Latest) {
 		t.Errorf("stderr = %q", errOut)
 	}
 	out, _ := w.mustRun(0, "doctor", "--json")
-	if !strings.Contains(out, "harness 0.1.0 is older") {
+	if !strings.Contains(out, "template_version 0.1.0 is older") {
 		t.Errorf("json warnings: %s", out)
 	}
 }
 
-// Coordinator decision beyond the PRD: layout.ignore hides paths of other
+// Coordinator decision beyond the PRD: user.unmanaged hides paths of other
 // tools (e.g. the peon-ping brew package) from doctor, and sync/link never
 // touch them, not even with --adopt.
-func TestLayoutIgnore(t *testing.T) {
+func TestUnmanaged(t *testing.T) {
 	w := newWorld(t)
 	rev := w.standard("")
-	text := strings.Replace(manifestText(rev, ""), "# test manifest\n", "# test manifest\n[environment.layout]\nignore = [\"peon-ping-*\"]\n\n", 1)
+	text := strings.Replace(manifestText(rev, ""), "# test manifest\n", "# test manifest\n[user]\nunmanaged = [\"peon-ping-*\"]\n\n", 1)
 	w.push("me/skills", map[string]string{"skenv.toml": text}, "chore: ignore peon-ping")
 	writeFile(t, w.path(".claude/skills/peon-ping-toggle/SKILL.md"), "brew\n")
 	writeFile(t, w.path(".agents/skills/peon-ping-use/SKILL.md"), "brew\n")
@@ -662,8 +659,11 @@ func TestConfigFormats(t *testing.T) {
 			if w.exists("other") {
 				t.Error("clone cloned although the config cannot be updated")
 			}
-			// --manifest wins over the config files and does not read them.
-			w.mustRun(0, "doctor", "--manifest", "~/"+ownPath+"/skenv.toml")
+			// --manifest wins over the manifest key of the config files, but
+			// the tool config also holds `machine`: two files stay an error.
+			if _, errOut := w.mustRun(2, "doctor", "--manifest", "~/"+ownPath+"/skenv.toml"); !strings.Contains(errOut, "several config files") {
+				t.Errorf("doctor --manifest with two config files: %s", errOut)
+			}
 		})
 	}
 }
@@ -680,30 +680,31 @@ func TestManifestFormats(t *testing.T) {
 		"skenv.yaml": func(rev string) string {
 			return "# yaml-language-server: $schema=" + old + `
 # my manifest
-environment:
+user:
   # where skills live
-  own:
-    - repo: me/skills   # the manifest repository
-      path: ~/` + ownPath + `
+  checkouts:
+    skills:
+      repo: me/skills   # the manifest repository
+      checkout_dir: ~/` + ownPath + `
 
   # pinned third-party skills
-  vendor:
-    - name: archify
+  dependencies:
+    archify:
       repo: ext/tools
-      path: tools/archify
-      rev: "` + rev + `"   # keep this comment
-  host:
+      skill_dir: tools/archify
+      commit: "` + rev + `"   # keep this comment
+  machines:
     other-host:
-      skip: [beta]
+      exclude: [beta]
 `
 		},
 		"skenv.json": func(rev string) string {
 			return `{
   "$schema": "` + old + `",
-  "environment": {
-    "vendor": [{"name": "archify", "repo": "ext/tools", "path": "tools/archify", "rev": "` + rev + `"}],
-    "own": [{"repo": "me/skills", "path": "~/` + ownPath + `"}],
-    "layout": {"ignore": ["tool<x>&*"]}
+  "user": {
+    "dependencies": {"archify": {"repo": "ext/tools", "skill_dir": "tools/archify", "commit": "` + rev + `"}},
+    "checkouts": {"skills": {"repo": "me/skills", "checkout_dir": "~/` + ownPath + `"}},
+    "unmanaged": ["tool<x>&*"]
   }
 }`
 		},
@@ -740,7 +741,7 @@ func TestOldManifestIsRejected(t *testing.T) {
 	w.standard("")
 	w.push("me/skills", map[string]string{"env.toml": "[[own]]\nrepo = \"me/skills\"\npath = \"~/x\"\n", "skenv.toml": ""}, "chore: old layout")
 	_, errOut := w.mustRun(2, "clone", "me/skills", "~/"+ownPath)
-	if !strings.Contains(errOut, "env.toml is no longer read") || !strings.Contains(errOut, "[environment]") {
+	if !strings.Contains(errOut, "env.toml is no longer read") || !strings.Contains(errOut, "[user]") {
 		t.Errorf("clone: %s", errOut)
 	}
 	_, errOut = w.mustRun(2, "doctor", "--manifest", "~/"+ownPath+"/env.toml")

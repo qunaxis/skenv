@@ -53,8 +53,8 @@ func (e *Engine) claim(p, skill string) bool {
 		e.errorf("%s is managed by Claude and never touched by skenv", e.show(p))
 		return false
 	}
-	if e.m.Layout.Ignored(filepath.Base(p)) {
-		e.errorf("%s matches layout.ignore and is never touched by skenv", e.show(p))
+	if e.m.IsUnmanaged(filepath.Base(p)) {
+		e.errorf("%s matches user.unmanaged and is never touched by skenv", e.show(p))
 		return false
 	}
 	if _, err := os.Lstat(p); errors.Is(err, fs.ErrNotExist) || e.owned(p) {
@@ -150,8 +150,8 @@ func replace(src, dst string) error {
 // removeManaged deletes a managed path after checking it still looks like
 // something skenv created; otherwise it only forgets it.
 func (e *Engine) removeManaged(p string, entry state.Entry) {
-	if e.m.Layout.Ignored(filepath.Base(p)) {
-		e.warnf("%s matches layout.ignore; leaving it in place and forgetting it", e.show(p))
+	if e.m.IsUnmanaged(filepath.Base(p)) {
+		e.warnf("%s matches user.unmanaged; leaving it in place and forgetting it", e.show(p))
 		if !e.opts.DryRun {
 			e.unmanage(p)
 		}

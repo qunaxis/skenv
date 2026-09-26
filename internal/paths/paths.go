@@ -17,6 +17,19 @@ func Expand(home, p string) string {
 	return filepath.Clean(p)
 }
 
+// Resolve returns p, a local path written in a file of directory base:
+// "~" and "~/..." against home, an absolute path cleaned, anything else
+// relative to base (docs/adr/0002-config-format.md, path resolution).
+func Resolve(home, base, p string) string {
+	switch {
+	case p == "~" || strings.HasPrefix(p, "~/"):
+		return Expand(home, p)
+	case filepath.IsAbs(p) || base == "":
+		return filepath.Clean(p)
+	}
+	return filepath.Join(base, p)
+}
+
 // Collapse is the inverse of Expand for display: paths under home start
 // with "~".
 func Collapse(home, p string) string {

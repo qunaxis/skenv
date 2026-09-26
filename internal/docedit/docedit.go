@@ -31,8 +31,8 @@ type Doc interface {
 	// Append adds item at the end of the sequence at path, creating the
 	// sequence and the mappings above it when they are missing.
 	Append(path []string, item Map) error
-	// Remove deletes the sequence item at path (its last element is the
-	// index).
+	// Remove deletes the sequence item or the mapping key at path (its
+	// last element is the index or the key).
 	Remove(path []any) error
 	// Put adds key to the mapping at path, creating the mappings above it
 	// when missing. With first, the key goes before the other keys (after

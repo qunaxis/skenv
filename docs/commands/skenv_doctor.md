@@ -7,11 +7,11 @@ Compare the machine with the manifest, or a project with its `[project]`
 ### Synopsis
 
 Compare the machine with the manifest. It changes no skill, link or file,
-but runs `git fetch` in each own repository (network access; it updates their
+but runs `git fetch` in each checkout (network access; it updates their
 remote-tracking branches) to report unpushed and behind.
 Classes: missing, extra-managed, unmanaged, wrong-rev, broken-link, conflict,
 dirty, unpushed, behind, agent-mismatch, manifest-checkout (the manifest is
-not in the own working copy of its repository, so sync never pulls it).
+not in the working copy its checkout names, so sync never pulls it).
 
 In a project (a git repository whose skenv file has `[project]`), doctor
 compares the project with its `[project]` section instead, offline, so it can
@@ -64,7 +64,7 @@ Exit code 1.
 ```
   -h, --help              help for doctor
       --json              print the report as JSON
-      --manifest string   skenv file with the [environment] section, or its directory
+      --manifest string   skenv file with the [user] section, or its directory
       --project           check the [project] section of the current repository (the default there)
 ```
 

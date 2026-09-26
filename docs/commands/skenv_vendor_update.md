@@ -6,16 +6,17 @@ Move third-party skills to a new commit
 
 ### Synopsis
 
-Move vendored skills to a new commit and sync them: the named ones, or every
-vendored skill without names. Each goes to HEAD of its default branch;
-`--rev` pins a single named skill. Shows the log of the skill's path.
+Move dependencies to a new commit and sync them: the named ones, or every
+dependency without names. Each goes to HEAD of its default branch; `--rev`
+pins a single named skill. Shows the log of the skill's directory.
 
 With `--project`: move entries of `[project]` and sync the project. A skill of
-a [[project.from]] entry moves the whole entry, whose skills share one rev.
+a `[project.from.<id>]` entry moves the whole entry, whose skills share one
+commit.
 
 - Reads: the manifest (or `[project]`) and the repositories of the skills.
-- Changes: the rev of each moved skill in the manifest (or `[project]`), its
-  copy, its links (or mirrors) and the state file.
+- Changes: the commit of each moved skill in the manifest (or `[project]`),
+  its copy, its links (or mirrors) and the state file.
 - Network: fetches each repository into the clone cache `~/.cache/skenv/repos`.
 - Conflicts: as vendor add: `--adopt` replaces an unmanaged path, after a
   backup.
@@ -35,28 +36,28 @@ $ skenv vendor update diagrams
 diagrams 27f221f8f2a4..2571138a038f:
 2571138 docs(diagrams): list the shapes
 ebb66f9 feat(diagrams): prefer SVG
-update vendor diagrams 27f221f8f2a4 → 2571138a038f in ~/src/skills/skenv.toml
+update dependency diagrams 27f221f8f2a4 → 2571138a038f in ~/src/skills/skenv.toml
 vendor diagrams from example-vendor/tools@2571138a038f (tools/diagrams)
 manifest changed but not committed; to commit:
-  git -C ~/src/skills commit -m "chore(manifest): update vendor skill diagrams to 2571138a038f" -- skenv.toml
+  git -C ~/src/skills commit -m "chore(manifest): update dependency diagrams to 2571138a038f" -- skenv.toml
 vendor: 2 changes, 0 warnings, 0 errors
 ```
 
-Update every vendored skill:
+Update every dependency:
 
 ```console
 $ skenv vendor update
 diagrams 27f221f8f2a4..26bdef93ad9b:
 2571138 docs(diagrams): list the shapes
 ebb66f9 feat(diagrams): prefer SVG
-update vendor diagrams 27f221f8f2a4 → 26bdef93ad9b in ~/src/skills/skenv.toml
+update dependency diagrams 27f221f8f2a4 → 26bdef93ad9b in ~/src/skills/skenv.toml
 release-notes 27f221f8f2a4..26bdef93ad9b:
 26bdef9 feat(release-notes): breaking changes first
-update vendor release-notes 27f221f8f2a4 → 26bdef93ad9b in ~/src/skills/skenv.toml
+update dependency release-notes 27f221f8f2a4 → 26bdef93ad9b in ~/src/skills/skenv.toml
 vendor diagrams from example-vendor/tools@26bdef93ad9b (tools/diagrams)
 vendor release-notes from example-vendor/tools@26bdef93ad9b (tools/release-notes)
 manifest changed but not committed; to commit:
-  git -C ~/src/skills commit -m "chore(manifest): update vendor skills diagrams to 26bdef93ad9b, release-notes to 26bdef93ad9b" -- skenv.toml
+  git -C ~/src/skills commit -m "chore(manifest): update dependencies diagrams to 26bdef93ad9b, release-notes to 26bdef93ad9b" -- skenv.toml
 vendor: 4 changes, 0 warnings, 0 errors
 ```
 
@@ -67,8 +68,8 @@ $ skenv vendor update --project
 diagrams 27f221f8f2a4..2571138a038f:
 2571138 docs(diagrams): list the shapes
 ebb66f9 feat(diagrams): prefer SVG
-update vendor diagrams 27f221f8f2a4 → 2571138a038f in [project] of ~/src/web-app/skenv.toml
-from example-org/skills (code-review) is already at b1e543d9c9ba
+update dependency diagrams 27f221f8f2a4 → 2571138a038f in [project] of ~/src/web-app/skenv.toml
+from.team example-org/skills (code-review) is already at 714da1650871
 update .agents/skills/diagrams 27f221f8f2a4 → 2571138a038f (example-vendor/tools, tools/diagrams)
 the project skills changed; to commit them:
   git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
@@ -82,7 +83,7 @@ vendor: 2 changes, 0 warnings, 0 errors
       --adopt             move conflicting unmanaged paths to the backup directory and replace them
       --dry-run           print the plan; write nothing except the clone cache ~/.cache/skenv/repos, fetched to resolve commits
   -h, --help              help for update
-      --manifest string   skenv file with the [environment] section, or its directory
+      --manifest string   skenv file with the [user] section, or its directory
       --project           edit [project] of the current repository instead of the manifest, and sync the project
       --rev string        commit to pin (default: HEAD of the default branch)
 ```

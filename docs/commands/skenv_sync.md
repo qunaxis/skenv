@@ -6,31 +6,34 @@ Apply the manifest to this machine, or sync a project
 
 ### Synopsis
 
-Apply the manifest: pull the own repositories (editable git working copies
-of your skills), copy each pinned third-party skill at its commit, link
-everything into the store and the agent directories, and remove managed
-paths that left the manifest.
+Apply the manifest: pull the checkouts (editable git working copies of your
+skills), copy each dependency at its commit, link everything into the
+store and the agent directories, and remove managed paths that left the
+manifest. It never changes the skenv file: pins, selections, template
+versions and agents change only by an edit or by `skenv vendor`, "skenv
+import" and "skenv repo upgrade".
 
 In a project, a git repository whose skenv file has a `[project]` section
 (checked at the root of the repository of the current directory), sync
 works on the project instead: it copies every pinned skill of `[project]`
-into its dir at its rev, removes copies whose entry is gone, and gives
+into its dir at its commit, removes copies whose entry is gone, and gives
 every skill of dir to each mirror. It changes a skill authored in dir only
 with `--adopt`, after a backup.
 `--manifest` syncs the machine from there; `--project` requires a project.
 
-Exit code 0 even with warnings: an own repository with uncommitted changes
-or a diverged branch is left as it is, with a warning, and the rest is
-synced. `skenv doctor` exits 0 only when the machine matches the manifest.
-With `--dry-run` nothing is pulled, so the plan uses the own repositories (and
-a manifest inside one) as they are now.
+Exit code 0 even with warnings: a checkout with uncommitted changes or a
+diverged branch is left as it is, with a warning, and the rest is synced.
+`skenv doctor` exits 0 only when the machine matches the manifest. With
+`--dry-run` nothing is pulled, so the plan uses the checkouts (and a manifest
+inside one) as they are now.
 
-- Reads: the manifest, the own working copies, the store (`~/.agents/skills`),
-  the agent directories and the state file `~/.local/state/skenv/state.json`.
-- Changes: the own working copies (clone, pull `--ff-only`), the store, the
-  agent links and the state file; in a project, its dir and mirrors.
-- Network: git clone and pull of own repositories, fetches of pinned skills
-  into the clone cache `~/.cache/skenv/repos`.
+- Reads: the manifest, the checkouts, the store (`user.storage.dir`, default
+  `~/.agents/skills`), the agent directories and the state file
+  `~/.local/state/skenv/state.json`.
+- Changes: the checkouts (clone, pull `--ff-only`), the store, the agent
+  links and the state file; in a project, its dir and mirrors.
+- Network: git clone and pull of checkouts, fetches of dependencies into
+  the clone cache `~/.cache/skenv/repos`.
 - Conflicts: an unmanaged path in the way is an error and stays; `--adopt`
   moves it to `~/.local/state/skenv/backup/<ts>/` and replaces it.
 - Preview: `--dry-run` writes and pulls nothing, so upstream changes are not
@@ -61,19 +64,17 @@ Pull, vendor and link:
 
 ```console
 $ skenv sync
-pull ~/src/skills (b1e543d → c36c5ec)
-vendor diagrams from example-vendor/tools@ebb66f94cb1c (tools/diagrams)
-link ~/.agents/skills/write-tests → ~/src/skills/skills/write-tests
-link ~/.claude/skills/write-tests → ../../.agents/skills/write-tests
-link ~/.pi/agent/skills/write-tests → ../../../.agents/skills/write-tests
-sync: 5 changes, 0 warnings, 0 errors
+pull ~/src/skills (714da16 → 9232059)
+skenv: manifest ~/src/skills/skenv.toml: toml: line 1: expected '.' or '=', but got '[' instead
 ```
+
+Exit code 2.
 
 In a project: copy its pinned skills and update the mirrors:
 
 ```console
 $ skenv sync --project
-copy .agents/skills/code-review from example-org/skills@b1e543d9c9ba (skills/code-review)
+copy .agents/skills/code-review from example-org/skills@714da1650871 (skills/code-review)
 copy .agents/skills/diagrams from example-vendor/tools@27f221f8f2a4 (tools/diagrams)
 link .claude/skills/code-review → ../../.agents/skills/code-review
 link .claude/skills/deploy → ../../.agents/skills/deploy
@@ -90,7 +91,7 @@ project sync: 5 changes, 0 warnings, 0 errors
       --adopt             move conflicting unmanaged paths to ~/.local/state/skenv/backup/<ts>/ and replace them
       --dry-run           print the plan; write and pull nothing, so the plan uses the working copies as they are now
   -h, --help              help for sync
-      --manifest string   skenv file with the [environment] section, or its directory
+      --manifest string   skenv file with the [user] section, or its directory
       --project           sync the [project] section of the current repository (the default there)
       --quiet             print only warnings and errors
 ```

@@ -17,11 +17,10 @@ func (w *world) mapHost(prefix, dir string) {
 
 func vendorEntry(name, repo, rev string) string {
 	return `
-[[environment.vendor]]
-name = "` + name + `"
-repo = "` + repo + `"
-path = "tool"
-rev  = "` + rev + `"
+[user.dependencies.` + name + `]
+repo      = "` + repo + `"
+skill_dir = "tool"
+commit    = "` + rev + `"
 `
 }
 

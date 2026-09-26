@@ -21,7 +21,7 @@ var agentDirs = []string{manifest.DefaultProjectDir, ".claude/skills", ".pi/skil
 
 // ImportProject runs `skenv import --project` in the git repository of
 // dir: it pins every skill of the project's skills-lock.json (the `skills`
-// CLI) in [[project.vendor]], reports the project-own skills and the
+// CLI) in [project.dependencies], reports the project-own skills and the
 // duplicates among the agent directories, and removes the imported
 // entries from the lock. A skenv file without [project] gets one, a
 // repository without a skenv file a skenv.toml. With sync, `skenv sync
@@ -69,7 +69,7 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 		return ExitFatal, fmt.Errorf("%s: %w", homeShow(env.Home)(file), err)
 	}
 	e := &ProjectEngine{base: newBase(ctx, env, Options{DryRun: dryRun}), root: root, file: file, p: p, removed: map[string]bool{}}
-	e.hosts = p.Hosts
+	e.hosts, e.hostsDir = p.GitHosts, e.root
 	if err := e.checkDirs(); err != nil {
 		return ExitFatal, fmt.Errorf("%s: %w", e.show(file), err)
 	}
@@ -163,7 +163,7 @@ func (e *ProjectEngine) importLock(before, start []byte, fresh bool) (*projectIm
 			continue
 		}
 		r.addVendor(v, how, note)
-		if out, err = manifest.AppendVendor(out, ext, skenvfile.Project, v); err != nil {
+		if out, err = manifest.AppendDependency(out, ext, skenvfile.Project, v); err != nil {
 			return nil, err
 		}
 		r.entries++

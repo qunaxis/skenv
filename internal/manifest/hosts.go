@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-// Host types: the software of a git server, the value of
-// hosts.<alias>.type.
+// Providers: the software of a git server, the value of
+// git_hosts.<alias>.provider.
 const (
 	TypeGitHub  = "github"
 	TypeGitLab  = "gitlab"
@@ -20,7 +20,7 @@ const (
 	TypeGeneric = "generic"
 )
 
-// HostTypes lists the values of hosts.<alias>.type.
+// HostTypes lists the values of git_hosts.<alias>.provider.
 var HostTypes = []string{TypeGitHub, TypeGitLab, TypeGitea, TypeGeneric}
 
 // AliasPattern is the rule for the alias of a declared host.
@@ -34,33 +34,32 @@ type Hosts map[string]GitHost
 // rather than in the tool config, so the manifest resolves the same on
 // every machine.
 type GitHost struct {
-	// URL is the https base of the server, such as
-	// "https://git.example.com": "<alias>:group/repo" is cloned from
-	// <url>/group/repo.git. It must not carry credentials; use a git
-	// credential helper.
-	URL string `toml:"url" yaml:"url" json:"url"`
-	// Type is the software of the server: "github", "gitlab" (subgroups of
-	// any depth), "gitea" (Gitea, Forgejo) or "generic" (any path, cloned
-	// as written, ".git" is not added). It sets the accepted paths and is
-	// recorded for CI templates and imports. Default: "generic".
-	Type string `toml:"type" yaml:"type" json:"type"`
-	// SSH is the ssh address of the server, such as "git@git.example.com"
-	// or "ssh://git@git.example.com:2222"; add the path prefix of
-	// repositories over ssh when it differs from the one in url. skenv
-	// clones over https; this address is recognised in remotes and named in
-	// the url.insteadOf hint when access fails. Default: git@<host of url>.
-	SSH string `toml:"ssh" yaml:"ssh" json:"ssh"`
+	// BaseURL is the base of the repositories on the server, and its
+	// scheme is the transport: "https://git.example.com" clones
+	// <base_url>/group/repo.git over https, "ssh://git@git.example.com"
+	// (with an optional port and path prefix) over ssh. It must not carry a
+	// password or https credentials; use a git credential helper or an ssh
+	// key.
+	BaseURL string `toml:"base_url" yaml:"base_url" json:"base_url"`
+	// Provider is the software of the server: "github", "gitlab"
+	// (subgroups of any depth), "gitea" (Gitea, Forgejo) or "generic" (any
+	// path, cloned as written, ".git" is not added). It sets the accepted
+	// paths and is recorded for CI templates and imports. Default:
+	// "generic".
+	Provider string `toml:"provider" yaml:"provider" json:"provider"`
 }
 
 // builtins are the hosts of the prefixes that need no declaration; the
-// empty prefix is the "owner/repo" shorthand.
+// empty prefix is the "owner/repo" shorthand, and "github:" names the same
+// host explicitly.
 var builtins = []struct {
 	prefix string
 	host   GitHost
 }{
-	{"", GitHost{URL: "https://github.com", Type: TypeGitHub}},
-	{"gitlab", GitHost{URL: "https://gitlab.com", Type: TypeGitLab}},
-	{"codeberg", GitHost{URL: "https://codeberg.org", Type: TypeGitea}},
+	{"", GitHost{BaseURL: "https://github.com", Provider: TypeGitHub}},
+	{"github", GitHost{BaseURL: "https://github.com", Provider: TypeGitHub}},
+	{"gitlab", GitHost{BaseURL: "https://gitlab.com", Provider: TypeGitLab}},
+	{"codeberg", GitHost{BaseURL: "https://codeberg.org", Provider: TypeGitea}},
 }
 
 // Remote is a repo value of the manifest resolved to the repository it
@@ -79,12 +78,19 @@ type Remote struct {
 	httpsBase, sshBase string
 }
 
-// Resolve returns the repository that a repo value names: "owner/repo" on
-// github.com, "gitlab:group/sub/repo", "codeberg:owner/repo", "<alias>:path"
-// of a declared host, or a full git URL (https://, ssh://, git@host:path,
-// file://, a local path). A prefix that is neither built in nor declared is
-// an error, never a fallback to GitHub. h may be nil.
-func (h Hosts) Resolve(repo string) (Remote, error) {
+// Resolve returns the repository that a repo value names: "owner/repo" or
+// "github:owner/repo" on github.com, "gitlab:group/sub/repo",
+// "codeberg:owner/repo", "<alias>:path" of a declared host, or a full git
+// URL (https://, ssh://, git@host:path, file://, a local path). A prefix
+// that is neither built in nor declared is an error, never a fallback to
+// GitHub. h may be nil. A relative local path is made absolute against
+// the working directory; ResolveIn names another base.
+func (h Hosts) Resolve(repo string) (Remote, error) { return h.ResolveIn("", repo) }
+
+// ResolveIn is Resolve with a relative local path resolved against base,
+// the directory of the skenv file that holds the value ("" for the
+// working directory).
+func (h Hosts) ResolveIn(base, repo string) (Remote, error) {
 	s := strings.TrimSpace(repo)
 	if s == "" {
 		return Remote{}, errors.New("repo is empty")
@@ -107,7 +113,9 @@ func (h Hosts) Resolve(repo string) (Remote, error) {
 		return r, nil
 	}
 	if isLocal(s) && !filepath.IsAbs(s) {
-		if abs, err := filepath.Abs(s); err == nil {
+		if base != "" {
+			s = filepath.Join(base, s)
+		} else if abs, err := filepath.Abs(s); err == nil {
 			s = abs
 		}
 	}
@@ -123,7 +131,7 @@ func (h Hosts) ShortForm(remote string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	if host.Type == TypeGeneric && strings.HasSuffix(strings.TrimRight(remote, "/"), ".git") {
+	if host.Provider == TypeGeneric && strings.HasSuffix(strings.TrimRight(remote, "/"), ".git") {
 		rest += ".git"
 	}
 	if _, err := onHost(host, rest); err != nil {
@@ -136,10 +144,11 @@ func (h Hosts) ShortForm(remote string) (string, bool) {
 }
 
 // AccessHint is the advice for a failed clone of r: credentials, and for a
-// repository on a known host the url.insteadOf that clones it over ssh.
+// repository cloned over https from a known host the url.insteadOf that
+// clones it over ssh.
 func (r Remote) AccessHint() string {
 	hint := "check access to the repository: ssh key or git credential helper"
-	if r.httpsBase != "" && strings.HasPrefix(r.URL, r.httpsBase) {
+	if r.httpsBase != "" && strings.HasPrefix(r.URL, r.httpsBase) && strings.HasPrefix(r.httpsBase, "http") {
 		hint += fmt.Sprintf("; to clone over ssh: git config --global url.%q.insteadOf %q", r.sshBase, r.httpsBase)
 	}
 	return hint
@@ -173,8 +182,8 @@ func repoPath(p string) ([]string, bool) {
 // onHost expands path p on host: <url>/<p>.git, or <url>/<p> as written
 // for a generic host.
 func onHost(host GitHost, p string) (Remote, error) {
-	if host.Type == "" {
-		host.Type = TypeGeneric
+	if host.Provider == "" {
+		host.Provider = TypeGeneric
 	}
 	p = strings.Trim(p, "/")
 	bare := strings.TrimSuffix(p, ".git")
@@ -182,30 +191,30 @@ func onHost(host GitHost, p string) (Remote, error) {
 	if !ok {
 		return Remote{}, fmt.Errorf("%q is not a repository path (segments of letters, digits, \".\", \"_\" and \"-\")", p)
 	}
-	switch host.Type {
+	switch host.Provider {
 	case TypeGitHub, TypeGitea:
 		if len(segs) != 2 {
-			return Remote{}, fmt.Errorf("a %s repository is owner/repo, got %q", host.Type, p)
+			return Remote{}, fmt.Errorf("a %s repository is owner/repo, got %q", host.Provider, p)
 		}
 	case TypeGitLab:
 		if len(segs) < 2 {
 			return Remote{}, fmt.Errorf("a gitlab repository is group/repo or group/subgroup/.../repo, got %q", p)
 		}
 	}
-	base := strings.TrimRight(host.URL, "/")
+	base := strings.TrimRight(host.BaseURL, "/")
 	u := base + "/" + bare + ".git"
-	if host.Type == TypeGeneric {
+	if host.Provider == TypeGeneric {
 		u = base + "/" + p
 	}
-	return Remote{URL: u, Type: host.Type, httpsBase: base + "/", sshBase: host.sshBase()}, nil
+	return Remote{URL: u, Type: host.Provider, httpsBase: host.httpsBase(), sshBase: host.sshBase()}, nil
 }
 
 // remoteAt is the Remote of a full URL or local path s.
 func (h Hosts) remoteAt(s string) Remote {
 	r := Remote{URL: s, Type: TypeGeneric}
 	if _, host, _, ok := h.match(s); ok {
-		r.Type = host.Type
-		r.httpsBase = strings.TrimRight(host.URL, "/") + "/"
+		r.Type = host.Provider
+		r.httpsBase = host.httpsBase()
 		r.sshBase = host.sshBase()
 	}
 	return r
@@ -231,7 +240,7 @@ func (h Hosts) unknownPrefix(prefix, repo string) error {
 	for _, a := range slices.Sorted(maps.Keys(h)) {
 		known = append(known, a+":")
 	}
-	return fmt.Errorf("repo %q: unknown host prefix %q (known: %s); declare it under [environment.hosts.%s], "+
+	return fmt.Errorf("repo %q: unknown host prefix %q (known: %s); declare it under [user.git_hosts.%s], "+
 		"or write owner/repo for github.com or a full git URL", repo, prefix+":", strings.Join(known, ", "), prefix)
 }
 
@@ -243,7 +252,7 @@ func (h Hosts) match(u string) (prefix string, host GitHost, rest string, ok boo
 	ssh := strings.HasPrefix(strings.ToLower(u), "ssh://") || (!strings.Contains(u, "://") && !isLocal(u))
 	best := -1
 	try := func(p string, g GitHost) {
-		base := normBase(strings.TrimRight(g.URL, "/") + "/")
+		base := normBase(g.httpsBase())
 		if ssh {
 			base = normBase(g.sshBase())
 		}
@@ -265,27 +274,34 @@ func normBase(base string) string {
 	return strings.TrimSuffix(NormalizeURL(base+"x"), "/x")
 }
 
+// isSSH reports whether the base URL of g clones over ssh.
+func (g GitHost) isSSH() bool { return strings.HasPrefix(strings.ToLower(g.BaseURL), "ssh://") }
+
+// httpsBase is the https prefix of repository paths on the host, ending in
+// "/": the base URL, or for an ssh base https://<host>/<prefix>/.
+func (g GitHost) httpsBase() string {
+	if !g.isSSH() {
+		return strings.TrimRight(g.BaseURL, "/") + "/"
+	}
+	u, err := url.Parse(g.BaseURL)
+	if err != nil || u.Hostname() == "" {
+		return ""
+	}
+	return "https://" + u.Hostname() + strings.TrimRight(u.Path, "/") + "/"
+}
+
 // sshBase is the ssh prefix of repository paths on the host, the left side
-// of url.<ssh>.insteadOf <url>/: "git@host:" by default.
+// of url.<ssh>.insteadOf <https base>: the base URL for an ssh base,
+// "git@<host>:" for an https one.
 func (g GitHost) sshBase() string {
-	s := strings.TrimSpace(g.SSH)
-	if s == "" {
-		u, err := url.Parse(g.URL)
-		if err != nil || u.Hostname() == "" {
-			return ""
-		}
-		s = "git@" + u.Hostname() + ":"
+	if g.isSSH() {
+		return strings.TrimRight(g.BaseURL, "/") + "/"
 	}
-	if strings.Contains(s, "://") {
-		return strings.TrimRight(s, "/") + "/"
+	u, err := url.Parse(g.BaseURL)
+	if err != nil || u.Hostname() == "" {
+		return ""
 	}
-	if !strings.Contains(s, ":") {
-		return s + ":"
-	}
-	if !strings.HasSuffix(s, ":") {
-		s = strings.TrimRight(s, "/") + "/"
-	}
-	return s
+	return "git@" + u.Hostname() + ":"
 }
 
 // ReservedAliases are the built-in prefixes and "github", which the
@@ -294,41 +310,32 @@ var ReservedAliases = []string{"github", "gitlab", "codeberg"}
 
 var aliasRe = regexp.MustCompile(AliasPattern)
 
-// validate checks the declared hosts; errors name hosts.<alias>.
-// fillDefaults sets the type of hosts that do not name one.
+// fillDefaults sets the provider of hosts that do not name one.
 func (h Hosts) fillDefaults() {
 	for a, g := range h {
-		if g.Type == "" {
-			g.Type = TypeGeneric
+		if g.Provider == "" {
+			g.Provider = TypeGeneric
 			h[a] = g
 		}
 	}
 }
 
+// validate checks the declared hosts; errors name git_hosts.<alias>.
 func (h Hosts) validate() []error {
 	var errs []error
 	for _, alias := range slices.Sorted(maps.Keys(h)) {
 		g := h[alias]
-		where := "hosts." + alias
+		where := "git_hosts." + alias
 		if !aliasRe.MatchString(alias) {
 			errs = append(errs, fmt.Errorf("%s: the alias must be lowercase letters, digits and \"-\", starting with a letter", where))
 		} else if slices.Contains(ReservedAliases, alias) {
 			errs = append(errs, fmt.Errorf("%s: %q is built in and cannot be declared", where, alias))
 		}
-		if err := checkHostURL(g.URL); err != nil {
-			errs = append(errs, fmt.Errorf("%s.url: %w", where, err))
+		if err := checkHostURL(g.BaseURL); err != nil {
+			errs = append(errs, fmt.Errorf("%s.base_url: %w", where, err))
 		}
-		if g.Type != "" && !slices.Contains(HostTypes, g.Type) {
-			errs = append(errs, fmt.Errorf("%s.type: %q must be one of %s", where, g.Type, strings.Join(HostTypes, ", ")))
-		}
-		if strings.ContainsAny(g.SSH, " \t\n") {
-			errs = append(errs, fmt.Errorf("%s.ssh: must not contain spaces", where))
-		} else if strings.Contains(g.SSH, "://") {
-			if u, err := url.Parse(g.SSH); err != nil || u.Scheme != "ssh" || u.Host == "" {
-				errs = append(errs, fmt.Errorf("%s.ssh: must be user@host or ssh://user@host[:port]", where))
-			} else if _, pw := u.User.Password(); pw {
-				errs = append(errs, fmt.Errorf("%s.ssh: must not carry a password", where))
-			}
+		if g.Provider != "" && !slices.Contains(HostTypes, g.Provider) {
+			errs = append(errs, fmt.Errorf("%s.provider: %q must be one of %s", where, g.Provider, strings.Join(HostTypes, ", ")))
 		}
 	}
 	return errs
@@ -336,16 +343,25 @@ func (h Hosts) validate() []error {
 
 func checkHostURL(s string) error {
 	if s == "" {
-		return errors.New("is required, such as \"https://git.example.com\"")
+		return errors.New("is required, such as \"https://git.example.com\" or \"ssh://git@git.example.com\"")
 	}
 	u, err := url.Parse(s)
-	if err != nil || u.Scheme == "" || u.Host == "" || !strings.Contains(s, "://") {
+	if err != nil || u.Host == "" || !strings.Contains(s, "://") || strings.ContainsAny(s, " \t\n") {
 		// The value is not echoed: it may hold credentials in a form
 		// gitx.Mask does not recognise.
-		return errors.New(`must be a base URL such as "https://git.example.com"`)
+		return errors.New(`must be a base URL such as "https://git.example.com" or "ssh://git@git.example.com"`)
 	}
-	if u.User != nil {
-		return errors.New("must not carry credentials; use a git credential helper (https://qunaxis.github.io/skenv/git-hosts#authentication)")
+	switch strings.ToLower(u.Scheme) {
+	case "https", "http":
+		if u.User != nil {
+			return errors.New("must not carry credentials; use a git credential helper (https://qunaxis.github.io/skenv/git-hosts#authentication)")
+		}
+	case "ssh":
+		if _, pw := u.User.Password(); pw {
+			return errors.New("must not carry a password; use an ssh key")
+		}
+	default:
+		return fmt.Errorf("scheme %q: use https:// or ssh://", u.Scheme)
 	}
 	if u.RawQuery != "" || u.Fragment != "" {
 		return errors.New("must not have a query or fragment")

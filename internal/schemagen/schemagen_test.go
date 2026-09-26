@@ -102,13 +102,13 @@ func instance(t *testing.T, text, ext string) any {
 }
 
 // parseSkenv is everything skenv checks in a skenv file without the file
-// system: the top level, [repo], [environment] and [project].
+// system: the top level, [repository], [user] and [project].
 func parseSkenv(text, ext string) error {
 	if _, _, err := harness.Parse([]byte(text), ext); err != nil {
 		return err
 	}
-	if strings.Contains(text, "environment") {
-		if _, err := manifest.Parse([]byte(text), ext); err != nil && !strings.Contains(err.Error(), "no [environment] section") {
+	if strings.Contains(text, "user") {
+		if _, err := manifest.Parse([]byte(text), ext); err != nil && !strings.Contains(err.Error(), "no [user] section") {
 			return err
 		}
 	}
@@ -198,8 +198,8 @@ func examples(t *testing.T) (skenv, cfg []example) {
 			t.Errorf("%s: a %s block does not parse: %v\n%s", e.where, e.ext, err, e.text)
 			continue
 		}
-		_, repo := top["repo"]
-		_, env := top["environment"]
+		_, repo := top["repository"]
+		_, env := top["user"]
 		_, man := top["manifest"]
 		_, project := top["project"]
 		switch {
@@ -242,84 +242,93 @@ func TestExamplesValidate(t *testing.T) {
 // rejected by both, and the schema says why.
 func TestSchemaAndParserAgree(t *testing.T) {
 	s := compile(t, schemas.Skenv)
-	vendor := func(fields string) string {
-		return "[[environment.vendor]]\n" + fields
+	dep := func(name, fields string) string {
+		return "[user.dependencies." + name + "]\n" + fields
 	}
-	ownEntry := "[[environment.own]]\nrepo = \"a/b\"\npath = \"~/x\"\n"
-	hosts := "[environment.hosts.work]\nurl = \"https://git.example.com\"\ntype = \"gitlab\"\n"
-	full := `name = "archify"` + "\n" + `repo = "a/b"` + "\n" + `rev = "` + sha + `"` + "\n"
+	checkoutEntry := "[user.checkouts.a]\nrepo = \"a/b\"\ncheckout_dir = \"~/x\"\n"
+	hosts := "[user.git_hosts.work]\nbase_url = \"https://git.example.com\"\nprovider = \"gitlab\"\n"
+	full := `repo = "a/b"` + "\n" + `commit = "` + sha + `"` + "\n"
+	repo := "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"private\"\n"
 	cases := []struct {
 		name, ext, text string
 		valid           bool
 		msg             string // part of the schema's error
 	}{
-		{"minimal repo", ".toml", "[repo]\nharness = \"0.4.0\"\nvisibility = \"private\"\n", true, ""},
-		{"minimal environment", ".toml", "[environment]\n", true, ""},
-		{"$schema in JSON", ".json", `{"$schema": "https://example.org/s.json", "environment": {}}`, true, ""},
-		{"$schema in YAML", ".yaml", "$schema: x\nenvironment: {}\n", true, ""},
-		{"vendor paths", ".toml", vendor(full+"path = \".\"\n") + vendor(strings.Replace(full, "archify", "b", 1)+"path = \"a/.b/..c\"\n"), true, ""},
-		{"empty path is the default", ".toml", vendor(full + "path = \"\"\n"), true, ""},
+		{"minimal repository", ".toml", repo, true, ""},
+		{"minimal user", ".toml", "[user]\n", true, ""},
+		{"$schema in JSON", ".json", `{"$schema": "https://example.org/s.json", "user": {}}`, true, ""},
+		{"$schema in YAML", ".yaml", "$schema: x\nuser: {}\n", true, ""},
+		{"skill dirs", ".toml", dep("archify", full+"skill_dir = \".\"\n") + dep("b", full+"skill_dir = \"a/.b/..c\"\n"), true, ""},
+		{"empty skill_dir is the default", ".toml", dep("x", full+"skill_dir = \"\"\n"), true, ""},
 		{"unknown top-level key", ".toml", "other = 1\n", false, "additional properties 'other'"},
 		{"$schema not a string", ".json", `{"$schema": 1}`, false, "want string"},
-		{"unknown key in repo", ".toml", "[repo]\nharness = \"0.4.0\"\nvisibility = \"private\"\nbranch = \"main\"\n", false, "additional properties 'branch'"},
-		{"unknown key in vendor", ".toml", vendor(full + "tag = \"v1\"\n"), false, "additional properties 'tag'"},
-		{"unknown key in layout", ".yaml", "environment:\n  layout:\n    stores: x\n", false, "additional properties 'stores'"},
-		{"short rev", ".toml", vendor(strings.Replace(full, sha, sha[:7], 1)), false, "does not match pattern"},
-		{"uppercase rev", ".toml", vendor(strings.Replace(full, sha, strings.ToUpper(sha), 1)), false, "does not match pattern"},
-		{"missing rev", ".toml", vendor("name = \"x\"\nrepo = \"a/b\"\n"), false, "missing property 'rev'"},
-		{"missing repo of own", ".toml", "[[environment.own]]\npath = \"~/x\"\n", false, "missing property 'repo'"},
-		{"missing harness", ".toml", "[repo]\nvisibility = \"private\"\n", false, "missing property 'harness'"},
-		{"harness not a version", ".toml", "[repo]\nharness = \"0.4\"\nvisibility = \"private\"\n", false, "does not match pattern"},
-		{"bad visibility", ".toml", "[repo]\nharness = \"0.4.0\"\nvisibility = \"internal\"\n", false, "value must be one of"},
-		{"public with environment", ".toml", "[repo]\nharness = \"0.4.0\"\nvisibility = \"public\"\n[environment]\n", false, "at '/environment': 'not' failed"},
-		{"dotted name", ".toml", vendor(strings.Replace(full, "archify", "foo.bar_v2", 1)), false, "does not match pattern"},
-		{"double hyphen", ".toml", vendor(strings.Replace(full, "archify", "foo--bar", 1)), false, "does not match pattern"},
-		{"long name", ".toml", vendor(strings.Replace(full, "archify", strings.Repeat("a", 65), 1)), false, "maxLength"},
-		{"reserved name", ".toml", vendor(strings.Replace(full, "archify", "synced", 1)), false, "at '/environment/vendor/0/name': 'not' failed"},
-		{"absolute path", ".toml", vendor(full + "path = \"/etc\"\n"), false, "does not match pattern"},
-		{"path escapes", ".toml", vendor(full + "path = \"a/../../b\"\n"), false, "does not match pattern"},
-		{"unclean path", ".toml", vendor(full + "path = \"a//b\"\n"), false, "does not match pattern"},
-		{"skills_dir escapes", ".toml", "[[environment.own]]\nrepo = \"a/b\"\npath = \"~/x\"\nskills_dir = \"..\"\n", false, "does not match pattern"},
-		{"ignore with a slash", ".toml", "[environment.layout]\nignore = [\"a/b\"]\n", false, "does not match pattern"},
-		{"repo not a table", ".json", `{"repo": 1}`, false, "want object"},
-		{"null list", ".json", `{"environment": {"vendor": null}}`, false, "want array"},
-		{"null targets", ".yaml", "environment:\n  layout:\n    targets: ~\n", false, "want array"},
-		{"null host", ".json", `{"environment": {"host": {"mac": null}}}`, false, "want object"},
-		{"number in runner", ".yaml", "repo: {harness: 0.4.0, visibility: private, runner: [1]}\n", false, "want string"},
-		{"unquoted numeric rev", ".yaml", "environment:\n  vendor:\n    - {name: a, repo: a/b, rev: " + strings.Repeat("1", 40) + "}\n", false, "want string"},
-		{"own selection", ".toml", ownEntry + "skills = [\"alpha\", \"beta\"]\nexclude = [\"exp-*\"]\n", true, ""},
-		{"empty skills", ".toml", ownEntry + "skills = []\n", false, "minItems"},
-		{"duplicate skills", ".toml", ownEntry + "skills = [\"a\", \"a\"]\n", false, "items at 0 and 1 are equal"},
-		{"bad skills name", ".toml", ownEntry + "skills = [\"a_b\"]\n", false, "does not match pattern"},
-		{"exclude with a slash", ".toml", ownEntry + "exclude = [\"a/*\"]\n", false, "does not match pattern"},
-		{"null skills", ".yaml", "environment:\n  own:\n    - {repo: a/b, path: ~/x, skills: }\n", false, "want array"},
-		{"declared host", ".toml", hosts + "[[environment.own]]\nrepo = \"work:g/sub/r\"\npath = \"~/x\"\n", true, ""},
-		{"host in YAML", ".yaml", "environment:\n  hosts:\n    work: {url: \"https://git.example.com\", type: gitea, ssh: \"git@git.example.com\"}\n", true, ""},
-		{"host in JSON", ".json", `{"environment": {"hosts": {"work": {"url": "https://git.example.com/scm"}}}}`, true, ""},
-		{"host without url", ".toml", "[environment.hosts.work]\ntype = \"gitlab\"\n", false, "missing property 'url'"},
-		{"host url with credentials", ".toml", "[environment.hosts.work]\nurl = \"https://u:t@git.example.com\"\n", false, "does not match pattern"},
-		{"host url without scheme", ".toml", "[environment.hosts.work]\nurl = \"git.example.com\"\n", false, "does not match pattern"},
-		{"unknown host type", ".toml", "[environment.hosts.work]\nurl = \"https://a.example\"\ntype = \"bitbucket\"\n", false, "value must be one of"},
+		{"unknown key in repository", ".toml", repo + "branch = \"main\"\n", false, "additional properties 'branch'"},
+		{"unknown key in a dependency", ".toml", dep("x", full+"tag = \"v1\"\n"), false, "additional properties 'tag'"},
+		{"unknown key in storage", ".yaml", "user:\n  storage:\n    dirs: x\n", false, "additional properties 'dirs'"},
+		{"short commit", ".toml", dep("x", strings.Replace(full, sha, sha[:7], 1)), false, "does not match pattern"},
+		{"uppercase commit", ".toml", dep("x", strings.Replace(full, sha, strings.ToUpper(sha), 1)), false, "does not match pattern"},
+		{"missing commit", ".toml", dep("x", "repo = \"a/b\"\n"), false, "missing property 'commit'"},
+		{"missing repo of a checkout", ".toml", "[user.checkouts.a]\ncheckout_dir = \"~/x\"\n", false, "missing property 'repo'"},
+		{"missing checkout_dir", ".toml", "[user.checkouts.a]\nrepo = \"a/b\"\n", false, "missing property 'checkout_dir'"},
+		{"bad checkout ID", ".toml", "[user.checkouts.A]\nrepo = \"a/b\"\ncheckout_dir = \"~/x\"\n", false, "does not match pattern"},
+		{"missing template_version", ".toml", "[repository]\nvisibility = \"private\"\n", false, "missing property 'template_version'"},
+		{"template_version not a version", ".toml", "[repository]\ntemplate_version = \"0.4\"\nvisibility = \"private\"\n", false, "does not match pattern"},
+		{"bad visibility", ".toml", "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"internal\"\n", false, "value must be one of"},
+		{"public with user", ".toml", "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"public\"\n[user]\n", false, "at '/user': 'not' failed"},
+		{"github runs_on", ".toml", repo + "[repository.ci.github]\nruns_on = [\"ubuntu-latest\"]\n", true, ""},
+		{"gitlab tags", ".yaml", "repository: {template_version: 0.4.0, visibility: private, ci: {gitlab: {tags: [saas-linux-small-amd64]}}}\n", true, ""},
+		{"two CI tables", ".toml", repo + "[repository.ci.github]\n[repository.ci.gitlab]\n", false, "'not' failed"},
+		{"unknown CI", ".toml", repo + "[repository.ci.jenkins]\n", false, "additional properties 'jenkins'"},
+		{"dotted name", ".toml", dep(`"foo.bar_v2"`, full), false, "does not match pattern"},
+		{"double hyphen", ".toml", dep("foo--bar", full), false, "does not match pattern"},
+		{"long name", ".toml", dep(strings.Repeat("a", 65), full), false, "maxLength"},
+		{"reserved name", ".toml", dep("synced", full), false, "'not' failed"},
+		{"absolute skill_dir", ".toml", dep("x", full+"skill_dir = \"/etc\"\n"), false, "does not match pattern"},
+		{"skill_dir escapes", ".toml", dep("x", full+"skill_dir = \"a/../../b\"\n"), false, "does not match pattern"},
+		{"unclean skill_dir", ".toml", dep("x", full+"skill_dir = \"a//b\"\n"), false, "does not match pattern"},
+		{"skills_dir escapes", ".toml", checkoutEntry + "skills_dir = \"..\"\n", false, "does not match pattern"},
+		{"unmanaged with a slash", ".toml", "[user]\nunmanaged = [\"a/b\"]\n", false, "does not match pattern"},
+		{"repository not a table", ".json", `{"repository": 1}`, false, "want object"},
+		{"null dependencies", ".json", `{"user": {"dependencies": null}}`, false, "want object"},
+		{"null enabled", ".yaml", "user:\n  agents:\n    enabled: ~\n", false, "want array"},
+		{"null machine", ".json", `{"user": {"machines": {"mac": null}}}`, false, "want object"},
+		{"number in runs_on", ".yaml", "repository: {template_version: 0.4.0, visibility: private, ci: {github: {runs_on: [1]}}}\n", false, "want string"},
+		{"unquoted numeric commit", ".yaml", "user:\n  dependencies:\n    a: {repo: a/b, commit: " + strings.Repeat("1", 40) + "}\n", false, "want string"},
+		{"checkout selection", ".toml", checkoutEntry + "include = [\"alpha\", \"beta-*\"]\nexclude = [\"exp-*\"]\n", true, ""},
+		{"empty include", ".toml", checkoutEntry + "include = []\n", true, ""},
+		{"duplicate include", ".toml", checkoutEntry + "include = [\"a\", \"a\"]\n", false, "items at 0 and 1 are equal"},
+		{"exclude with a slash", ".toml", checkoutEntry + "exclude = [\"a/*\"]\n", false, "does not match pattern"},
+		{"null include", ".yaml", "user:\n  checkouts:\n    a: {repo: a/b, checkout_dir: ~/x, include: }\n", false, "want array"},
+		{"machine rules", ".toml", checkoutEntry + "[user.machines.laptop]\ninclude = [\"*\"]\nexclude = [\"x\"]\n[user.machines.laptop.checkout_dirs]\na = \"~/y\"\n", true, ""},
+		{"agents", ".toml", "[user.agents]\nenabled = [\"claude\"]\nextra_dirs = [\"~/.agents/skills\"]\n[user.agents.paths]\npi = \"~/p\"\n[user.storage]\ndir = \"~/.local/share/skenv/skills\"\n", true, ""},
+		{"unknown agent", ".toml", "[user.agents]\nenabled = [\"codex\"]\n", false, "value must be one of"},
+		{"declared host", ".toml", hosts + "[user.checkouts.a]\nrepo = \"work:g/sub/r\"\ncheckout_dir = \"~/x\"\n", true, ""},
+		{"ssh host in YAML", ".yaml", "user:\n  git_hosts:\n    work: {base_url: \"ssh://git@git.example.com:2222/scm\", provider: gitea}\n", true, ""},
+		{"host in JSON", ".json", `{"user": {"git_hosts": {"work": {"base_url": "https://git.example.com/scm"}}}}`, true, ""},
+		{"host without base_url", ".toml", "[user.git_hosts.work]\nprovider = \"gitlab\"\n", false, "missing property 'base_url'"},
+		{"host url with credentials", ".toml", "[user.git_hosts.work]\nbase_url = \"https://u:t@git.example.com\"\n", false, "does not match pattern"},
+		{"host url without scheme", ".toml", "[user.git_hosts.work]\nbase_url = \"git.example.com\"\n", false, "does not match pattern"},
+		{"unknown provider", ".toml", "[user.git_hosts.work]\nbase_url = \"https://a.example\"\nprovider = \"bitbucket\"\n", false, "value must be one of"},
 		{"unknown key in host", ".toml", hosts + "token = \"x\"\n", false, "additional properties 'token'"},
-		{"uppercase alias", ".toml", "[environment.hosts.Work]\nurl = \"https://a.example\"\n", false, "does not match pattern"},
-		{"built-in alias", ".toml", "[environment.hosts.gitlab]\nurl = \"https://a.example\"\n", false, "'not' failed"},
+		{"uppercase alias", ".toml", "[user.git_hosts.Work]\nbase_url = \"https://a.example\"\n", false, "does not match pattern"},
+		{"built-in alias", ".toml", "[user.git_hosts.gitlab]\nbase_url = \"https://a.example\"\n", false, "'not' failed"},
 		{"minimal project", ".toml", "[project]\n", true, ""},
 		{"full project", ".toml", "[project]\ndir = \"skills\"\nmirrors = [\".claude/skills\", \".pi/skills\"]\nmirrors_mode = \"copy\"\n" +
-			"[[project.vendor]]\n" + full + "[[project.from]]\nrepo = \"a/c\"\nskills_dir = \"s\"\nskills = [\"x\", \"y\"]\nrev = \"" + sha + "\"\n", true, ""},
-		{"project with repo and environment", ".yaml", "repo: {harness: 0.4.0, visibility: public}\nproject:\n  mirrors: [.claude/skills]\n", true, ""},
+			"[project.dependencies.archify]\n" + full + "[project.from.c]\nrepo = \"a/c\"\nskills_dir = \"s\"\nskills = [\"x\", \"y\"]\ncommit = \"" + sha + "\"\n", true, ""},
+		{"project with repository", ".yaml", "repository: {template_version: 0.4.0, visibility: public}\nproject:\n  mirrors: [.claude/skills]\n", true, ""},
 		{"project dir is the root", ".toml", "[project]\ndir = \".\"\n", false, "'not' failed"},
 		{"project dir escapes", ".toml", "[project]\ndir = \"../skills\"\n", false, "does not match pattern"},
 		{"empty mirror", ".toml", "[project]\nmirrors = [\"\"]\n", false, "minLength"},
 		{"duplicate mirror", ".toml", "[project]\nmirrors = [\"a\", \"a\"]\n", false, "items at 0 and 1 are equal"},
 		{"bad mirrors_mode", ".toml", "[project]\nmirrors_mode = \"hardlink\"\n", false, "value must be one of"},
 		{"unknown key in project", ".toml", "[project]\nmirror = [\"a\"]\n", false, "additional properties 'mirror'"},
-		{"project vendor short rev", ".toml", "[[project.vendor]]\n" + strings.Replace(full, sha, sha[:7], 1), false, "does not match pattern"},
-		{"from without skills", ".toml", "[[project.from]]\nrepo = \"a/b\"\nrev = \"" + sha + "\"\n", false, "missing property 'skills'"},
-		{"from with empty skills", ".toml", "[[project.from]]\nrepo = \"a/b\"\nskills = []\nrev = \"" + sha + "\"\n", false, "minItems"},
-		{"from with a branch", ".toml", "[[project.from]]\nrepo = \"a/b\"\nskills = [\"x\"]\nrev = \"main\"\n", false, "does not match pattern"},
-		{"project host", ".toml", "[project.hosts.work]\nurl = \"https://git.example.com\"\n[[project.from]]\nrepo = \"work:g/r\"\nskills = [\"x\"]\nrev = \"" + sha + "\"\n", true, ""},
-		{"project host without url", ".toml", "[project.hosts.work]\ntype = \"gitlab\"\n", false, "missing property 'url'"},
-		{"project built-in alias", ".toml", "[project.hosts.codeberg]\nurl = \"https://a.example\"\n", false, "'not' failed"},
+		{"project dependency short commit", ".toml", "[project.dependencies.x]\n" + strings.Replace(full, sha, sha[:7], 1), false, "does not match pattern"},
+		{"from without skills", ".toml", "[project.from.a]\nrepo = \"a/b\"\ncommit = \"" + sha + "\"\n", false, "missing property 'skills'"},
+		{"from with empty skills", ".toml", "[project.from.a]\nrepo = \"a/b\"\nskills = []\ncommit = \"" + sha + "\"\n", false, "minItems"},
+		{"from with a branch", ".toml", "[project.from.a]\nrepo = \"a/b\"\nskills = [\"x\"]\ncommit = \"main\"\n", false, "does not match pattern"},
+		{"project host", ".toml", "[project.git_hosts.work]\nbase_url = \"https://git.example.com\"\n[project.from.a]\nrepo = \"work:g/r\"\nskills = [\"x\"]\ncommit = \"" + sha + "\"\n", true, ""},
+		{"project host without base_url", ".toml", "[project.git_hosts.work]\nprovider = \"gitlab\"\n", false, "missing property 'base_url'"},
+		{"project built-in alias", ".toml", "[project.git_hosts.codeberg]\nbase_url = \"https://a.example\"\n", false, "'not' failed"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -342,6 +351,7 @@ func TestSchemaAndParserAgree(t *testing.T) {
 		valid     bool
 	}{
 		{".toml", "manifest = \"~/src/skills\"\n", true},
+		{".toml", "manifest = \"~/src/skills\"\nmachine = \"laptop\"\n", true},
 		{".toml", "\"$schema\" = \"x\"\nmanifest = \"~/s\"\n", true},
 		{".toml", "manifests = \"/nonexistent\"\n", false},
 		{".toml", "manifest = 1\n", false},
@@ -356,7 +366,7 @@ func TestSchemaAndParserAgree(t *testing.T) {
 	}
 }
 
-// RelPathPattern is the parser's rule for vendor paths and skills_dir.
+// RelPathPattern is the parser's rule for skill_dir and skills_dir.
 func TestRelPathPattern(t *testing.T) {
 	re := regexp.MustCompile(RelPathPattern)
 	var paths []string
@@ -367,7 +377,7 @@ func TestRelPathPattern(t *testing.T) {
 	}
 	sort.Strings(paths)
 	for _, p := range paths {
-		text := "[[environment.vendor]]\nname = \"x\"\nrepo = \"a/b\"\nrev = \"" + sha + "\"\npath = " + fmt.Sprintf("%q", p) + "\n"
+		text := "[user.dependencies.x]\nrepo = \"a/b\"\ncommit = \"" + sha + "\"\nskill_dir = " + fmt.Sprintf("%q", p) + "\n"
 		_, err := manifest.Parse([]byte(text), ".toml")
 		if (err == nil) != re.MatchString(p) {
 			t.Errorf("path %q: parser error %v, pattern match %v", p, err, re.MatchString(p))

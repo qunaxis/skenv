@@ -12,7 +12,7 @@ skenv version [flags]
 
 ```console
 $ skenv version
-skenv 0.5.0
+skenv 0.6.0
 commit: 0123456789abcdef0123456789abcdef01234567
 built:  2026-09-01T12:00:00Z
 ```

@@ -28,7 +28,7 @@ const (
 	ClassUnpushed      = "unpushed"
 	ClassBehind        = "behind"
 	ClassAgentMismatch = "agent-mismatch"
-	// The manifest checkout is not the own working copy of its repository.
+	// The manifest checkout is not the working copy its checkout names.
 	ClassManifestCheckout = "manifest-checkout"
 	// In a project.
 	ClassModified     = "modified"
@@ -56,7 +56,7 @@ type DoctorReport struct {
 }
 
 // Doctor compares the machine with the manifest. It changes no skill, link
-// or file, but runs `git fetch` in own repositories.
+// or file, but runs `git fetch` in the checkouts.
 func (e *Engine) Doctor(asJSON bool) (int, error) {
 	r := &DoctorReport{Manifest: e.show(e.manifestPath), Store: e.show(e.store), Issues: []Issue{}, Warnings: []string{}}
 	for _, t := range e.targets {
@@ -125,7 +125,7 @@ func (e *Engine) Doctor(asJSON bool) (int, error) {
 		}
 		for _, de := range entries {
 			p := filepath.Join(dir, de.Name())
-			if strings.HasPrefix(de.Name(), ".") || e.isClaudeSynced(p) || e.m.Layout.Ignored(de.Name()) || e.owned(p) {
+			if strings.HasPrefix(de.Name(), ".") || e.isClaudeSynced(p) || e.m.IsUnmanaged(de.Name()) || e.owned(p) {
 				continue
 			}
 			if _, ok := want[p]; ok {
@@ -147,23 +147,22 @@ func (e *Engine) Doctor(asJSON bool) (int, error) {
 }
 
 func (e *Engine) doctorOwn(add func(class, skill, p, detail string), warn func(string, ...any)) {
-	for i := range e.m.Own {
-		o := &e.m.Own[i]
-		dir := e.ownPath(o)
+	for _, c := range e.m.CheckoutList() {
+		dir := e.checkoutPath(c)
 		if _, err := os.Stat(dir); err != nil {
-			remote, _ := e.m.Hosts.Resolve(o.Repo)
-			add(ClassMissing, "", dir, fmt.Sprintf("own repo %s is not cloned; run `skenv sync`", e.showRepo(o.Repo, remote)))
+			remote, _ := e.m.Remote(c.Repo)
+			add(ClassMissing, "", dir, fmt.Sprintf("checkout %s (%s) is not cloned; run `skenv sync`", c.ID, e.showRepo(c.Repo, remote)))
 			continue
 		}
 		if !e.env.Git.OK(e.ctx, dir, "rev-parse", "--is-inside-work-tree") {
-			warn("%s is not a git working copy (own repo %s)", e.show(dir), o.Repo)
+			warn("%s is not a git working copy (checkout %s)", e.show(dir), c.ID)
 			continue
 		}
 		switch v, ok, err := harness.Version(dir); {
 		case err != nil:
 			warn("%s: %v", e.show(dir), err)
 		case ok && harness.Compare(v, harness.Latest) < 0:
-			warn("%s: harness %s is older than %s of this skenv; run `skenv repo apply` there", e.show(dir), v, harness.Latest)
+			warn("%s: template_version %s is older than %s of this skenv; run `skenv repo upgrade` there", e.show(dir), v, harness.Latest)
 		}
 		if out, err := e.env.Git.Run(e.ctx, dir, "status", "--porcelain"); err == nil && out != "" {
 			n := len(strings.Split(out, "\n"))
@@ -207,24 +206,24 @@ func (e *Engine) doctorStore(s Skill, add func(class, skill, p, detail string)) 
 		add(ClassConflict, s.Name, p, "exists but is not managed by skenv (or was replaced since); `skenv sync --adopt` backs it up and replaces it")
 		return
 	}
-	if s.OwnDir != "" {
-		e.checkLink(p, s.OwnDir, s.Name, add)
+	if s.CheckoutDir != "" {
+		e.checkLink(p, s.CheckoutDir, s.Name, add)
 		return
 	}
 	if !fi.IsDir() {
-		add(ClassBrokenLink, s.Name, p, "expected a vendored directory; run `skenv sync`")
+		add(ClassBrokenLink, s.Name, p, "expected a copied directory; run `skenv sync`")
 		return
 	}
 	mk, err := readMarker(p)
 	if err != nil {
-		add(ClassWrongRev, s.Name, p, "vendor marker .skenv is missing or unreadable; run `skenv sync`")
+		add(ClassWrongRev, s.Name, p, "marker .skenv is missing or unreadable; run `skenv sync`")
 		return
 	}
-	v := s.Vendor
-	remote, _ := e.m.Hosts.Resolve(v.Repo)
-	if !mk.matches(remote, v.Path, v.Rev) {
+	d := s.Dependency
+	remote, _ := e.m.Remote(d.Repo)
+	if !mk.matches(remote, d.SkillDir, d.Commit) {
 		add(ClassWrongRev, s.Name, p, fmt.Sprintf("store has %s@%.12s (%s), manifest wants %s@%.12s (%s); run `skenv sync`",
-			gitx.Mask(mk.Repo), mk.Rev, mk.Path, gitx.Mask(remote.URL), v.Rev, v.Path))
+			gitx.Mask(mk.Repo), mk.Rev, mk.Path, gitx.Mask(remote.URL), d.Commit, d.SkillDir))
 	}
 }
 

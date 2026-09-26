@@ -6,23 +6,27 @@ Set up the harness of a skills repository
 
 ### Synopsis
 
-Set up the harness of a skills repository: the `[repo]` section and the schema
-directive of the skenv file, `lefthook.yml`, the CI pipeline, linter configs and
-the managed blocks of `AGENTS.md` and `.gitignore`; then `lefthook install`.
-Refuses if `[repo]` exists.
+Set up the harness of a skills repository: the `[repository]` section and the
+schema directive of the skenv file, `lefthook.yml`, the CI pipeline, linter
+configs and the managed blocks of `AGENTS.md` and `.gitignore`; then `lefthook
+install`. Refuses if [repository] exists.
+
+`--visibility` is a declared policy: skenv never reads or changes the access
+setting on the hosting service. A public repository must not carry `[user]`,
+and its CI also runs `skenv lint --publish`.
 
 `--ci` picks the CI system: github (.github/workflows/check.yml) or gitlab
 (`.gitlab-ci.yml`). Without it, the host of origin decides: gitlab when origin
-is on `gitlab.com` or on a host declared with type `gitlab` in the manifest
-(this repository's own `[environment]`, else the manifest in the config file),
+is on `gitlab.com` or on a host declared with provider `gitlab` in the manifest
+(this repository's own `[user]`, else the manifest in the config file),
 github otherwise, also when there is no origin.
 
 CI jobs of a public repository run on the hosted runners (ubuntu-latest on
 GitHub, the shared runners on GitLab). Those of a private one run on `--runner`: the runs-on labels on GitHub, the
 runner tags on GitLab; default self-hosted, linux, docker (a self-hosted
 Docker runner). `--runner` ubuntu-latest picks the GitHub-hosted runners.
-Afterwards `repo.runner` in the skenv file holds it; change it there and run
-`skenv repo apply`.
+Afterwards `repository.ci.github.runs_on` (or `repository.ci.gitlab.tags`) holds
+it; change it there and run `skenv repo apply`.
 
 The generated git hooks need lefthook, uv and gitleaks on PATH; the output
 says which of them are missing. Skill management and sync need none of
@@ -30,13 +34,13 @@ them: this harness is optional tooling for a repository you publish or
 share.
 
 Without a skenv file it creates `skenv.toml`, or `skenv.yaml` or `skenv.json` with
-`--format`. An existing skenv file gets `[repo]` added in its own format;
+`--format`. An existing skenv file gets `[repository]` added in its own format;
 `--format` that disagrees with it is an error, and nothing is written.
 
 - Reads: the repository, its origin and skenv file, and the hosts declared
   in the manifest (to detect the CI system).
-- Changes: the skenv file (`[repo]`, created if absent), the managed files
-  and blocks, and the git hooks (lefthook install).
+- Changes: the skenv file (`[repository]`, created if absent), the managed
+  files and blocks, and the git hooks (lefthook install).
 - Network: none.
 - Conflicts: a file that exists and that skenv does not manage yet is an
   error; `--force` replaces it.
@@ -65,7 +69,7 @@ create AGENTS.md
 create .gitignore
 create .claude/settings.json
 ci github: the default, the repository has no origin; --ci overrides it
-harness 0.5.0 (public, ci github) set up in ~/src/public-skills
+harness 0.6.0 (public, ci github) set up in ~/src/public-skills
 git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active
 ```
@@ -84,8 +88,8 @@ create .markdownlint.yaml
 create AGENTS.md
 create .gitignore
 create .claude/settings.json
-harness 0.5.0 (private, ci gitlab) set up in ~/src/team-skills
-CI jobs run on runners self-hosted, linux, docker (repo.runner); to change them, edit repo.runner and run `skenv repo apply`
+harness 0.6.0 (private, ci gitlab) set up in ~/src/team-skills
+CI jobs run on runners self-hosted, linux, docker (repository.ci.gitlab.tags); to change them, edit it and run `skenv repo apply`
 git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active
 ```
@@ -105,8 +109,8 @@ create AGENTS.md
 create .gitignore
 create .claude/settings.json
 ci github: the default, the repository has no origin; --ci overrides it
-harness 0.5.0 (private, ci github) set up in ~/src/my-skills
-CI jobs run on runners ubuntu-latest (repo.runner); to change them, edit repo.runner and run `skenv repo apply`
+harness 0.6.0 (private, ci github) set up in ~/src/my-skills
+CI jobs run on runners ubuntu-latest (repository.ci.github.runs_on); to change them, edit it and run `skenv repo apply`
 git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active
 ```
@@ -120,7 +124,7 @@ lefthook install: hooks active
       --format string       format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)
   -h, --help                help for init
       --runner strings      private repositories: runs-on labels (GitHub) or runner tags (GitLab) of the CI jobs, comma-separated or repeated (default self-hosted,linux,docker)
-      --visibility string   private or public (required)
+      --visibility string   private or public, the declared publication policy (required)
 ```
 
 ### Options inherited from parent commands

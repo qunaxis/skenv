@@ -7,20 +7,21 @@ Start a manifest in a git repository
 ### Synopsis
 
 Start a manifest in the git repository of the current directory (or `--dir`).
-Its skenv file gets an `[environment]` section with a commented skeleton, or
+Its skenv file gets a `[user]` section with a commented skeleton, or
 `skenv.toml` is created with one (`skenv.yaml` or `skenv.json` with `--format`); the
-repository itself becomes its first own repository: owner/repo for an
-origin on `github.com`, gitlab:... on `gitlab.com`, codeberg:... on
-`codeberg.org`, the URL (without credentials) on any other host; a local
-origin is left out. A repository without an origin yet names its future
-remote with `--remote` (owner/repo, gitlab:group/repo, codeberg:owner/repo or
-a full URL), written the same way; with an origin, `--remote` is an error. It
-does not set up `[repo]`: `skenv repo init` does, and picks the CI system from
-the host of origin. The file is recorded as `manifest` in the config file
-(`~/.config/skenv/config.toml` unless a YAML or JSON one exists; a new one in
-the format of the skenv file), and nothing is synced. It refuses when the
-file has `[environment]` already (`skenv use .` uses that one) or its `[repo]`
-is public.
+repository itself becomes its first checkout, with checkout_dir `.` (the
+repository that holds the manifest, wherever it is cloned) and repo
+owner/repo for an origin on `github.com`, gitlab:... on `gitlab.com`,
+codeberg:... on `codeberg.org`, the URL (without credentials) on any other
+host; a local origin is left out. A repository without an origin yet names
+its future remote with `--remote` (owner/repo, gitlab:group/repo,
+codeberg:owner/repo or a full URL), written the same way; with an origin,
+`--remote` is an error. It does not set up `[repository]`: `skenv repo init`
+does, and picks the CI system from the host of origin. The file is recorded
+as `manifest` in the config file (`~/.config/skenv/config.toml` unless a YAML
+or JSON one exists; a new one in the format of the skenv file), and nothing
+is synced. It refuses when the file has `[user]` already (`skenv use .` uses
+that one) or its `[repository]` is public.
 
 To use an existing manifest on this machine: `skenv clone <repo>`, or
 `skenv use <path>` for a checkout you already have.
@@ -56,7 +57,7 @@ Start a manifest in the git repository of the current directory:
 
 ```console
 $ skenv init
-create ~/src/my-skills/skenv.toml with [environment], example-org/my-skills as its first own repository
+create ~/src/my-skills/skenv.toml with [user], example-org/my-skills as its first checkout (my-skills)
 manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
 next steps:
   - skenv vendor add <repo> --path <dir>         pin a third-party skill
@@ -71,46 +72,44 @@ $ skenv init --import
 becomes managed: 2 entries in ~/src/my-skills/skenv.toml
   exact: the commit has the hash recorded in the lock
     release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
-  own: repositories kept as git working copies
-    example-org/my-skills at ~/src/my-skills (the repository of the manifest)
+  checkout: repositories kept as git working copies
+    my-skills: example-org/my-skills at ~/src/my-skills (the repository of the manifest)
 not imported: 1
-  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
-create ~/src/my-skills/skenv.toml with [environment]
+  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into a checkout, or add "notes" to user.unmanaged
+create ~/src/my-skills/skenv.toml with [user]
 manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
 remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/my-skills/skenv.toml
 +++ ~/src/my-skills/skenv.toml
 +#:schema https://qunaxis.github.io/skenv/schemas/skenv.schema.json
-+# The manifest of your machines: `skenv sync` links the skills listed here
-+# into the agent directories. Reference: https://qunaxis.github.io/skenv/manifest
-+[environment]
++# The manifest: `skenv sync` links the skills listed here into the agent
++# directories of this user. Reference: https://qunaxis.github.io/skenv/manifest
++[user]
 +
-+[[environment.vendor]]
-+name = "release-notes"
-+repo = "example-vendor/tools"
-+path = "tools/release-notes"
-+rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
++[user.dependencies.release-notes]
++repo      = "example-vendor/tools"
++skill_dir = "tools/release-notes"
++commit    = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
 +
-+[[environment.own]]
-+repo = "example-org/my-skills"
-+path = "~/src/my-skills"
++[user.checkouts.my-skills]
++repo         = "example-org/my-skills"
++checkout_dir = "."
 +
-+# Your own skills repositories, kept as working copies: every skill in
-+# <path>/skills/ is linked.
-+# [[environment.own]]
-+# repo = "<owner>/<skills-repo>"
-+# path = "~/src/<skills-repo>"
-+# skills  = ["<skill>"]         # only these skills (default: all)
++# Git repositories kept as editable working copies: every skill in
++# <checkout_dir>/skills/ is linked. checkout_dir "." is this repository.
++# [user.checkouts.<id>]
++# repo         = "<owner>/<skills-repo>"
++# checkout_dir = "~/src/<skills-repo>"
++# include = ["<skill>"]         # only these skills (default: all)
 +# exclude = ["experimental-*"]  # not these
 +
 +# Third-party skills pinned to a commit; `skenv vendor add <owner/repo> --path <dir>`
 +# adds one:
-+# [[environment.vendor]]
-+# name = "<skill>"
-+# repo = "<owner>/<repo>"
-+# path = "<directory of the skill in the repository>"
-+# rev  = "<full 40-character commit SHA>"
-import: 2 manifest entries (1 exact, 1 own), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
++# [user.dependencies.<skill>]
++# repo      = "<owner>/<repo>"
++# skill_dir = "<directory of the skill in the repository>"
++# commit    = "<full 40-character commit SHA>"
+import: 2 manifest entries (1 exact, 1 checkout), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
 manifest changed but not committed; to commit:
   git -C ~/src/my-skills add -- skenv.toml
   git -C ~/src/my-skills commit -m "chore(manifest): import installed skills" -- skenv.toml
@@ -132,7 +131,7 @@ Start one in a repository without an origin yet, to be pushed to `gitlab.com`:
 
 ```console
 $ skenv init --remote gitlab:example-group/my-skills
-create ~/src/my-skills/skenv.toml with [environment], gitlab:example-group/my-skills as its first own repository
+create ~/src/my-skills/skenv.toml with [user], gitlab:example-group/my-skills as its first checkout (my-skills)
 manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
 next steps:
   - skenv vendor add <repo> --path <dir>         pin a third-party skill
@@ -148,7 +147,7 @@ next steps:
       --format string   format of a new file: toml, yaml or json (default toml; an existing file keeps its format)
   -h, --help            help for init
       --import          import the installed skills into the new manifest and run sync --adopt
-      --remote string   for a repository without origin: its future remote, recorded as its own entry (owner/repo, gitlab:group/repo, codeberg:owner/repo or a URL)
+      --remote string   for a repository without origin: its future remote, recorded as its checkout (owner/repo, gitlab:group/repo, codeberg:owner/repo or a URL)
 ```
 
 ### SEE ALSO

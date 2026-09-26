@@ -73,9 +73,9 @@ func Clone(ctx context.Context, env Env, repo, dir, format string, dryRun bool) 
 }
 
 // moveToOwnPath moves a fresh clone at dir, made without an explicit
-// <dir>, to the path its manifest names for this repository as an own
-// entry, when nothing is there yet: sync keeps that path up to date, so
-// the manifest must live in it. It returns where the clone is now.
+// <dir>, to the checkout_dir its manifest names for this repository, when
+// nothing is there yet: sync keeps that path up to date, so the manifest
+// must live in it. It returns where the clone is now.
 func moveToOwnPath(ctx context.Context, env Env, dir string) string {
 	file, err := manifest.Locate(dir)
 	if err != nil {
@@ -100,7 +100,7 @@ func moveToOwnPath(ctx context.Context, env Env, dir string) string {
 	if err := os.Rename(dir, p); err != nil {
 		return dir
 	}
-	fmt.Fprintf(env.Stdout, "moved it to %s, the path of own %s in its manifest\n", show(p), gitx.Mask(own[0]))
+	fmt.Fprintf(env.Stdout, "moved it to %s, the checkout_dir of checkout %s in its manifest\n", show(p), own[0])
 	return p
 }
 
@@ -186,8 +186,8 @@ func use(ctx context.Context, env Env, path, format string, dryRun bool) (int, e
 	return ExitOK, nil
 }
 
-// ownElsewhere returns the own repositories of m that are the repository
-// checked out at dir (the same origin) but name another path, expanded,
+// ownElsewhere returns the checkouts of m that are the repository checked
+// out at dir (the same origin) but name another path, resolved, their IDs,
 // and the root of that checkout. sync then keeps a second working copy at
 // that path up to date and never pulls the checkout at dir, which holds
 // the manifest: changes pushed from other machines would not arrive.
@@ -200,21 +200,26 @@ func ownElsewhere(ctx context.Context, env Env, m *manifest.Manifest, dir string
 	if err != nil {
 		return "", nil, nil
 	}
-	for _, o := range m.Own {
-		r, err := m.Hosts.Resolve(o.Repo)
+	mc, err := machineOf(env, m)
+	if err != nil {
+		mc = machine{}
+	}
+	pathOf := checkoutPathOf(env, m, mc)
+	for _, c := range m.CheckoutList() {
+		r, err := m.Remote(c.Repo)
 		if err != nil || manifest.NormalizeURL(r.URL) != manifest.NormalizeURL(origin) {
 			continue
 		}
-		if p := paths.Expand(env.Home, o.Path); !samePath(p, root) {
+		if p := pathOf(c); !samePath(p, root) {
 			elsewhere = append(elsewhere, p)
-			own = append(own, o.Repo)
+			own = append(own, c.ID)
 		}
 	}
 	return root, elsewhere, own
 }
 
 // elsewhereAdvice says what to do about a manifest checkout at root whose
-// own entry names path p instead: use the working copy at p when it is
+// checkout names path p instead: use the working copy at p when it is
 // there, else clone the repository to p.
 func elsewhereAdvice(env Env, repo, p string) string {
 	show := homeShow(env.Home)
@@ -225,14 +230,15 @@ func elsewhereAdvice(env Env, repo, p string) string {
 }
 
 // warnOwnPath warns when the manifest checkout at dir is not the working
-// copy that its own entry names.
+// copy that its checkout names.
 func warnOwnPath(ctx context.Context, env Env, m *manifest.Manifest, dir string) {
 	root, elsewhere, own := ownElsewhere(ctx, env, m, dir)
 	show := homeShow(env.Home)
 	for i, p := range elsewhere {
-		fmt.Fprintf(env.Stderr, "warning: own %s has path %s, but the manifest is in %s: sync would keep a second working copy at %s "+
+		repo := m.Checkouts[own[i]].Repo
+		fmt.Fprintf(env.Stderr, "warning: checkout %s has checkout_dir %s, but the manifest is in %s: sync would keep a second working copy at %s "+
 			"and never pull this one, so manifest changes from other machines would not arrive; %s\n",
-			gitx.Mask(own[i]), show(p), show(root), show(p), elsewhereAdvice(env, own[i], p))
+			own[i], show(p), show(root), show(p), elsewhereAdvice(env, repo, p))
 	}
 }
 
@@ -248,15 +254,15 @@ func samePath(a, b string) bool {
 	return resolve(a) == resolve(b)
 }
 
-// manifestElsewhere describes each own entry of the manifest that is the
+// manifestElsewhere describes each checkout of the manifest that is the
 // repository holding the manifest but names another working copy: sync
 // never pulls the manifest checkout then. It returns that checkout and one
 // detail per entry.
 func (e *Engine) manifestElsewhere() (root string, details []string) {
 	root, elsewhere, own := ownElsewhere(e.ctx, e.env, e.m, filepath.Dir(e.manifestPath))
 	for i, p := range elsewhere {
-		details = append(details, fmt.Sprintf("the manifest is not in the working copy of own %s (%s): sync pulls that one and never this checkout, "+
-			"so manifest changes from other machines do not arrive; %s", gitx.Mask(own[i]), e.show(p), elsewhereAdvice(e.env, own[i], p)))
+		details = append(details, fmt.Sprintf("the manifest is not in the working copy of checkout %s (%s): sync pulls that one and never this checkout, "+
+			"so manifest changes from other machines do not arrive; %s", own[i], e.show(p), elsewhereAdvice(e.env, e.m.Checkouts[own[i]].Repo, p)))
 	}
 	return root, details
 }

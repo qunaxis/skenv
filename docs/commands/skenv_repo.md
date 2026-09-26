@@ -15,6 +15,7 @@ $ skenv repo init --visibility private
 $ skenv repo init --visibility public --ci gitlab
 $ skenv repo check
 $ skenv repo apply
+$ skenv repo upgrade
 ```
 
 ### Options
@@ -30,4 +31,5 @@ $ skenv repo apply
 * [skenv repo apply](skenv_repo_apply.md)	 - Regenerate the managed files of the harness
 * [skenv repo check](skenv_repo_check.md)	 - Compare the managed files with the harness templates
 * [skenv repo init](skenv_repo_init.md)	 - Set up the harness of a skills repository
+* [skenv repo upgrade](skenv_repo_upgrade.md)	 - Move the repository to the templates of this skenv
 
