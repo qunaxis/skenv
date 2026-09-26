@@ -11,11 +11,12 @@ yet, so adopting skenv on a machine with skills is one command. What it
 changes:
 
 - The manifest: a skill installed by the vercel skills CLI becomes
-  `[[environment.vendor]]`, pinned to a commit; a link into a git working
-  copy becomes `[[environment.own]]` (with `skills = [...]` when only some
-  of its skills are linked). The diff is printed and the file written in
-  place, comments kept; a skenv file without `[environment]` gets one, as
-  `skenv init` adds it. The change is not committed.
+  `[user.dependencies.<name>]`, pinned to a commit; a link into a git
+  working copy becomes `[user.checkouts.<id>]` (with `include = [...]` when
+  only some of its skills are linked; the ID is the repository name). The
+  diff is printed and the file written in place, comments kept; a skenv
+  file without `[user]` gets one, as `skenv init` adds it. The change is not
+  committed.
 - The lock of the skills CLI, `~/.agents/.skill-lock.json` (or
   `$XDG_STATE_HOME/skills/.skill-lock.json`): the skills now in the manifest
   leave it, so `npx skills update` no longer changes what skenv manages. The
@@ -24,18 +25,18 @@ changes:
   backs them up and replaces them.
 
 The report lists what becomes managed, grouped by how the commit of each
-vendored skill was found: exact (the commit has the hash recorded in the
+dependency was found: exact (the commit has the hash recorded in the
 lock), same files (no commit has the hash, one has the files of the
 installed copy) and unmatched (neither: pinned to the tip of the branch, so
 the installed copy may differ; a warning). Then what is not imported, with
 the reason: a directory neither in the lock nor a link into a working copy,
 a lock entry from a source that is not a git repository or not installed.
 Skipped without a word: `~/.claude/skills/synced`, skills of Claude Code
-plugins, `layout.ignore` matches and skills in the manifest. A second run
+plugins, `user.unmanaged` matches and skills in the manifest. A second run
 imports nothing.
 
 With `--sync`, `skenv sync --adopt` follows and takes over the exact and
-same-files skills and the own repositories. The unmatched ones are recorded
+same-files skills and the checkouts. The unmatched ones are recorded
 but left as installed; the report after the sync lists what was recorded
 and what was taken over, and for each unmatched skill the two ways to
 decide: `skenv sync --adopt` replaces it with the pinned commit,
@@ -49,7 +50,7 @@ copy; then HEAD.
 
 With `--project`: the same for the git repository of the current directory
 and the `skills-lock.json` of the skills CLI in its root. Each skill of the
-lock becomes `[[project.vendor]]` of the repository's skenv file (a
+lock becomes `[project.dependencies.<name>]` of the repository's skenv file (a
 skenv file without `[project]` gets one, a repository without a skenv file a
 `skenv.toml`), matched with its computedHash the same way (without dates:
 every commit is a candidate). The imported entries leave `skills-lock.json`
@@ -87,18 +88,17 @@ would become managed: 1 entry in ~/src/skills/skenv.toml
   exact: the commit has the hash recorded in the lock
     release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
 not imported: 1
-  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
+  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into a checkout, or add "notes" to user.unmanaged
 would remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/skills/skenv.toml
 +++ ~/src/skills/skenv.toml
- path = "tools/diagrams"
- rev = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
+ skill_dir = "tools/diagrams"
+ commit    = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
 +
-+[[environment.vendor]]
-+name = "release-notes"
-+repo = "example-vendor/tools"
-+path = "tools/release-notes"
-+rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
++[user.dependencies.release-notes]
++repo      = "example-vendor/tools"
++skill_dir = "tools/release-notes"
++commit    = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
 import: planned: 1 manifest entry (1 exact), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
 ```
 
@@ -110,18 +110,17 @@ becomes managed: 1 entry in ~/src/skills/skenv.toml
   exact: the commit has the hash recorded in the lock
     release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4
 not imported: 1
-  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
+  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into a checkout, or add "notes" to user.unmanaged
 remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/skills/skenv.toml
 +++ ~/src/skills/skenv.toml
- path = "tools/diagrams"
- rev = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
+ skill_dir = "tools/diagrams"
+ commit    = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
 +
-+[[environment.vendor]]
-+name = "release-notes"
-+repo = "example-vendor/tools"
-+path = "tools/release-notes"
-+rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
++[user.dependencies.release-notes]
++repo      = "example-vendor/tools"
++skill_dir = "tools/release-notes"
++commit    = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
 import: 1 manifest entry (1 exact), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
 next: `skenv sync --adopt` replaces the installed copies with managed ones (the old ones go to ~/.local/state/skenv/backup)
 manifest changed but not committed; to commit:
@@ -136,18 +135,17 @@ becomes managed: 1 entry in ~/src/skills/skenv.toml
   unmatched: no commit matched, pinned to the tip of the branch; the installed copy may differ
     release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4: skillFolderHash 000000000000 is not in the history of the default branch, and no commit has the files of the installed copy; HEAD of the default branch
 not imported: 1
-  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
+  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into a checkout, or add "notes" to user.unmanaged
 remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/skills/skenv.toml
 +++ ~/src/skills/skenv.toml
- path = "tools/diagrams"
- rev = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
+ skill_dir = "tools/diagrams"
+ commit    = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
 +
-+[[environment.vendor]]
-+name = "release-notes"
-+repo = "example-vendor/tools"
-+path = "tools/release-notes"
-+rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
++[user.dependencies.release-notes]
++repo      = "example-vendor/tools"
++skill_dir = "tools/release-notes"
++commit    = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
 import: 1 manifest entry (1 unmatched), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
 manifest changed but not committed; to commit:
   git -C ~/src/skills commit -m "chore(manifest): import installed skills" -- skenv.toml
@@ -178,11 +176,10 @@ remove release-notes from skills-lock.json, so that the skills CLI no longer upd
 +[project]
 +mirrors = [".claude/skills"]
 +
-+[[project.vendor]]
-+name = "release-notes"
-+repo = "example-vendor/tools"
-+path = "tools/release-notes"
-+rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
++[project.dependencies.release-notes]
++repo      = "example-vendor/tools"
++skill_dir = "tools/release-notes"
++commit    = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
 import: 1 [project] entry (1 exact), 1 removed from skills-lock.json, 1 project-own skills, 0 differing duplicates, 0 warnings, 0 errors
 next: `skenv sync --adopt` replaces the installed copies with managed ones (the old ones go to ~/.local/state/skenv/backup)
 the project skills changed; to commit them:
@@ -195,7 +192,7 @@ the project skills changed; to commit them:
 ```
       --dry-run           print the plan; write nothing except the clone cache ~/.cache/skenv/repos, fetched to resolve commits
   -h, --help              help for import
-      --manifest string   skenv file with the [environment] section, or its directory
+      --manifest string   skenv file with the [user] section, or its directory
       --project           import the skills-lock.json of the current repository into its [project] section
       --sync              run skenv sync --adopt after the import; skills pinned without a matching commit stay as installed
 ```

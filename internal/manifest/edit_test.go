@@ -6,23 +6,22 @@ import (
 )
 
 const base = `# my skills
-[[environment.own]]
-repo = "me/skills"   # own
-path = "~/skills"
+[user.checkouts.skills]
+repo = "me/skills"   # mine
+checkout_dir = "~/skills"
 
-[[environment.vendor]]
-name = "a"
-repo = "x/a"
-path = "."
-rev  = "` + sha + `" # pinned on purpose
+[user.dependencies.a]
+repo      = "x/a"
+skill_dir = "."
+commit    = "` + sha + `" # pinned on purpose
 
-# the host table
-[environment.host."mbp"]
-skip = []
+# the machine table
+[user.machines."mbp"]
+exclude = []
 `
 
-func TestAppendVendor(t *testing.T) {
-	out, err := AppendVendor([]byte(base), ".toml", "environment", Vendor{Name: "b", Repo: "x/b", Path: "skills/b", Rev: sha})
+func TestAppendDependency(t *testing.T) {
+	out, err := AppendDependency([]byte(base), ".toml", "user", Dependency{Name: "b", Repo: "x/b", SkillDir: "skills/b", Commit: sha})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,21 +29,21 @@ func TestAppendVendor(t *testing.T) {
 	if !strings.HasPrefix(s, base) {
 		t.Fatal("existing text must be kept verbatim")
 	}
-	if !strings.HasSuffix(s, "\n[[environment.vendor]]\nname = \"b\"\nrepo = \"x/b\"\npath = \"skills/b\"\nrev  = \""+sha+"\"\n") {
+	if !strings.HasSuffix(s, "\n[user.dependencies.b]\nrepo      = \"x/b\"\nskill_dir = \"skills/b\"\ncommit    = \""+sha+"\"\n") {
 		t.Errorf("appended:\n%s", s)
 	}
 	m, _ := Parse(out, ".toml")
-	if len(m.Vendor) != 2 || len(m.Host) != 1 {
+	if len(m.Dependencies) != 2 || len(m.Machines) != 1 {
 		t.Error("appended table breaks the structure")
 	}
-	if _, err := AppendVendor([]byte(base), ".toml", "environment", Vendor{Name: "a", Repo: "x/a", Path: ".", Rev: sha}); err == nil {
-		t.Error("duplicate append must fail validation")
+	if _, err := AppendDependency([]byte(base), ".toml", "user", Dependency{Name: "a", Repo: "x/a", SkillDir: ".", Commit: sha}); err == nil {
+		t.Error("a duplicate table must fail validation")
 	}
 }
 
-func TestSetVendorRev(t *testing.T) {
+func TestSetDependencyCommit(t *testing.T) {
 	next := strings.Repeat("b", 40)
-	out, err := SetVendorRev([]byte(base), ".toml", "environment", "a", next)
+	out, err := SetDependencyCommit([]byte(base), ".toml", "user", "a", next)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,35 +51,35 @@ func TestSetVendorRev(t *testing.T) {
 	if string(out) != want {
 		t.Errorf("got:\n%s\nwant:\n%s", out, want)
 	}
-	if _, err := SetVendorRev([]byte(base), ".toml", "environment", "missing", next); err == nil {
-		t.Error("unknown vendor must fail")
+	if _, err := SetDependencyCommit([]byte(base), ".toml", "user", "missing", next); err == nil {
+		t.Error("an unknown dependency must fail")
 	}
 }
 
-func TestRemoveVendor(t *testing.T) {
-	with, err := AppendVendor([]byte(base), ".toml", "environment", Vendor{Name: "b", Repo: "x/b", Path: ".", Rev: sha})
+func TestRemoveDependency(t *testing.T) {
+	with, err := AppendDependency([]byte(base), ".toml", "user", Dependency{Name: "b", Repo: "x/b", SkillDir: ".", Commit: sha})
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := RemoveVendor(with, ".toml", "environment", "a")
+	out, err := RemoveDependency(with, ".toml", "user", "a")
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(out)
-	for _, keep := range []string{"# my skills", `repo = "me/skills"   # own`, "# the host table", `name = "b"`} {
+	for _, keep := range []string{"# my skills", `repo = "me/skills"   # mine`, "# the machine table", `[user.dependencies.b]`} {
 		if !strings.Contains(s, keep) {
 			t.Errorf("lost %q:\n%s", keep, s)
 		}
 	}
-	if strings.Contains(s, `name = "a"`) || strings.Contains(s, "pinned on purpose") {
-		t.Errorf("vendor a not removed:\n%s", s)
+	if strings.Contains(s, `[user.dependencies.a]`) || strings.Contains(s, "pinned on purpose") {
+		t.Errorf("dependency a not removed:\n%s", s)
 	}
-	out, err = RemoveVendor(out, ".toml", "environment", "b")
+	out, err = RemoveDependency(out, ".toml", "user", "b")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m, _ := Parse(out, ".toml"); len(m.Vendor) != 0 {
-		t.Error("vendor b not removed")
+	if m, _ := Parse(out, ".toml"); len(m.Dependencies) != 0 {
+		t.Error("dependency b not removed")
 	}
 }
 
@@ -90,73 +89,91 @@ func TestQuote(t *testing.T) {
 	}
 }
 
-// YAML and JSON manifests are edited through their data.
+// YAML and JSON manifests are edited in place too.
 func TestEditOtherFormats(t *testing.T) {
 	for ext, text := range map[string]string{
-		".yaml": "environment:\n  own:\n    - repo: me/skills\n      path: ~/skills\n  vendor:\n    - name: a\n      repo: x/a\n      rev: " + sha + "\n",
-		".json": `{"environment": {"own": [{"repo": "me/skills", "path": "~/skills"}], "vendor": [{"name": "a", "repo": "x/a", "rev": "` + sha + `"}]}}`,
+		".yaml": "user:\n  checkouts:\n    skills:\n      repo: me/skills # mine\n      checkout_dir: ~/skills\n  dependencies:\n    a:\n      repo: x/a\n      commit: \"" + sha + "\"\n",
+		".json": `{"user": {"checkouts": {"skills": {"repo": "me/skills", "checkout_dir": "~/skills"}}, "dependencies": {"a": {"repo": "x/a", "commit": "` + sha + `"}}}}`,
 	} {
 		t.Run(ext, func(t *testing.T) {
 			next := strings.Repeat("b", 40)
-			out, err := AppendVendor([]byte(text), ext, "environment", Vendor{Name: "b", Repo: "x/b", Path: ".", Rev: sha})
+			out, err := AppendDependency([]byte(text), ext, "user", Dependency{Name: "b", Repo: "x/b", SkillDir: ".", Commit: sha})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if out, err = SetVendorRev(out, ext, "environment", "a", next); err != nil {
+			if out, err = SetDependencyCommit(out, ext, "user", "a", next); err != nil {
 				t.Fatal(err)
 			}
-			if out, err = RemoveVendor(out, ext, "environment", "b"); err != nil {
+			if out, err = RemoveDependency(out, ext, "user", "b"); err != nil {
 				t.Fatal(err)
 			}
 			m, err := Parse(out, ext)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(m.Vendor) != 1 || m.Vendor[0].Rev != next || len(m.Own) != 1 {
+			if len(m.Dependencies) != 1 || m.Dependencies["a"].Commit != next || len(m.Checkouts) != 1 {
 				t.Errorf("result:\n%s", out)
 			}
-			if _, err := SetVendorRev(out, ext, "environment", "missing", next); err == nil {
-				t.Error("unknown vendor must fail")
+			if ext == ".yaml" && !strings.Contains(string(out), "# mine") {
+				t.Errorf("comment lost:\n%s", out)
+			}
+			if _, err := SetDependencyCommit(out, ext, "user", "missing", next); err == nil {
+				t.Error("an unknown dependency must fail")
+			}
+			// Removing the last one leaves an empty table.
+			if out, err = RemoveDependency(out, ext, "user", "a"); err != nil {
+				t.Fatal(err)
+			}
+			if m, err := Parse(out, ext); err != nil || len(m.Dependencies) != 0 {
+				t.Errorf("last removed: %v\n%s", err, out)
 			}
 		})
 	}
 }
 
-func TestParseNeedsEnvironment(t *testing.T) {
-	if _, err := Parse([]byte("[repo]\nharness = \"0.4.0\"\nvisibility = \"public\"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "no [environment] section") {
+func TestParseNeedsUser(t *testing.T) {
+	if _, err := Parse([]byte("[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"public\"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "no [user] section") {
 		t.Errorf("err = %v", err)
 	}
 }
 
-// A vendor table header may carry a comment and spaces.
-func TestVendorHeaderWithComment(t *testing.T) {
-	text := "[environment.layout]\nstore = \"~/s\"\n\n[[ environment . vendor ]]  # pinned\nname = \"b\"\nrepo = \"x/b\"\nrev  = \"" + sha + "\"\n"
-	out, err := RemoveVendor([]byte(text), ".toml", "environment", "b")
-	if err != nil {
-		t.Fatal(err)
+// A dependency table header may carry a comment, spaces and a quoted key.
+func TestDependencyHeaderForms(t *testing.T) {
+	for _, header := range []string{`[ user . dependencies . b ]  # pinned`, `[user.dependencies."b"]`} {
+		text := "[user.storage]\ndir = \"~/s\"\n\n" + header + "\nrepo = \"x/b\"\ncommit = \"" + sha + "\"\n"
+		out, err := RemoveDependency([]byte(text), ".toml", "user", "b")
+		if err != nil {
+			t.Fatalf("%s: %v", header, err)
+		}
+		if strings.Contains(string(out), `repo = "x/b"`) {
+			t.Errorf("%s: not removed:\n%s", header, out)
+		}
 	}
-	if strings.Contains(string(out), `name = "b"`) {
-		t.Errorf("not removed:\n%s", out)
+	// An inline form is not edited: the error says which form works.
+	inline := "[user.dependencies]\nb = { repo = \"x/b\", commit = \"" + sha + "\" }\n"
+	if _, err := SetDependencyCommit([]byte(inline), ".toml", "user", "b", sha); err == nil || !strings.Contains(err.Error(), "multi-line form") {
+		t.Errorf("inline: %v", err)
 	}
 }
 
-func TestAppendOwn(t *testing.T) {
-	out, err := AppendOwn([]byte(base), ".toml", Own{Repo: "me/more", Path: "~/src/more", SkillsDir: "agent/skills", Skills: []string{"a2", "b2"}})
+func TestAppendCheckout(t *testing.T) {
+	out, err := AppendCheckout([]byte(base), ".toml", Checkout{ID: "more", Repo: "me/more", CheckoutDir: "~/src/more", SkillsDir: "agent/skills", Include: []string{"a2", "b2"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(out)
-	if !strings.HasPrefix(s, base) || !strings.HasSuffix(s, "\n[[environment.own]]\nrepo = \"me/more\"\npath = \"~/src/more\"\nskills_dir = \"agent/skills\"\nskills = [\"a2\", \"b2\"]\n") {
+	if !strings.HasPrefix(s, base) || !strings.HasSuffix(s, "\n[user.checkouts.more]\nrepo         = \"me/more\"\ncheckout_dir = \"~/src/more\"\nskills_dir   = \"agent/skills\"\ninclude      = [\"a2\", \"b2\"]\n") {
 		t.Errorf("appended:\n%s", s)
 	}
 	m, _ := Parse(out, ".toml")
-	if len(m.Own) != 2 || len(m.Vendor) != 1 || len(m.Host) != 1 || m.Own[1].SkillsDir != "agent/skills" {
+	if len(m.Checkouts) != 2 || len(m.Dependencies) != 1 || len(m.Machines) != 1 || m.Checkouts["more"].SkillsDir != "agent/skills" {
 		t.Errorf("appended table breaks the structure: %+v", m)
 	}
-	// The default skills_dir and no selection write only repo and path.
+	// The default skills_dir and no selection write only repo and
+	// checkout_dir.
 	for _, ext := range []string{".toml", ".yaml", ".json"} {
-		data := map[string]string{".toml": base, ".yaml": "# c\nenvironment:\n  own: []\n", ".json": `{"environment": {}}`}[ext]
-		out, err := AppendOwn([]byte(data), ext, Own{Repo: "me/x", Path: "~/x", SkillsDir: DefaultSkillsDir})
+		data := map[string]string{".toml": base, ".yaml": "# c\nuser:\n  checkouts: {}\n", ".json": `{"user": {}}`}[ext]
+		out, err := AppendCheckout([]byte(data), ext, Checkout{ID: "x", Repo: "me/x", CheckoutDir: "~/x", SkillsDir: DefaultSkillsDir})
 		if err != nil {
 			t.Fatalf("%s: %v", ext, err)
 		}
@@ -164,33 +181,33 @@ func TestAppendOwn(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", ext, err)
 		}
-		last := m.Own[len(m.Own)-1]
-		if last.Repo != "me/x" || last.Skills != nil || strings.Contains(string(out), "skills_dir") {
+		if c := m.Checkouts["x"]; c.Repo != "me/x" || c.Include != nil || strings.Contains(string(out), "skills_dir") {
 			t.Errorf("%s:\n%s", ext, out)
 		}
 	}
 }
 
-// Commented keys right under a table belong to it: a new vendor table goes
-// after them, so uncommenting them later keeps them in their own table.
-func TestAppendVendorKeepsTrailingComments(t *testing.T) {
-	out, err := AddEnvironment(nil, ".toml", &Own{Repo: "me/skills", Path: "~/skills"})
+// Commented keys right under a table belong to it: a new dependency table
+// goes after them, so uncommenting them later keeps them in their own
+// table.
+func TestAppendDependencyKeepsTrailingComments(t *testing.T) {
+	out, err := AddUser(nil, ".toml", &Checkout{ID: "skills", Repo: "me/skills", CheckoutDir: "."})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out, err = AppendVendor(out, ".toml", "environment", Vendor{Name: "b", Repo: "x/b", Path: "skills/b", Rev: sha}); err != nil {
+	if out, err = AppendDependency(out, ".toml", "user", Dependency{Name: "b", Repo: "x/b", SkillDir: "skills/b", Commit: sha}); err != nil {
 		t.Fatal(err)
 	}
 	s := string(out)
-	if i, j := strings.Index(s, "# exclude = "), strings.Index(s, "[[environment.vendor]]"); i < 0 || j < i {
-		t.Fatalf("the vendor table splits the own table from its commented keys:\n%s", s)
+	if i, j := strings.Index(s, "# exclude = "), strings.Index(s, "[user.dependencies.b]"); i < 0 || j < i {
+		t.Fatalf("the dependency table splits the checkout from its commented keys:\n%s", s)
 	}
 	uncommented := strings.Replace(s, `# exclude = ["experimental-*"]`, `exclude = ["experimental-*"]`, 1)
 	m, err := Parse([]byte(uncommented), ".toml")
 	if err != nil {
 		t.Fatalf("uncommented exclude: %v\n%s", err, uncommented)
 	}
-	if len(m.Own) != 1 || len(m.Own[0].Exclude) != 1 || len(m.Vendor) != 1 {
+	if len(m.Checkouts) != 1 || len(m.Checkouts["skills"].Exclude) != 1 || len(m.Dependencies) != 1 {
 		t.Errorf("parsed: %+v", m)
 	}
 }

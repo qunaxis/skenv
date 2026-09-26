@@ -22,7 +22,7 @@ import (
 
 // Schema file names.
 const (
-	Skenv  = "skenv.schema.json"  // the skenv file: [repo], [environment], [project]
+	Skenv  = "skenv.schema.json"  // the skenv file: [repository], [user], [project]
 	Config = "config.schema.json" // the tool config ~/.config/skenv/config.*
 )
 
@@ -153,14 +153,14 @@ func Check(data []byte, ext, name, version string) string {
 	cur, ok := docedit.Directive(data, ext)
 	switch {
 	case !ok:
-		return "no schema directive for editors (" + directiveHint(ext) + "); `skenv repo apply` adds it"
+		return "no schema directive for editors (" + directiveHint(ext) + "); `skenv repo upgrade` adds it"
 	case cur == want:
 		return ""
 	}
 	if _, _, ours := ParseURL(cur); !ours {
 		return ""
 	}
-	return "the schema directive points at " + cur + ", expected " + want + "; `skenv repo apply` updates it"
+	return "the schema directive points at " + cur + ", expected " + want + "; `skenv repo upgrade` updates it"
 }
 
 func directiveHint(ext string) string {

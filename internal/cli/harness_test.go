@@ -65,9 +65,9 @@ func TestRepoInitCheckApply(t *testing.T) {
 		t.Errorf("second apply: %s", out)
 	}
 
-	// The skenv file names the schema of its harness version. A missing or
+	// The skenv file names the schema of its template version. A missing or
 	// outdated directive is a warning of check (exit code unchanged) that
-	// apply fixes.
+	// upgrade fixes; apply never writes the skenv file.
 	cfg := filepath.Join(repo, "skenv.toml")
 	directive := "#:schema " + schemas.URL(schemas.Skenv, harness.Latest) + "\n"
 	text := readFile(t, cfg)
@@ -83,12 +83,16 @@ func TestRepoInitCheckApply(t *testing.T) {
 		if !strings.Contains(errOut, "warning: skenv.toml: "+c.warning) {
 			t.Errorf("check with %q: %s", c.warning, errOut)
 		}
-		out, _ = w.mustRun(0, "repo", "apply", "--dir", repo)
+		w.mustRun(0, "repo", "apply", "--dir", repo)
+		if readFile(t, cfg) != c.content {
+			t.Error("apply changed the skenv file")
+		}
+		out, _ = w.mustRun(0, "repo", "upgrade", "--dir", repo)
 		if !strings.Contains(out, "update skenv.toml") || readFile(t, cfg) != text {
-			t.Errorf("apply must restore the directive:\n%s\n%s", out, readFile(t, cfg))
+			t.Errorf("upgrade must restore the directive:\n%s\n%s", out, readFile(t, cfg))
 		}
 		if _, errOut = w.mustRun(0, "repo", "check", "--dir", repo); errOut != "" {
-			t.Errorf("check after apply: %s", errOut)
+			t.Errorf("check after upgrade: %s", errOut)
 		}
 	}
 	// A URL of the user's choice is left alone.
@@ -104,7 +108,7 @@ func TestRepoInitCheckApply(t *testing.T) {
 		t.Errorf("CLAUDE.md not reported:\n%s", out)
 	}
 	_, errOut = w.mustRun(2, "repo", "init", "--visibility", "public", "--dir", repo)
-	if !strings.Contains(errOut, "already has [repo]") {
+	if !strings.Contains(errOut, "already has [repository]") {
 		t.Errorf("second init: %s", errOut)
 	}
 }
@@ -181,29 +185,46 @@ func TestLefthookRejectsBadSkill(t *testing.T) {
 	}
 }
 
-// repo apply on an older harness moves the version only when it can
+// template_version is desired state: repo apply refuses a version it does
+// not embed and never edits it; repo upgrade moves it, only when it can
 // regenerate the files; --dry-run says "would".
 func TestRepoApplyOlderHarness(t *testing.T) {
 	w, repo := harnessRepo(t)
 	lookLefthook = func(string) (string, error) { return "", exec.ErrNotFound }
 	t.Cleanup(func() { lookLefthook = exec.LookPath })
-	writeFile(t, filepath.Join(repo, "skenv.toml"), "[repo]\nharness = \"0.3.0\"\nvisibility = \"private\"\n")
+	file := filepath.Join(repo, "skenv.toml")
+	older := "[repository]\ntemplate_version = \"0.3.0\"\nvisibility = \"private\"\n"
+	writeFile(t, file, older)
 	writeFile(t, filepath.Join(repo, "ruff.toml"), "# hand-written\n")
-	_, errOut := w.mustRun(2, "repo", "apply", "--dir", repo)
-	if !strings.Contains(errOut, "not managed by skenv") || !strings.Contains(readFile(t, filepath.Join(repo, "skenv.toml")), `"0.3.0"`) {
-		t.Fatalf("refused apply moved the version or did not refuse: %s", errOut)
+	_, errOut := w.mustRun(2, "repo", "apply", "--dir", repo, "--force")
+	if !strings.Contains(errOut, "template_version 0.3.0 is not the template set of this skenv ("+harness.Latest+"); run `skenv repo upgrade`") || readFile(t, file) != older {
+		t.Fatalf("apply of an older version: %s", errOut)
 	}
-	out, _ := w.mustRun(0, "repo", "apply", "--dir", repo, "--force", "--dry-run")
-	if !strings.Contains(out, "would move harness 0.3.0 → "+harness.Latest) || !strings.Contains(readFile(t, filepath.Join(repo, "skenv.toml")), `"0.3.0"`) {
+	out, _ := w.mustRun(1, "repo", "check", "--dir", repo)
+	if !strings.Contains(out, "template_version 0.3.0; this skenv generates "+harness.Latest+": run `skenv repo upgrade`") {
+		t.Errorf("check: %s", out)
+	}
+	_, errOut = w.mustRun(2, "repo", "upgrade", "--dir", repo)
+	if !strings.Contains(errOut, "not managed by skenv") || readFile(t, file) != older {
+		t.Fatalf("refused upgrade moved the version or did not refuse: %s", errOut)
+	}
+	out, _ = w.mustRun(0, "repo", "upgrade", "--dir", repo, "--force", "--dry-run")
+	if !strings.Contains(out, "would move template_version 0.3.0 → "+harness.Latest) || readFile(t, file) != older {
 		t.Fatalf("dry-run: %s", out)
 	}
-	w.mustRun(0, "repo", "apply", "--dir", repo, "--force")
+	w.mustRun(0, "repo", "upgrade", "--dir", repo, "--force")
+	if !strings.Contains(readFile(t, file), `template_version = "`+harness.Latest+`"`) {
+		t.Errorf("upgrade:\n%s", readFile(t, file))
+	}
 	w.mustRun(0, "repo", "check", "--dir", repo)
+	if out, _ := w.mustRun(0, "repo", "upgrade", "--dir", repo); !strings.Contains(out, "template_version is "+harness.Latest+" already") {
+		t.Errorf("second upgrade: %s", out)
+	}
 }
 
 // repo init picks the CI system from the host of origin (declared hosts
 // included) unless --ci says otherwise; the GitLab pipeline is checked for
-// drift like the GitHub workflow, and switching repo.ci moves the
+// drift like the GitHub workflow, and switching the CI table moves the
 // repository from one to the other.
 func TestRepoInitCI(t *testing.T) {
 	lookLefthook = func(string) (string, error) { return "", exec.ErrNotFound }
@@ -254,7 +275,7 @@ func TestRepoInitCI(t *testing.T) {
 		if !strings.Contains(out, "(private, ci "+c.want+")") || (c.why != "" && !strings.Contains(out, "ci "+c.want+": "+c.why)) || strings.Contains(out, "secret") {
 			t.Errorf("%s %v:\n%s", c.origin, c.args, out)
 		}
-		if !strings.Contains(readFile(t, filepath.Join(repo, "skenv.toml")), `ci         = "`+c.want+`"`) {
+		if !strings.Contains(readFile(t, filepath.Join(repo, "skenv.toml")), "[repository.ci."+c.want+"]") {
 			t.Errorf("%s: skenv.toml:\n%s", c.origin, readFile(t, filepath.Join(repo, "skenv.toml")))
 		}
 	}
@@ -265,7 +286,7 @@ func TestRepoInitCI(t *testing.T) {
 	// A self-hosted GitLab declared in the repository's own manifest, and
 	// one declared in the manifest of the config file.
 	own := newRepo(w, "own-manifest", "https://git.example.com/team/skills.git")
-	writeFile(t, filepath.Join(own, "skenv.toml"), "[environment.hosts.work]\nurl = \"https://git.example.com\"\ntype = \"gitlab\"\n")
+	writeFile(t, filepath.Join(own, "skenv.toml"), "[user.git_hosts.work]\nbase_url = \"https://git.example.com\"\nprovider = \"gitlab\"\n")
 	w.mustRun(0, "repo", "init", "--visibility", "private", "--dir", own)
 	if got := pipeline(own); got != "gitlab" {
 		t.Errorf("host declared in the repository: %s", got)
@@ -282,17 +303,17 @@ func TestRepoInitCI(t *testing.T) {
 	pipe := filepath.Join(other, ".gitlab-ci.yml")
 	writeFile(t, pipe, strings.Replace(readFile(t, pipe), "timeout: 30m", "timeout: 99m", 1))
 	out, _ := w.mustRun(1, "repo", "check", "--dir", other)
-	if !strings.Contains(out, ".gitlab-ci.yml: differs from the harness") {
+	if !strings.Contains(out, ".gitlab-ci.yml: differs from the "+harness.Latest+" template") {
 		t.Errorf("check:\n%s", out)
 	}
 	w.mustRun(0, "repo", "apply", "--dir", other)
 	w.mustRun(0, "repo", "check", "--dir", other)
 
-	// Switching to GitHub is an edit of repo.ci and apply.
+	// Switching to GitHub is an edit of the CI table and apply.
 	cfg := filepath.Join(other, "skenv.toml")
-	writeFile(t, cfg, strings.Replace(readFile(t, cfg), `ci         = "gitlab"`, `ci         = "github"`, 1))
+	writeFile(t, cfg, strings.Replace(readFile(t, cfg), "[repository.ci.gitlab]", "[repository.ci.github]", 1))
 	out, _ = w.mustRun(1, "repo", "check", "--dir", other)
-	if !strings.Contains(out, `.gitlab-ci.yml: managed file of ci = "gitlab"`) {
+	if !strings.Contains(out, ".gitlab-ci.yml: managed file of CI gitlab, and this repository has repository.ci.github") {
 		t.Errorf("check after the edit:\n%s", out)
 	}
 	out, _ = w.mustRun(0, "repo", "apply", "--dir", other)
@@ -338,7 +359,7 @@ func TestRepoInitRunner(t *testing.T) {
 		t.Errorf("init --dry-run:\n%s", out)
 	}
 	out, errOut := w.mustRun(0, "repo", "init", "--visibility", "private", "--runner", "ubuntu-latest", "--dir", repo)
-	if !strings.Contains(out, "CI jobs run on runners ubuntu-latest (repo.runner)") {
+	if !strings.Contains(out, "CI jobs run on runners ubuntu-latest (repository.ci.github.runs_on)") {
 		t.Errorf("init output:\n%s", out)
 	}
 	if !strings.Contains(out, "git hooks need lefthook, uv and gitleaks: found uv; missing lefthook, gitleaks\n") {
@@ -347,7 +368,7 @@ func TestRepoInitRunner(t *testing.T) {
 	if !strings.Contains(errOut, "the git hooks need lefthook, gitleaks, not found on PATH") {
 		t.Errorf("missing tools:\n%s", errOut)
 	}
-	if got := readFile(t, filepath.Join(repo, "skenv.toml")); !strings.Contains(got, `runner     = ["ubuntu-latest"]`) {
+	if got := readFile(t, filepath.Join(repo, "skenv.toml")); !strings.Contains(got, `runs_on = ["ubuntu-latest"]`) {
 		t.Errorf("skenv.toml:\n%s", got)
 	}
 	if got := readFile(t, filepath.Join(repo, ".github/workflows/check.yml")); !strings.Contains(got, "runs-on: [ubuntu-latest]") {

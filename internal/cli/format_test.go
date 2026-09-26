@@ -42,11 +42,11 @@ func manifestIn(format, rev string) string {
 	url := schemas.URL(schemas.Skenv, "")
 	switch fileformat.Of("x." + format) {
 	case "yaml":
-		return directive(format, url) + "# test manifest\nenvironment:\n  own:\n    - repo: me/skills\n      path: ~/" + ownPath + "\n" +
-			"  # pinned third-party skill\n  vendor:\n    - name: archify\n      repo: ext/tools\n      path: tools/archify\n      rev: \"" + rev + "\" # keep this comment\n"
+		return directive(format, url) + "# test manifest\nuser:\n  checkouts:\n    skills:\n      repo: me/skills\n      checkout_dir: ~/" + ownPath + "\n" +
+			"  # pinned third-party skill\n  dependencies:\n    archify:\n      repo: ext/tools\n      skill_dir: tools/archify\n      commit: \"" + rev + "\" # keep this comment\n"
 	case "json":
-		return `{` + directive(format, url) + `"environment": {"own": [{"repo": "me/skills", "path": "~/` + ownPath + `"}], ` +
-			`"vendor": [{"name": "archify", "repo": "ext/tools", "path": "tools/archify", "rev": "` + rev + `"}]}}` + "\n"
+		return `{` + directive(format, url) + `"user": {"checkouts": {"skills": {"repo": "me/skills", "checkout_dir": "~/` + ownPath + `"}}, ` +
+			`"dependencies": {"archify": {"repo": "ext/tools", "skill_dir": "tools/archify", "commit": "` + rev + `"}}}}` + "\n"
 	}
 	return directive(format, url) + manifestText(rev, "")
 }
@@ -95,8 +95,8 @@ func assertKept(t *testing.T, dir, base, format string, keep []string, parse fun
 	return data
 }
 
-// vendorsAre returns a parse function that checks the vendor names of the
-// manifest.
+// vendorsAre returns a parse function that checks the dependency names of
+// the manifest.
 func vendorsAre(names ...string) func([]byte, string) error {
 	return func(data []byte, ext string) error {
 		m, err := manifest.Parse(data, ext)
@@ -104,8 +104,8 @@ func vendorsAre(names ...string) func([]byte, string) error {
 			return err
 		}
 		var got []string
-		for _, v := range m.Vendor {
-			got = append(got, v.Name)
+		for _, d := range m.DependencyList() {
+			got = append(got, d.Name)
 		}
 		if !slices.Equal(got, names) {
 			return &mismatch{"vendors", strings.Join(got, ","), strings.Join(names, ",")}
@@ -120,7 +120,8 @@ func (m *mismatch) Error() string { return m.what + " = " + m.got + ", want " + 
 
 // Invariant (#20): no write changes the format of a file. Every write path
 // (init recording the manifest in the tool config, init starting a
-// manifest, repo init adding [repo], repo apply, vendor add|update|remove)
+// manifest, repo init adding [repository], repo upgrade, vendor
+// add|update|remove, import)
 // runs on a file in each format (and skenv.yml, config.yml, which are
 // read but never created); the file keeps its name and extension,
 // reads back to the expected data, and keeps its comments and its schema
@@ -193,26 +194,33 @@ func TestWritesKeepFormat(t *testing.T) {
 					w.mustRun(0, "repo", "init", "--visibility", "private", "--dir", own)
 				}, own, "skenv", comments(format), func(data []byte, ext string) error {
 					if _, ok, err := harness.Parse(data, ext); err != nil || !ok {
-						return &mismatch{"[repo]", "missing", "present"}
+						return &mismatch{"[repository]", "missing", "present"}
 					}
 					return vendorsAre("archify")(data, ext)
 				}},
-				{"repo apply", func() {
+				{"repo upgrade", func() {
 					file := filepath.Join(own, "skenv."+format)
 					text := readFile(t, file)
-					older := strings.NewReplacer(`"`+harness.Latest+`"`, `"0.3.0"`, "harness: "+harness.Latest, "harness: 0.3.0").Replace(text)
+					older := strings.NewReplacer(`"`+harness.Latest+`"`, `"0.3.0"`, "template_version: "+harness.Latest, "template_version: 0.3.0").Replace(text)
 					if older == text {
-						t.Fatalf("no harness to move back in:\n%s", text)
+						t.Fatalf("no template_version to move back in:\n%s", text)
 					}
 					writeFile(t, file, older)
-					w.mustRun(0, "repo", "apply", "--dir", own)
+					// apply never edits the skenv file: it refuses another version.
+					if _, errOut := w.mustRun(2, "repo", "apply", "--dir", own); !strings.Contains(errOut, "run `skenv repo upgrade`") {
+						t.Errorf("apply with an older template_version: %s", errOut)
+					}
+					if readFile(t, file) != older {
+						t.Error("repo apply changed the skenv file")
+					}
+					w.mustRun(0, "repo", "upgrade", "--dir", own)
 				}, own, "skenv", comments(format), func(data []byte, ext string) error {
 					doc, err := skenvfile.Parse(data, ext)
 					if err != nil {
 						return err
 					}
-					if doc.Harness() != harness.Latest {
-						return &mismatch{"repo.harness", doc.Harness(), harness.Latest}
+					if doc.TemplateVersion() != harness.Latest {
+						return &mismatch{"repository.template_version", doc.TemplateVersion(), harness.Latest}
 					}
 					return vendorsAre("archify")(data, ext)
 				}},
@@ -235,16 +243,16 @@ func TestWritesKeepFormat(t *testing.T) {
 			w.git(own, "push", "--quiet")
 			w.mustRun(0, "doctor")
 
-			// init without a repository adds [environment] to the skenv
-			// file of another repository, and records it in the config.
+			// init without a repository adds [user] to the skenv file of
+			// another repository, and records it in the config.
 			fresh := filepath.Join(w.home, "fresh")
 			mustMkdir(t, fresh)
 			w.git(fresh, "init", "--quiet", "-b", "main")
 			repoText := map[string]string{
-				"toml": "# my repo\n[repo]\nharness    = \"" + harness.Latest + "\"\nvisibility = \"private\"\n",
-				"yaml": "# my repo\nrepo:\n  harness: " + harness.Latest + "\n  visibility: private\n",
-				"yml":  "# my repo\nrepo:\n  harness: " + harness.Latest + "\n  visibility: private\n",
-				"json": `{"repo": {"harness": "` + harness.Latest + `", "visibility": "private"}}`,
+				"toml": "# my repo\n[repository]\ntemplate_version = \"" + harness.Latest + "\"\nvisibility       = \"private\"\n",
+				"yaml": "# my repo\nrepository:\n  template_version: " + harness.Latest + "\n  visibility: private\n",
+				"yml":  "# my repo\nrepository:\n  template_version: " + harness.Latest + "\n  visibility: private\n",
+				"json": `{"repository": {"template_version": "` + harness.Latest + `", "visibility": "private"}}`,
 			}[format]
 			writeFile(t, filepath.Join(fresh, "skenv."+format), repoText)
 			var keep []string
@@ -321,13 +329,13 @@ func TestRepoInitFormat(t *testing.T) {
 			parse := func(data []byte, ext string) error {
 				_, ok, err := harness.Parse(data, ext)
 				if err == nil && !ok {
-					return &mismatch{"[repo]", "missing", "present"}
+					return &mismatch{"[repository]", "missing", "present"}
 				}
 				return err
 			}
 			var keep []string
 			if format != "json" {
-				keep = []string{"# Repository harness"}
+				keep = []string{"# Repository templates"}
 			}
 			assertKept(t, repo, "skenv", format, keep, parse)
 			w.mustRun(0, "repo", "check", "--dir", repo)
@@ -339,7 +347,7 @@ func TestRepoInitFormat(t *testing.T) {
 		})
 	}
 	w, repo := harnessRepo(t)
-	writeFile(t, filepath.Join(repo, "skenv.toml"), "# mine\n[environment]\n")
+	writeFile(t, filepath.Join(repo, "skenv.toml"), "# mine\n[user]\n")
 	before := snapshot(t, repo)
 	_, errOut := w.mustRun(2, "repo", "init", "--visibility", "private", "--format", "yaml", "--dir", repo)
 	if !strings.Contains(errOut, "skenv.toml exists and is TOML; --format yaml does not convert it") {
@@ -418,9 +426,9 @@ func TestInitStartsManifest(t *testing.T) {
 			w.mustRun(0, "doctor")
 			w.mustRun(0, "sync", "--quiet")
 
-			// A second run refuses: the file has [environment].
+			// A second run refuses: the file has [user].
 			before = snapshot(t, w.home)
-			if _, errOut := w.mustRun(2, "init", "--dir", repo); !strings.Contains(errOut, "has [environment] already") || !strings.Contains(errOut, "skenv use ") {
+			if _, errOut := w.mustRun(2, "init", "--dir", repo); !strings.Contains(errOut, "has [user] already") || !strings.Contains(errOut, "skenv use ") {
 				t.Errorf("second init: %s", errOut)
 			}
 			assertUnchanged(t, before, w.home)
@@ -428,19 +436,19 @@ func TestInitStartsManifest(t *testing.T) {
 	}
 }
 
-// With a GitHub origin the repository is the first own entry; its skills
-// are synced like any own repository's.
+// With a GitHub origin the repository is the first checkout, with
+// checkout_dir "."; its skills are synced like any checkout's.
 func TestInitStartsManifestWithOwnRepository(t *testing.T) {
 	w := newWorld(t)
 	w.push("me/skills", map[string]string{"skills/alpha/SKILL.md": skillMD("alpha", "")}, "feat: alpha")
 	mustMkdir(t, w.path("src"))
 	w.git(w.path("src"), "clone", "--quiet", "https://github.com/me/skills.git")
 	out, _ := w.mustRun(0, "init", "--dir", w.path(ownPath+"/skills"), "--format", "yaml")
-	if !strings.Contains(out, "me/skills as its first own repository") {
+	if !strings.Contains(out, "me/skills as its first checkout (skills)") {
 		t.Errorf("init:\n%s", out)
 	}
 	text := readFile(t, w.path(ownPath+"/skenv.yaml"))
-	if !strings.Contains(text, "own:\n    - repo: me/skills\n      path: ~/"+ownPath+"\n") {
+	if !strings.Contains(text, "checkouts:\n    skills:\n      repo: me/skills\n      checkout_dir: .\n") {
 		t.Errorf("skenv.yaml:\n%s", text)
 	}
 	w.git(w.path(ownPath), "add", "-A")
@@ -453,19 +461,19 @@ func TestInitStartsManifestWithOwnRepository(t *testing.T) {
 	w.mustRun(0, "doctor")
 }
 
-// An existing skenv file gets [environment] in its own format with its
-// comments and [repo] intact; a public [repo], a --format mismatch and a
+// An existing skenv file gets [user] in its own format with its comments
+// and [repository] intact; a public [repository], a --format mismatch and a
 // directory outside git are errors that write nothing.
 func TestInitStartsManifestInExistingFile(t *testing.T) {
 	noLefthook(t)
 	w, repo := harnessRepo(t)
 	w.mustRun(0, "repo", "init", "--visibility", "private", "--dir", repo)
 	file := filepath.Join(repo, "skenv.toml")
-	withRepo := strings.Replace(readFile(t, file), "[repo]\n", "# my harness\n[repo]\n", 1)
+	withRepo := strings.Replace(readFile(t, file), "[repository]\n", "# my harness\n[repository]\n", 1)
 	writeFile(t, file, withRepo)
 	w.mustRun(0, "init", "--dir", repo)
 	text := readFile(t, file)
-	if !strings.HasPrefix(text, withRepo) || !strings.Contains(text, "\n[environment]\n") {
+	if !strings.HasPrefix(text, withRepo) || !strings.Contains(text, "\n[user]\n") {
 		t.Errorf("skenv.toml:\n%s", text)
 	}
 	w.mustRun(0, "repo", "check", "--dir", repo)
@@ -475,7 +483,7 @@ func TestInitStartsManifestInExistingFile(t *testing.T) {
 	mustMkdir(t, pub)
 	w.git(pub, "init", "--quiet", "-b", "main")
 	w.mustRun(0, "repo", "init", "--visibility", "public", "--dir", pub)
-	writeFile(t, filepath.Join(w.home, "yaml/skenv.yaml"), "repo:\n  harness: "+harness.Latest+"\n  visibility: private\n")
+	writeFile(t, filepath.Join(w.home, "yaml/skenv.yaml"), "repository:\n  template_version: "+harness.Latest+"\n  visibility: private\n")
 	w.git(w.path("yaml"), "init", "--quiet", "-b", "main")
 	before := snapshot(t, w.home)
 	for args, want := range map[string]string{

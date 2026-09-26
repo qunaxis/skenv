@@ -18,19 +18,21 @@ import (
 // internal/docedit, which keeps comments and key order as well.
 
 var (
-	headerRe  = regexp.MustCompile(`^\s*\[`)
-	nameKeyRe = regexp.MustCompile(`^\s*name\s*=\s*"([^"]*)"`)
-	revKeyRe  = regexp.MustCompile(`^(\s*rev\s*=\s*)"[^"]*"(.*)$`)
+	headerRe     = regexp.MustCompile(`^\s*\[`)
+	commitKeyRe  = regexp.MustCompile(`^(\s*commit\s*=\s*)"[^"]*"(.*)$`)
+	tomlKeyStart = `\s*\[\s*`
 )
 
-// arrayRe matches the header of the array of tables <section>.<key>, as in
-// [[environment.vendor]], with optional spaces and a trailing comment.
-func arrayRe(section, key string) *regexp.Regexp {
-	return regexp.MustCompile(`^\s*\[\[\s*` + section + `\s*\.\s*` + key + `\s*\]\]\s*(#.*)?$`)
+// tableRe matches the header of the table <section>.<key>.<name>, as in
+// [user.dependencies.archify], with the name bare or double-quoted,
+// optional spaces and a trailing comment.
+func tableRe(section, key, name string) *regexp.Regexp {
+	n := regexp.QuoteMeta(name)
+	return regexp.MustCompile(`^` + tomlKeyStart + section + `\s*\.\s*` + key + `\s*\.\s*(?:` + n + `|"` + n + `")\s*\]\s*(#.*)?$`)
 }
 
 // sectionRe matches the header of any table of section: [project],
-// [[project.from]], [environment.host."x"].
+// [project.from.x], [user.machines."x"].
 func sectionRe(section string) *regexp.Regexp {
 	return regexp.MustCompile(`^\s*\[\[?\s*` + section + `\s*[.\]]`)
 }
@@ -55,76 +57,67 @@ func tableEnd(lines []string, i int) int {
 	return end
 }
 
-// arrayBlocks lists the tables of the array <section>.<key> in order.
-func arrayBlocks(lines []string, section, key string) []block {
-	re := arrayRe(section, key)
-	var out []block
-	for i := 0; i < len(lines); i++ {
+// namedBlock finds the table [<section>.<key>.<name>].
+func namedBlock(lines []string, section, key, name string) (block, error) {
+	re := tableRe(section, key, name)
+	for i := range lines {
 		if re.MatchString(strings.TrimRight(lines[i], "\r\n")) {
-			end := tableEnd(lines, i)
-			out = append(out, block{i, end})
-			i = end - 1
+			return block{i, tableEnd(lines, i)}, nil
 		}
 	}
-	return out
+	return block{}, fmt.Errorf("%s.%s.%s not found (skenv edits [%s.%s.<name>] tables written in the multi-line form)", section, key, name, section, key)
 }
 
-// vendorBlock finds the [[<section>.vendor]] table whose name is name.
-func vendorBlock(lines []string, section, name string) (block, error) {
-	for _, b := range arrayBlocks(lines, section, "vendor") {
-		for j := b.start + 1; j < b.end; j++ {
-			if m := nameKeyRe.FindStringSubmatch(lines[j]); m != nil && m[1] == name {
-				return b, nil
-			}
-		}
-	}
-	return block{}, fmt.Errorf("%s.vendor %q not found", section, name)
-}
-
-// AppendVendor returns data with a new vendor entry in section
-// ("environment" or "project"). In TOML the table goes after the last table
-// of the section, before the comments and blank lines that lead to the next
+// AppendDependency returns data with a new dependency d in section
+// ("user" or "project"). In TOML the table goes after the last table of
+// the section, before the comments and blank lines that lead to the next
 // one, or to the end of the file.
-func AppendVendor(data []byte, ext, section string, v Vendor) ([]byte, error) {
+func AppendDependency(data []byte, ext, section string, d Dependency) ([]byte, error) {
 	if ext != ".toml" {
-		return editDoc(data, ext, section, func(d docedit.Doc) error {
-			return d.Append([]string{section, "vendor"},
-				docedit.Map{{Key: "name", Value: v.Name}, {Key: "repo", Value: v.Repo}, {Key: "path", Value: v.Path}, {Key: "rev", Value: v.Rev}})
+		return editDoc(data, ext, section, func(doc docedit.Doc) error {
+			return doc.Put([]string{section, "dependencies"}, d.Name,
+				docedit.Map{{Key: "repo", Value: d.Repo}, {Key: "skill_dir", Value: d.SkillDir}, {Key: "commit", Value: d.Commit}}, false)
 		})
 	}
-	table := fmt.Sprintf("[[%s.vendor]]\nname = %s\nrepo = %s\npath = %s\nrev  = %s\n",
-		section, quote(v.Name), quote(v.Repo), quote(v.Path), quote(v.Rev))
+	table := fmt.Sprintf("[%s.dependencies.%s]\nrepo      = %s\nskill_dir = %s\ncommit    = %s\n",
+		section, d.Name, quote(d.Repo), quote(d.SkillDir), quote(d.Commit))
 	return checked(insertTable(data, section, table), ext, section)
 }
 
-// AppendOwn returns data with a new own entry appended; skills_dir and
-// skills are written only when they are set and not the default.
-func AppendOwn(data []byte, ext string, o Own) ([]byte, error) {
+// AppendCheckout returns data with a new checkout c in [user];
+// skills_dir and include are written only when they are set and not the
+// default.
+func AppendCheckout(data []byte, ext string, c Checkout) ([]byte, error) {
 	if ext != ".toml" {
-		item := docedit.Map{{Key: "repo", Value: o.Repo}, {Key: "path", Value: o.Path}}
-		if o.SkillsDir != "" && o.SkillsDir != DefaultSkillsDir {
-			item = append(item, docedit.Field{Key: "skills_dir", Value: o.SkillsDir})
+		item := docedit.Map{{Key: "repo", Value: c.Repo}, {Key: "checkout_dir", Value: c.CheckoutDir}}
+		if c.SkillsDir != "" && c.SkillsDir != DefaultSkillsDir {
+			item = append(item, docedit.Field{Key: "skills_dir", Value: c.SkillsDir})
 		}
-		if o.Skills != nil {
-			item = append(item, docedit.Field{Key: "skills", Value: o.Skills})
+		if c.Include != nil {
+			item = append(item, docedit.Field{Key: "include", Value: c.Include})
 		}
-		return editDoc(data, ext, skenvfile.Environment, func(d docedit.Doc) error {
-			return d.Append([]string{skenvfile.Environment, "own"}, item)
+		return editDoc(data, ext, skenvfile.User, func(d docedit.Doc) error {
+			return d.Put([]string{skenvfile.User, "checkouts"}, c.ID, item, false)
 		})
 	}
+	return checked(insertTable(data, skenvfile.User, checkoutTable(c)), ext, skenvfile.User)
+}
+
+// checkoutTable is the TOML table of a new checkout.
+func checkoutTable(c Checkout) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "[[environment.own]]\nrepo = %s\npath = %s\n", quote(o.Repo), quote(o.Path))
-	if o.SkillsDir != "" && o.SkillsDir != DefaultSkillsDir {
-		fmt.Fprintf(&b, "skills_dir = %s\n", quote(o.SkillsDir))
+	fmt.Fprintf(&b, "[user.checkouts.%s]\nrepo         = %s\ncheckout_dir = %s\n", c.ID, quote(c.Repo), quote(c.CheckoutDir))
+	if c.SkillsDir != "" && c.SkillsDir != DefaultSkillsDir {
+		fmt.Fprintf(&b, "skills_dir   = %s\n", quote(c.SkillsDir))
 	}
-	if o.Skills != nil {
-		q := make([]string, len(o.Skills))
-		for i, n := range o.Skills {
+	if c.Include != nil {
+		q := make([]string, len(c.Include))
+		for i, n := range c.Include {
 			q[i] = quote(n)
 		}
-		fmt.Fprintf(&b, "skills = [%s]\n", strings.Join(q, ", "))
+		fmt.Fprintf(&b, "include      = [%s]\n", strings.Join(q, ", "))
 	}
-	return checked(insertTable(data, skenvfile.Environment, b.String()), ext, skenvfile.Environment)
+	return b.String()
 }
 
 // insertTable returns TOML data with table (a complete table, header
@@ -173,69 +166,61 @@ func isBlankOrComment(line string) bool {
 	return t == "" || strings.HasPrefix(t, "#")
 }
 
-// SetVendorRev returns data with the rev of vendor name in section
-// replaced.
-func SetVendorRev(data []byte, ext, section, name, rev string) ([]byte, error) {
+// SetDependencyCommit returns data with the commit of dependency name in
+// section replaced.
+func SetDependencyCommit(data []byte, ext, section, name, commit string) ([]byte, error) {
 	if ext != ".toml" {
-		i, err := vendorIndex(data, ext, section, name)
-		if err != nil {
-			return nil, err
-		}
 		return editDoc(data, ext, section, func(d docedit.Doc) error {
-			return d.SetString([]any{section, "vendor", i, "rev"}, rev)
+			return d.SetString([]any{section, "dependencies", name, "commit"}, commit)
 		})
 	}
 	lines := splitLines(data)
-	blk, err := vendorBlock(lines, section, name)
+	blk, err := namedBlock(lines, section, "dependencies", name)
 	if err != nil {
 		return nil, err
 	}
-	return setRev(lines, blk, ext, section, fmt.Sprintf("vendor %q", name), rev)
+	return setCommit(lines, blk, ext, section, section+".dependencies."+name, commit)
 }
 
-// SetFromRev returns data with the rev of the i-th [[project.from]] entry
+// SetFromCommit returns data with the commit of [project.from.<id>]
 // replaced.
-func SetFromRev(data []byte, ext string, i int, rev string) ([]byte, error) {
+func SetFromCommit(data []byte, ext, id, commit string) ([]byte, error) {
 	if ext != ".toml" {
 		return editDoc(data, ext, skenvfile.Project, func(d docedit.Doc) error {
-			return d.SetString([]any{skenvfile.Project, "from", i, "rev"}, rev)
+			return d.SetString([]any{skenvfile.Project, "from", id, "commit"}, commit)
 		})
 	}
 	lines := splitLines(data)
-	blocks := arrayBlocks(lines, skenvfile.Project, "from")
-	if i < 0 || i >= len(blocks) {
-		return nil, fmt.Errorf("project.from[%d] not found (write [[project.from]] tables in the multi-line form)", i)
+	blk, err := namedBlock(lines, skenvfile.Project, "from", id)
+	if err != nil {
+		return nil, err
 	}
-	return setRev(lines, blocks[i], ext, skenvfile.Project, fmt.Sprintf("project.from[%d]", i), rev)
+	return setCommit(lines, blk, ext, skenvfile.Project, "project.from."+id, commit)
 }
 
-// setRev replaces the value of the rev line of blk.
-func setRev(lines []string, blk block, ext, section, what, rev string) ([]byte, error) {
+// setCommit replaces the value of the commit line of blk.
+func setCommit(lines []string, blk block, ext, section, what, commit string) ([]byte, error) {
 	for j := blk.start + 1; j < blk.end; j++ {
-		if m := revKeyRe.FindStringSubmatch(strings.TrimRight(lines[j], "\r\n")); m != nil {
+		if m := commitKeyRe.FindStringSubmatch(strings.TrimRight(lines[j], "\r\n")); m != nil {
 			nl := lines[j][len(strings.TrimRight(lines[j], "\r\n")):]
-			lines[j] = m[1] + quote(rev) + m[2] + nl
+			lines[j] = m[1] + quote(commit) + m[2] + nl
 			return checked([]byte(strings.Join(lines, "")), ext, section)
 		}
 	}
-	return nil, fmt.Errorf("%s has no rev line", what)
+	return nil, fmt.Errorf("%s has no commit = \"...\" line", what)
 }
 
-// RemoveVendor returns data without the vendor entry for name in section.
+// RemoveDependency returns data without the dependency name in section.
 // In TOML, comment and blank lines that trail the table (they usually
 // belong to the next table) are kept.
-func RemoveVendor(data []byte, ext, section, name string) ([]byte, error) {
+func RemoveDependency(data []byte, ext, section, name string) ([]byte, error) {
 	if ext != ".toml" {
-		i, err := vendorIndex(data, ext, section, name)
-		if err != nil {
-			return nil, err
-		}
 		return editDoc(data, ext, section, func(d docedit.Doc) error {
-			return d.Remove([]any{section, "vendor", i})
+			return d.Remove([]any{section, "dependencies", name})
 		})
 	}
 	lines := splitLines(data)
-	blk, err := vendorBlock(lines, section, name)
+	blk, err := namedBlock(lines, section, "dependencies", name)
 	if err != nil {
 		return nil, err
 	}
@@ -266,40 +251,20 @@ func editDoc(data []byte, ext, section string, edit func(docedit.Doc) error) ([]
 	return checked(d.Bytes(), ext, section)
 }
 
-// vendorIndex is the position of vendor name in <section>.vendor.
-func vendorIndex(data []byte, ext, section, name string) (int, error) {
-	vendors, err := sectionVendors(data, ext, section)
-	if err != nil {
-		return 0, err
-	}
-	for i, v := range vendors {
-		if v.Name == name {
-			return i, nil
-		}
-	}
-	return 0, fmt.Errorf("%s.vendor %q not found", section, name)
-}
-
-// sectionVendors parses section and returns its vendor entries.
-func sectionVendors(data []byte, ext, section string) ([]Vendor, error) {
+// parseSection parses section ("user" or "project") of an edited file.
+func parseSection(data []byte, ext, section string) error {
 	if section == skenvfile.Project {
-		p, err := ParseProject(data, ext)
-		if err != nil {
-			return nil, err
-		}
-		return p.Vendor, nil
+		_, err := ParseProject(data, ext)
+		return err
 	}
-	m, err := Parse(data, ext)
-	if err != nil {
-		return nil, err
-	}
-	return m.Vendor, nil
+	_, err := Parse(data, ext)
+	return err
 }
 
 // checked parses section of the edited file, so an edit that breaks it
 // never lands.
 func checked(data []byte, ext, section string) ([]byte, error) {
-	if _, err := sectionVendors(data, ext, section); err != nil {
+	if err := parseSection(data, ext, section); err != nil {
 		return nil, fmt.Errorf("edited skenv file is invalid: %w", err)
 	}
 	return data, nil

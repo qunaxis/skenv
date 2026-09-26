@@ -6,18 +6,21 @@ Regenerate the managed files of the harness
 
 ### Synopsis
 
-Regenerate the managed files and blocks from the templates of this skenv
-(harness 0.5.0; an older `repo.harness` is moved to it) and point
-the schema directive of the skenv file at that version; then
-`lefthook install`.
+Regenerate the managed files and blocks from the templates of
+`repository.template_version`; then `lefthook install`. apply never changes
+the skenv file: template_version is what the repository asks for, and
+this skenv embeds the templates of 0.6.0 only. Another version
+is an error: run `skenv repo upgrade` to move the repository to 0.6.0,
+or use the skenv release it names.
 
-The CI pipeline follows `repo.ci` of the skenv file. To switch CI systems, edit
-`repo.ci` and run apply: it writes the pipeline of the new one and removes the
-managed file of the other (.github/workflows/check.yml or `.gitlab-ci.yml`).
+The CI pipeline follows the table under `repository.ci`. To switch CI systems,
+replace `[repository.ci.github]` with `[repository.ci.gitlab]` (or back) and run
+apply: it writes the pipeline of the new one and removes the managed file
+of the other (.github/workflows/check.yml or `.gitlab-ci.yml`).
 
-- Reads: the skenv file (`[repo]`) and the managed files.
-- Changes: the managed files and blocks, `repo.harness` and the schema
-  directive of the skenv file, and the git hooks (lefthook install).
+- Reads: the skenv file (`[repository]`) and the managed files.
+- Changes: the managed files and blocks, and the git hooks (lefthook
+  install).
 - Network: none.
 - Conflicts: a file that exists and that skenv does not manage yet is an
   error; `--force` replaces it.

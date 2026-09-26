@@ -1,13 +1,14 @@
 # yaml-language-server: $schema=https://qunaxis.github.io/skenv/schemas/skenv.schema.json
 # my manifest
-environment:
+user:
   # where skills live
-  own:
-    - repo: me/skills   # the manifest repository
-      path: ~/src/skills
+  checkouts:
+    skills:
+      repo: me/skills   # the manifest repository
+      checkout_dir: ~/src/skills
 
   # pinned third-party skills
-  vendor: []
-  host:
+  dependencies: {}
+  machines:
     other-host:
-      skip: [beta]
+      exclude: [beta]

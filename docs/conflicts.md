@@ -9,7 +9,7 @@ decide.
 - [Take over with `--adopt`](#take-over-with---adopt)
 - [Keep what is installed](#keep-what-is-installed)
 - [Restore a backup](#restore-a-backup)
-- [Own repositories that are not pulled](#own-repositories-that-are-not-pulled)
+- [Checkouts that are not pulled](#checkouts-that-are-not-pulled)
 - [What `--dry-run` shows](#what---dry-run-shows)
 
 ## Finding conflicts
@@ -48,7 +48,7 @@ its place. `link`, `vendor add|update|remove` and `sync` in a project take
 > skills you installed by hand. They are moved, not deleted; restore from
 > the backup if needed. Run the same command with `--dry-run` first. Without
 > `--adopt` skenv never deletes or replaces a path it did not create, and
-> entries matching `layout.ignore` are left alone even with it.
+> entries matching `unmanaged` are left alone even with it.
 
 Skills that the manifest does not list are never touched, with or without
 `--adopt`. To bring them into the manifest first, use `skenv import` (see
@@ -57,11 +57,12 @@ Skills that the manifest does not list are never touched, with or without
 ## Keep what is installed
 
 - **The other tool should keep the skill**: add its name (or a glob) to
-  `layout.ignore` in the manifest; skenv then neither changes nor reports
+  `unmanaged` in `[user]`; skenv then neither changes nor reports
   it (see [Manifest format](manifest.md#format)).
-- **You do not want the manifest's skill here**: skip it on this host with
-  `[environment.host."<hostname>"] skip = ["<name>"]`, or remove it from the
-  manifest with `skenv vendor remove <name>`.
+- **You do not want the manifest's skill here**: exclude it on this
+  machine with `[user.machines."<name>"] exclude = ["<skill>"]` (see
+  [machine rules](manifest.md#machine-rules)), or remove it from the
+  manifest with `skenv vendor remove <skill>`.
 - **An unmatched skill after `skenv import`**: compare the copy with the
   pinned commit, then `skenv sync --adopt` or `skenv vendor remove <name>`
   (see [Unmatched skills](adopting.md#unmatched-skills-and---sync)).
@@ -77,8 +78,8 @@ A backup keeps the path relative to your home directory:
 ```
 
 To go back to the old copy of a skill, first make sure skenv no longer
-wants that path (`skenv vendor remove <name>`, a host `skip`, or
-`layout.ignore`), otherwise the next `sync` reports a conflict again. Then
+wants that path (`skenv vendor remove <name>`, an `exclude` in
+the machine rules, or `unmanaged`), otherwise the next `sync` reports a conflict again. Then
 move the directory back:
 
 ```sh
@@ -90,9 +91,9 @@ skenv doctor                                 # it is unmanaged now, as before
 
 skenv never deletes backups; remove old ones yourself.
 
-## Own repositories that are not pulled
+## Checkouts that are not pulled
 
-`sync` runs `git pull --ff-only` in each own repository. A working copy
+`sync` runs `git pull --ff-only` in each checkout. A working copy
 with uncommitted changes, or a branch that has diverged from its upstream,
 is left as it is with a warning, and `sync` still exits 0. `skenv doctor`
 reports it as `dirty`, `unpushed` or `behind`. Commit, push, rebase or
@@ -105,7 +106,7 @@ the agent directories nor the state. It is a preview with limits:
 
 - `vendor add|update`, `import` and `init --import` still fetch into the
   clone cache `~/.cache/skenv/repos` to resolve commits (network access).
-- `sync --dry-run` pulls nothing, so the plan uses the own repositories as
-  they are now; when the manifest lives in one of them, changes pushed from
+- `sync --dry-run` pulls nothing, so the plan uses the checkouts as they
+  are now; when the manifest lives in one of them, changes pushed from
   another machine are not in the plan. Each such repository is marked in
   the output.

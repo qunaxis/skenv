@@ -42,14 +42,14 @@ commit.
 | Apply the manifest to this machine | [`skenv sync`](commands/skenv_sync.md) | [Connect another machine](another-machine.md#2-preview-and-apply) |
 | See the skills and whether they are installed | [`skenv list`](commands/skenv_list.md) | [List installed skills](list-skills.md) |
 | Check that the machine matches the manifest | [`skenv doctor`](commands/skenv_doctor.md) | [List installed skills](list-skills.md#skenv-doctor-does-the-machine-match) |
-| Install a third-party skill, pinned to a commit | [`skenv vendor add`](commands/skenv_vendor_add.md) | [Add, update and remove skills](manage-skills.md) |
-| Move pinned skills to newer commits | [`skenv vendor update`](commands/skenv_vendor_update.md) | [Update pinned skills](manage-skills.md#update-pinned-skills) |
-| Remove a pinned skill | [`skenv vendor remove`](commands/skenv_vendor_remove.md) | [Remove a skill](manage-skills.md#remove-a-skill) |
+| Install a third-party skill, pinned to a commit (a dependency) | [`skenv vendor add`](commands/skenv_vendor_add.md) | [Add, update and remove skills](manage-skills.md) |
+| Move dependencies to newer commits | [`skenv vendor update`](commands/skenv_vendor_update.md) | [Update pinned skills](manage-skills.md#update-pinned-skills) |
+| Remove a dependency | [`skenv vendor remove`](commands/skenv_vendor_remove.md) | [Remove a skill](manage-skills.md#remove-a-skill) |
 | Link skills without pulling (after creating one) | [`skenv link`](commands/skenv_link.md) | [Create a skill](create-skill.md#3-make-it-available-to-your-agents) |
 | Take over skills installed another way | `skenv sync --adopt` | [Resolve conflicts](conflicts.md) |
 
 `--dry-run` previews `init`, `clone`, `use`, `import`, `sync`, `link`,
-`vendor` and `repo init|apply`; its limits (fetches into the clone cache,
+`vendor` and `repo init|apply|upgrade`; its limits (fetches into the clone cache,
 no pull) are in [What `--dry-run` shows](conflicts.md#what---dry-run-shows).
 Every command that reads the manifest accepts `--manifest FILE`; see
 [where the manifest is found](manifest.md#where-the-manifest-is-found).
@@ -61,7 +61,8 @@ Every command that reads the manifest accepts `--manifest FILE`; see
 | Scaffold a skill | [`skenv new <name> --dir .`](commands/skenv_new.md) | [Create a skill](create-skill.md) |
 | Check skills; the publication check | [`skenv lint`](commands/skenv_lint.md), `skenv lint --publish` | [Validation and publication](lint.md) |
 | Set up hooks and CI for a skills repository (optional) | [`skenv repo init`](commands/skenv_repo_init.md) | [Repository checks and CI](harness.md) |
-| Move a repository to the current templates | [`skenv repo apply`](commands/skenv_repo_apply.md) | [Harness versions](harness.md#harness-versions) |
+| Move a repository to the templates of the installed skenv | [`skenv repo upgrade`](commands/skenv_repo_upgrade.md) | [Harness versions](harness.md#harness-versions) |
+| Regenerate the managed files from `template_version` | [`skenv repo apply`](commands/skenv_repo_apply.md) | [Repository checks and CI](harness.md#skenv-repo-apply) |
 | Compare the managed files with the templates | [`skenv repo check`](commands/skenv_repo_check.md) | [Repository checks and CI](harness.md#skenv-repo-check) |
 
 ## Projects
@@ -93,7 +94,7 @@ See [Project skills](project-skills.md).
 
 Every command exits 0 on success, 1 when it found problems or reported
 errors (a conflict in `sync`, for example) and 2 when it could not run (a usage error, a missing argument, an unreadable file).
-Warnings do not change the exit code: `sync` exits 0 when it leaves an own
-repository with uncommitted changes unpulled, for example. `doctor`, `lint`
+Warnings do not change the exit code: `sync` exits 0 when it leaves a
+checkout with uncommitted changes unpulled, for example. `doctor`, `lint`
 and `repo check` exit 0 only when everything is in order, so use `doctor`
 to confirm that a machine matches its manifest.

@@ -1,17 +1,15 @@
 {
   "$schema": "https://qunaxis.github.io/skenv/schemas/skenv.schema.json",
-  "environment": {
-    "vendor": [],
-    "own": [
-      {
+  "user": {
+    "dependencies": {},
+    "checkouts": {
+      "skills": {
         "repo": "me/skills",
-        "path": "~/src/skills"
+        "checkout_dir": "~/src/skills"
       }
-    ],
-    "layout": {
-      "ignore": [
-        "tool<x>&*"
-      ]
-    }
+    },
+    "unmanaged": [
+      "tool<x>&*"
+    ]
   }
 }

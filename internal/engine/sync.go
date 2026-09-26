@@ -18,10 +18,10 @@ import (
 const markerName = ".skenv"
 
 // marker is the content of the .skenv file in a directory skenv copied:
-// a vendored skill in the store or in a project (repo, path, rev; hash in
-// a project), or a copy in a project mirror (mirror, hash). Repo is the
+// a dependency in the store or in a project (repo, path, rev; hash in a
+// project), or a copy in a project mirror (mirror, hash). Repo is the
 // canonical clone URL (manifest.Remote.URL), not the value written in the
-// skenv file.
+// skenv file. The marker is observed state, so its keys keep their names.
 type marker struct {
 	Repo   string `toml:"repo,omitempty"`
 	Path   string `toml:"path,omitempty"`
@@ -36,7 +36,7 @@ func (mk marker) matches(remote manifest.Remote, path, rev string) bool {
 	return manifest.NormalizeURL(mk.Repo) == manifest.NormalizeURL(remote.URL) && mk.Path == path && mk.Rev == rev
 }
 
-// showRepo is how output names a repository: the value of the manifest,
+// showRepo is how output names a repository: the value of the skenv file,
 // followed by its canonical URL when that differs, credentials masked.
 func (e *Engine) showRepo(repo string, remote manifest.Remote) string {
 	if remote.URL == "" || remote.URL == repo {
@@ -76,16 +76,19 @@ func writeMarker(dir string, mk marker) error {
 	return f.Close()
 }
 
-// Sync runs `skenv sync`: update own working copies, materialize vendored
-// skills, link everything and prune managed paths that left the manifest.
+// Sync runs `skenv sync`: update the checkouts, materialize the
+// dependencies, link everything and prune managed paths that left the
+// manifest.
 func (e *Engine) Sync() (int, error) {
-	e.syncOwn()
-	// The manifest usually lives in an own repository that was just pulled.
+	e.syncCheckouts()
+	// The manifest usually lives in a checkout that was just pulled.
 	m, err := manifest.Load(e.manifestPath)
 	if err != nil {
 		return ExitFatal, err
 	}
-	e.setManifest(m)
+	if err := e.setManifest(m); err != nil {
+		return ExitFatal, err
+	}
 	if root, details := e.manifestElsewhere(); len(details) > 0 {
 		for _, d := range details {
 			e.warnf("%s: %s", e.show(root), d)
@@ -98,8 +101,8 @@ func (e *Engine) Sync() (int, error) {
 	kept := e.kept(skills)
 	take := slices.DeleteFunc(slices.Clone(skills), func(s Skill) bool { return kept[s.Name] })
 	for _, s := range take {
-		if s.Vendor != nil {
-			e.syncVendor(s)
+		if s.Dependency != nil {
+			e.syncDependency(s)
 		}
 	}
 	e.linkAll(take)
@@ -140,30 +143,29 @@ func (e *Engine) Link() (int, error) {
 	return e.finish("link")
 }
 
-// syncOwn clones missing own repositories and fast-forwards clean ones.
+// syncCheckouts clones missing checkouts and fast-forwards clean ones.
 // Dirty or diverged working copies are left alone with a warning.
-func (e *Engine) syncOwn() {
-	for i := range e.m.Own {
-		o := &e.m.Own[i]
-		dir := e.ownPath(o)
+func (e *Engine) syncCheckouts() {
+	for _, c := range e.m.CheckoutList() {
+		dir := e.checkoutPath(c)
 		if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
 			// Validate resolved every repo of the manifest already.
-			remote, _ := e.m.Hosts.Resolve(o.Repo)
-			e.changef("clone %s into %s", e.showRepo(o.Repo, remote), e.show(dir))
+			remote, _ := e.m.Remote(c.Repo)
+			e.changef("clone %s into %s", e.showRepo(c.Repo, remote), e.show(dir))
 			if e.opts.DryRun {
 				continue
 			}
 			if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-				e.errorf("clone %s: %v", o.Repo, err)
+				e.errorf("clone %s: %v", c.Repo, err)
 				continue
 			}
 			if _, err := e.env.Git.Run(e.ctx, "", "clone", "--quiet", remote.URL, dir); err != nil {
-				e.errorf("clone %s: %v (%s)", o.Repo, err, remote.AccessHint())
+				e.errorf("clone %s: %v (%s)", c.Repo, err, remote.AccessHint())
 			}
 			continue
 		}
 		if !e.env.Git.OK(e.ctx, dir, "rev-parse", "--is-inside-work-tree") {
-			e.warnf("%s exists but is not a git working copy; leaving it alone (own repo %s)", e.show(dir), o.Repo)
+			e.warnf("%s exists but is not a git working copy; leaving it alone (checkout %s)", e.show(dir), c.ID)
 			continue
 		}
 		if out, err := e.env.Git.Run(e.ctx, dir, "status", "--porcelain"); err != nil {
@@ -195,7 +197,7 @@ func (e *Engine) syncOwn() {
 // really fetches from (after url.<base>.insteadOf), and a cache whose origin
 // is another repository is cloned again, so two repositories never share one.
 func (e *base) ensureCache(repo, rev string) (string, error) {
-	remote, err := e.hosts.Resolve(repo)
+	remote, err := e.hosts.ResolveIn(e.hostsDir, repo)
 	if err != nil {
 		return "", err
 	}
@@ -228,7 +230,7 @@ func (e *base) ensureCache(repo, rev string) (string, error) {
 		// Commits that are not on any branch can still be fetched by SHA.
 		_, _ = e.env.Git.Run(e.ctx, dir, "fetch", "--quiet", "origin", rev)
 		if !e.hasCommit(dir, rev) {
-			return "", fmt.Errorf("commit %s not found in %s (force-pushed away, or rev and repo in the manifest do not match?)", rev, repo)
+			return "", fmt.Errorf("commit %s not found in %s (force-pushed away, or commit and repo in the skenv file do not match?)", rev, repo)
 		}
 	}
 	return dir, nil
@@ -275,13 +277,16 @@ func (e *base) hasCommit(dir, rev string) bool {
 	return e.env.Git.OK(e.ctx, dir, "cat-file", "-e", rev+"^{commit}")
 }
 
-// syncVendor makes store/<name> a copy of the vendored path at rev.
-func (e *Engine) syncVendor(s Skill) {
-	v := s.Vendor
+// syncDependency makes store/<name> a copy of the skill directory of the
+// dependency at its commit.
+func (e *Engine) syncDependency(s Skill) {
+	d := s.Dependency
 	dst := e.storePath(s.Name)
-	remote, _ := e.m.Hosts.Resolve(v.Repo) // Validate resolved it already
-	if e.st.Is(dst) {
-		if mk, err := readMarker(dst); err == nil && mk.matches(remote, v.Path, v.Rev) {
+	remote, _ := e.m.Remote(d.Repo) // Validate resolved it already
+	// Only a copy skenv made there counts: after a change of storage.dir a
+	// link of an agent directory may stand where the store now is.
+	if e.owned(dst) && e.st.Managed[dst].Kind == state.VendorDir {
+		if mk, err := readMarker(dst); err == nil && mk.matches(remote, d.SkillDir, d.Commit) {
 			e.manage(dst, state.Entry{Kind: state.VendorDir, Skill: s.Name})
 			return
 		}
@@ -289,21 +294,15 @@ func (e *Engine) syncVendor(s Skill) {
 	if !e.claim(dst, s.Name) {
 		return
 	}
-	e.changef("vendor %s from %s@%.12s (%s)", s.Name, v.Repo, v.Rev, v.Path)
+	e.changef("vendor %s from %s@%.12s (%s)", s.Name, d.Repo, d.Commit, d.SkillDir)
 	if e.opts.DryRun {
 		return
 	}
-	if err := e.materialize(v, remote.URL, dst); err != nil {
+	if err := e.copySkill(d.Repo, remote.URL, d.SkillDir, d.Commit, dst, false); err != nil {
 		e.errorf("vendor %s: %v", s.Name, err)
 		return
 	}
 	e.manage(dst, state.Entry{Kind: state.VendorDir, Skill: s.Name})
-}
-
-// materialize copies the vendored skill v into dst with a .skenv marker
-// that records url, the canonical clone URL of its repository.
-func (e *Engine) materialize(v *manifest.Vendor, url, dst string) error {
-	return e.copySkill(v.Repo, url, v.Path, v.Rev, dst, false)
 }
 
 // copySkill makes dst a copy of the directory skillPath of repo at rev
@@ -321,7 +320,7 @@ func (e *base) copySkill(repo, url, skillPath, rev, dst string, withHash bool) e
 	}
 	src := filepath.Join(cache, filepath.FromSlash(skillPath))
 	if !fileExists(filepath.Join(src, "SKILL.md")) {
-		return fmt.Errorf("%s has no SKILL.md at %s@%.12s; fix path in the skenv file", skillPath, repo, rev)
+		return fmt.Errorf("%s has no SKILL.md at %s@%.12s; fix skill_dir in the skenv file", skillPath, repo, rev)
 	}
 	parent := filepath.Dir(dst)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
@@ -352,24 +351,24 @@ func (e *base) copySkill(repo, url, skillPath, rev, dst string, withHash bool) e
 	return replace(content, dst)
 }
 
-// linkAll creates store links for own skills and target links for every
-// skill.
+// linkAll creates store links for the skills of checkouts and target links
+// for every skill.
 func (e *Engine) linkAll(skills []Skill) {
 	for _, s := range skills {
-		if s.OwnDir == "" {
+		if s.CheckoutDir == "" {
 			continue
 		}
 		p := e.storePath(s.Name)
 		if !e.claim(p, s.Name) {
 			continue
 		}
-		if err := e.placeSymlink(p, s.OwnDir, s.Name); err != nil {
+		if err := e.placeSymlink(p, s.CheckoutDir, s.Name); err != nil {
 			e.errorf("link %s: %v", e.show(p), err)
 		}
 	}
 	for _, s := range skills {
 		if _, err := os.Lstat(e.storePath(s.Name)); err != nil && !e.opts.DryRun {
-			if s.Vendor != nil {
+			if s.Dependency != nil {
 				e.warnf("skill %q is not in the store yet; run `skenv sync`", s.Name)
 			}
 			continue
@@ -388,8 +387,8 @@ func (e *Engine) linkAll(skills []Skill) {
 
 // prune removes managed paths that are no longer wanted.
 func (e *Engine) prune(skills []Skill) {
-	if e.ownUnavailable {
-		e.warnf("some own repositories are not available; skipping removal of stale managed paths")
+	if e.checkoutUnavailable {
+		e.warnf("some checkouts are not available; skipping removal of stale managed paths")
 		return
 	}
 	want := e.desired(skills)

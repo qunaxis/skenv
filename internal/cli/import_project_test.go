@@ -161,12 +161,12 @@ func TestImportProject(t *testing.T) {
 	out, errOut = w.mustRun(0, "import", "--project")
 	text := readFile(t, w.pp("skenv.toml"))
 	for name, want := range map[string]string{
-		"archify": "repo = \"ext/tools\"\npath = \"tools/archify\"\nrev  = \"" + revs["archify"] + "\"",
-		"lost":    "repo = \"ext/tools\"\npath = \"tools/lost\"\nrev  = \"" + revs["lost"] + "\"",
-		"drifted": "repo = \"ext/tools\"\npath = \"tools/drifted\"\nrev  = \"" + revs["drifted"] + "\"",
-		"notes":   "repo = \"gitlab:grp/sub/tools\"\npath = \"notes\"\nrev  = \"" + revs["notes"] + "\"",
+		"archify": "repo      = \"ext/tools\"\nskill_dir = \"tools/archify\"\ncommit    = \"" + revs["archify"] + "\"",
+		"lost":    "repo      = \"ext/tools\"\nskill_dir = \"tools/lost\"\ncommit    = \"" + revs["lost"] + "\"",
+		"drifted": "repo      = \"ext/tools\"\nskill_dir = \"tools/drifted\"\ncommit    = \"" + revs["drifted"] + "\"",
+		"notes":   "repo      = \"gitlab:grp/sub/tools\"\nskill_dir = \"notes\"\ncommit    = \"" + revs["notes"] + "\"",
 	} {
-		if !strings.Contains(text, "[[project.vendor]]\nname = \""+name+"\"\n"+want+"\n") {
+		if !strings.Contains(text, "[project.dependencies."+name+"]\n"+want+"\n") {
 			t.Errorf("%s: want %q in\n%s", name, want, text)
 		}
 	}
@@ -301,7 +301,7 @@ func TestImportProjectExistingFile(t *testing.T) {
 	dir := w.path(projectDir)
 	mustMkdir(t, dir)
 	w.git(dir, "init", "--quiet", "-b", "main")
-	yaml := "# my project\nrepo:\n  harness: 0.4.0 # the harness\n  visibility: public\n"
+	yaml := "# my project\nrepository:\n  template_version: 0.4.0 # the templates\n  visibility: public\n"
 	writeFile(t, w.pp("skenv.yaml"), yaml)
 	w.installedInProject("archify", archifyV1)
 	w.writeProjectLock(map[string]lockEntry{"archify": projectEntry("ext/tools", "github", "tools/archify/SKILL.md", archifyV1Hash)})
@@ -312,7 +312,7 @@ func TestImportProjectExistingFile(t *testing.T) {
 		t.Errorf("the commit hint names the removed, never committed lock:\n%s", out)
 	}
 	text := readFile(t, w.pp("skenv.yaml"))
-	if !strings.Contains(text, yaml) || !strings.Contains(text, "project:\n  mirrors: [.claude/skills]\n  vendor:\n    - name: archify\n") ||
+	if !strings.Contains(text, yaml) || !strings.Contains(text, "project:\n  mirrors: [.claude/skills]\n  dependencies:\n    archify:\n") ||
 		!strings.Contains(text, rev) {
 		t.Errorf("skenv.yaml:\n%s", text)
 	}
@@ -346,7 +346,7 @@ func TestImportGitLabSource(t *testing.T) {
 	w.mapHost("https://gitlab.com/", "gitlab.com")
 	rev := w.push("gitlab.com/grp/sub/tools", under("notes", notesV1), "feat: notes")
 	w.push("gitlab.com/grp/sub/tools", map[string]string{"notes/SKILL.md": skillMD("notes", "v2")}, "feat: notes v2")
-	w.push("me/skills", map[string]string{"skenv.toml": "[environment]\n"}, "feat: manifest")
+	w.push("me/skills", map[string]string{"skenv.toml": "[user]\n"}, "feat: manifest")
 	w.cloneSync("me/skills", "~/src/skills")
 	w.installed("notes", map[string]string{"SKILL.md": skillMD("notes", "edited")})
 	w.writeLock(map[string]lockEntry{"notes": {
@@ -355,7 +355,7 @@ func TestImportGitLabSource(t *testing.T) {
 	}})
 	out, errOut := w.mustRun(0, "import")
 	text := readFile(t, w.path("src/skills/skenv.toml"))
-	if !strings.Contains(text, "repo = \"gitlab:grp/sub/tools\"\npath = \"notes\"\nrev  = \""+rev+"\"") || errOut != "" ||
+	if !strings.Contains(text, "repo      = \"gitlab:grp/sub/tools\"\nskill_dir = \"notes\"\ncommit    = \""+rev+"\"") || errOut != "" ||
 		!strings.Contains(out, "  exact: the commit has the hash recorded in the lock\n    notes from gitlab:grp/sub/tools (notes) at "+rev[:12]+"\n") {
 		t.Errorf("skenv.toml:\n%s\n%s%s", text, out, errOut)
 	}

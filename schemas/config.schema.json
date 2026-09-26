@@ -10,7 +10,11 @@
       "type": "string"
     },
     "manifest": {
-      "description": "The skenv file with the [environment] section, or the directory that holds it (\"~\" allowed). `skenv init`, `skenv clone` and `skenv use` record it. There is no default: without it, commands that need the manifest stop with an error. Overridden by the flag --manifest and the environment variable SKENV_MANIFEST; precedence: flag, environment variable, this file, default.",
+      "description": "The skenv file with the [user] section, or the directory that holds it (\"~\" allowed). `skenv init`, `skenv clone` and `skenv use` record it. There is no default: without it, commands that need the manifest stop with an error. Overridden by the flag --manifest and the environment variable SKENV_MANIFEST; precedence: flag, environment variable, this file, default.",
+      "type": "string"
+    },
+    "machine": {
+      "description": "The name of this machine for user.machines.<name> of the manifest, which must then have that entry. Default: the full hostname if the manifest has rules for it, else the short hostname. Overridden by the environment variable SKENV_MACHINE; precedence: environment variable, this file, default.",
       "type": "string"
     }
   },

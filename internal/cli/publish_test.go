@@ -121,7 +121,7 @@ func TestLintHook(t *testing.T) {
 
 func TestNewSkill(t *testing.T) {
 	w := newWorld(t)
-	w.standard("\n[repo]\nharness = \"" + harness.Latest + "\"\nvisibility = \"private\"\n")
+	w.standard("\n[repository]\ntemplate_version = \"" + harness.Latest + "\"\nvisibility = \"private\"\n")
 	w.cloneSync("me/skills", "~/"+ownPath)
 
 	out, _ := w.mustRun(0, "new", "my-skill")
@@ -155,11 +155,11 @@ func TestNewSkill(t *testing.T) {
 	mustMkdir(t, pub)
 	w.git(pub, "init", "-q")
 	out, _ = w.mustRun(0, "new", "shared", "--visibility", "public", "--dir", pub)
-	if !strings.Contains(out, "skenv lint --publish") || !strings.Contains(out, "~/pub is not an own repository of the manifest") {
+	if !strings.Contains(out, "skenv lint --publish") || !strings.Contains(out, "~/pub is not a checkout of the manifest") {
 		t.Errorf("public hint or install step missing:\n%s", out)
 	}
 	// --dir takes the visibility from the repository's skenv.toml.
-	writeFile(t, filepath.Join(pub, "skenv.toml"), "[repo]\nharness = \"0.3.0\"\nvisibility = \"public\"\n")
+	writeFile(t, filepath.Join(pub, "skenv.toml"), "[repository]\ntemplate_version = \"0.3.0\"\nvisibility = \"public\"\n")
 	out, _ = w.mustRun(0, "new", "other", "--dir", pub)
 	if !strings.Contains(out, "skenv lint --publish") {
 		t.Errorf("visibility from skenv.toml ignored:\n%s", out)
@@ -171,7 +171,7 @@ func TestNewSkill(t *testing.T) {
 }
 
 // Without --dir, new writes to the only own repository of the manifest,
-// harness or not; among several, to the one whose [repo] has the
+// harness or not; among several, to the one whose [repository] has the
 // visibility.
 func TestNewSkillTarget(t *testing.T) {
 	w := newWorld(t)
@@ -187,13 +187,13 @@ func TestNewSkillTarget(t *testing.T) {
 
 	w.push("me/team", map[string]string{"skills/shared/SKILL.md": skillMD("shared", "")}, "feat: shared")
 	manifest := w.path(ownPath + "/skenv.toml")
-	writeFile(t, manifest, readFile(t, manifest)+"\n[[environment.own]]\nrepo = \"me/team\"\npath = \"~/src/team\"\n")
+	writeFile(t, manifest, readFile(t, manifest)+"\n[user.checkouts.team]\nrepo = \"me/team\"\ncheckout_dir = \"~/src/team\"\n")
 	w.mustRun(0, "sync")
 	_, errOut := w.mustRun(2, "new", "second")
-	if !strings.Contains(errOut, "no own repository of the manifest (me/skills, me/team) has visibility \"private\"") || !strings.Contains(errOut, "--dir") {
+	if !strings.Contains(errOut, "no checkout of the manifest (me/skills, me/team) has visibility \"private\"") || !strings.Contains(errOut, "--dir") {
 		t.Errorf("new with two own repositories:\n%s", errOut)
 	}
-	writeFile(t, w.path("src/team/skenv.toml"), "[repo]\nharness = \""+harness.Latest+"\"\nvisibility = \"private\"\n")
+	writeFile(t, w.path("src/team/skenv.toml"), "[repository]\ntemplate_version = \""+harness.Latest+"\"\nvisibility = \"private\"\n")
 	if out, _ = w.mustRun(0, "new", "second"); !strings.Contains(out, "created ~/src/team/skills/second") {
 		t.Errorf("new by visibility:\n%s", out)
 	}

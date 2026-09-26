@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -9,90 +10,129 @@ import (
 const sha = "9e35d2b0b39b0000000000000000000000000000"
 
 func TestParseFull(t *testing.T) {
-	m, err := Parse([]byte(`
-[environment.layout]
-store   = "~/.agents/skills"
-targets = ["~/.claude/skills", "~/.pi/agent/skills"]
+	m, err := ParseIn([]byte(`
+[user]
+unmanaged = ["peon-*"]
 
-[[environment.own]]
-repo = "me/my-skills"
-path = "~/src/my-skills"
+[user.storage]
+dir = "store"
 
-[[environment.vendor]]
-name = "archify"
-repo = "tt-a1i/archify"
-path = "archify"
-rev  = "`+sha+`"
+[user.agents]
+enabled    = ["claude", "pi"]
+extra_dirs = ["~/.agents/extra"]
 
-[[environment.vendor]]
-name = "root"
-repo = "https://example.com/x/root.git"
-rev  = "`+sha+`"
+[user.agents.paths]
+pi = "~/pi-skills"
 
-[environment.host."mbp"]
-skip = ["bpmn-process-modeler"]
-`), ".toml")
+[user.checkouts.mine]
+repo         = "me/my-skills"
+checkout_dir = "."
+
+[user.dependencies.archify]
+repo      = "tt-a1i/archify"
+skill_dir = "archify"
+commit    = "`+sha+`"
+
+[user.dependencies.root]
+repo   = "https://example.com/x/root.git"
+commit = "`+sha+`"
+
+[user.machines.mbp]
+exclude = ["bpmn-process-modeler"]
+
+[user.machines.mbp.checkout_dirs]
+mine = "~/elsewhere"
+`), ".toml", "/m")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Own[0].SkillsDir != "skills" {
-		t.Errorf("default skills_dir = %q", m.Own[0].SkillsDir)
+	c := m.Checkouts["mine"]
+	if c.SkillsDir != "skills" || c.ID != "mine" || c.Include != nil {
+		t.Errorf("checkout = %+v", c)
 	}
-	if m.Vendor[1].Path != "." {
-		t.Errorf("default vendor path = %q", m.Vendor[1].Path)
+	if d := m.Dependencies["root"]; d.SkillDir != "." || d.Name != "root" {
+		t.Errorf("default skill_dir = %+v", d)
 	}
-	if len(m.Layout.Targets) != 2 || m.Layout.Store != "~/.agents/skills" {
-		t.Errorf("layout = %+v", m.Layout)
+	if got := m.Path("/home", m.Storage.Dir); got != "/m/store" {
+		t.Errorf("storage.dir relative to the file = %q", got)
 	}
-	if !m.Skipped("mbp")["bpmn-process-modeler"] || len(m.Skipped("other")) != 0 {
-		t.Error("host skip")
+	if got := m.Path("/home", c.CheckoutDir); got != "/m" {
+		t.Errorf("checkout_dir . = %q", got)
+	}
+	if got := m.Path("/home", m.Agents.Paths["pi"]); got != "/home/pi-skills" {
+		t.Errorf("~ = %q", got)
+	}
+	if mc := m.Machines["mbp"]; mc.Selects("bpmn-process-modeler") || !mc.Selects("x") || mc.CheckoutDirs["mine"] != "~/elsewhere" {
+		t.Errorf("machine = %+v", mc)
 	}
 }
 
-func TestTargetsUnsetVsEmpty(t *testing.T) {
-	m, err := Parse([]byte("[environment]\n"), ".toml")
+func TestEnabledUnsetVsEmpty(t *testing.T) {
+	m, err := Parse([]byte("[user]\n"), ".toml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Layout.Targets != nil {
-		t.Error("unset targets must be nil (use the agent table)")
+	if m.Agents.Enabled != nil {
+		t.Error("unset enabled must be nil (detect the agents)")
 	}
-	m, err = Parse([]byte("[environment.layout]\ntargets = []\n"), ".toml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m.Layout.Targets == nil || len(m.Layout.Targets) != 0 {
-		t.Error("explicit empty targets must override the table")
+	for ext, text := range map[string]string{
+		".toml": "[user.agents]\nenabled = []\n[user.checkouts.a]\nrepo = \"a/b\"\ncheckout_dir = \"x\"\ninclude = []\n[user.machines.m]\ninclude = []\n",
+		".yaml": "user:\n  agents: {enabled: []}\n  checkouts: {a: {repo: a/b, checkout_dir: x, include: []}}\n  machines: {m: {include: []}}\n",
+		".json": `{"user": {"agents": {"enabled": []}, "checkouts": {"a": {"repo": "a/b", "checkout_dir": "x", "include": []}}, "machines": {"m": {"include": []}}}}`,
+	} {
+		m, err := Parse([]byte(text), ext)
+		if err != nil {
+			t.Fatalf("%s: %v", ext, err)
+		}
+		if m.Agents.Enabled == nil || m.Checkouts["a"].Include == nil || m.Machines["m"].Include == nil {
+			t.Errorf("%s: an explicit [] must stay empty, not unset: %+v", ext, m)
+		}
+		// include = [] selects nothing: no error, no fallback to all.
+		c := m.Checkouts["a"]
+		if got, err := c.Select([]string{"x", "y"}, "~/x/skills"); err != nil || len(got) != 0 {
+			t.Errorf("%s: include = [] selected %v, %v", ext, got, err)
+		}
+		if m.Machines["m"].Selects("x") {
+			t.Errorf("%s: machine include = [] selected a skill", ext)
+		}
 	}
 }
 
-func own(lines string) string {
-	return "[[environment.own]]\nrepo = \"a/b\"\npath = \"~/x\"\n" + lines
+func checkout(lines string) string {
+	return "[user.checkouts.a]\nrepo = \"a/b\"\ncheckout_dir = \"~/x\"\n" + lines
+}
+
+func dependency(name, commit string) string {
+	return "[user.dependencies." + name + "]\nrepo = \"a/b\"\ncommit = \"" + commit + "\"\n"
 }
 
 func TestParseErrors(t *testing.T) {
-	vendor := func(name, rev string) string {
-		return "[[environment.vendor]]\nname = \"" + name + "\"\nrepo = \"a/b\"\nrev = \"" + rev + "\"\n"
-	}
 	cases := map[string]struct{ src, want string }{
-		"M1 duplicate vendor": {vendor("x", sha) + vendor("x", sha), "duplicate skill name"},
-		"M2 short rev":        {vendor("x", "9e35d2b"), "full 40-character"},
-		"M2 branch rev":       {vendor("x", "main"), "full 40-character"},
-		"M2 uppercase rev":    {vendor("x", strings.ToUpper(sha)), "full 40-character"},
-		"bad name":            {vendor("X/y", sha), "single hyphens"},
-		"dotted name":         {vendor("foo.bar_v2", sha), "single hyphens"},
-		"reserved name":       {vendor("synced", sha), "reserved"},
-		"unknown key":         {"[[environment.own]]\nrepo = \"a/b\"\npath = \"~/x\"\nbranch = \"main\"\n", "unknown keys: environment.own.branch"},
-		"own without path":    {"[[environment.own]]\nrepo = \"a/b\"\n", "path is required"},
-		"vendor escapes repo": {"[[environment.vendor]]\nname = \"x\"\nrepo = \"a/b\"\npath = \"../x\"\nrev = \"" + sha + "\"\n", "relative path"},
-		"syntax":              {"[[vendor]\n", "expected"},
-		"empty skills":        {own("skills = []\n"), "skills is empty"},
-		"bad skills name":     {own("skills = [\"Foo\"]\n"), "single hyphens"},
-		"reserved skills":     {own("skills = [\"synced\"]\n"), "reserved"},
-		"duplicate skills":    {own("skills = [\"a\", \"a\"]\n"), "lists \"a\" twice"},
-		"exclude with slash":  {own("exclude = [\"a/b\"]\n"), "glob over skill names"},
-		"exclude bad glob":    {own("exclude = [\"[\"]\n"), "glob over skill names"},
-		"exclude empty":       {own("exclude = [\"\"]\n"), "glob over skill names"},
+		"M2 short commit":          {dependency("x", "9e35d2b"), "full 40-character"},
+		"M2 branch commit":         {dependency("x", "main"), "full 40-character"},
+		"M2 uppercase commit":      {dependency("x", strings.ToUpper(sha)), "full 40-character"},
+		"bad name":                 {dependency(`"X"`, sha), "single hyphens"},
+		"dotted name":              {dependency(`"foo.bar_v2"`, sha), "single hyphens"},
+		"reserved name":            {dependency("synced", sha), "reserved"},
+		"unknown key":              {checkout("path2 = \"main\"\n"), "unknown keys: user.checkouts.a.path2"},
+		"checkout without dir":     {"[user.checkouts.a]\nrepo = \"a/b\"\n", "checkout_dir is required"},
+		"bad checkout id":          {"[user.checkouts.A]\nrepo = \"a/b\"\ncheckout_dir = \"x\"\n", "the ID must be lowercase"},
+		"dependency escapes repo":  {"[user.dependencies.x]\nrepo = \"a/b\"\nskill_dir = \"../x\"\ncommit = \"" + sha + "\"\n", "relative path"},
+		"syntax":                   {"[[vendor]\n", "expected"},
+		"bad include name":         {checkout("include = [\"Foo\"]\n"), "single hyphens"},
+		"reserved include":         {checkout("include = [\"synced\"]\n"), "reserved"},
+		"duplicate include":        {checkout("include = [\"a\", \"a\"]\n"), "lists \"a\" twice"},
+		"exclude with slash":       {checkout("exclude = [\"a/b\"]\n"), "glob over names"},
+		"exclude bad glob":         {checkout("exclude = [\"[\"]\n"), "glob over names"},
+		"exclude empty":            {checkout("exclude = [\"\"]\n"), "glob over names"},
+		"machine unknown checkout": {checkout("[user.machines.m.checkout_dirs]\nb = \"~/y\"\n"), `checkout_dirs: "b" is not a checkout ID (known: a)`},
+		"machine bad exclude":      {"[user.machines.m]\nexclude = [\"a/b\"]\n", "user.machines.m.exclude"},
+		"codex is not an agent":    {"[user.agents]\nenabled = [\"codex\"]\n", "codex is not a link destination"},
+		"unknown agent":            {"[user.agents]\nenabled = [\"cursor\"]\n", `unknown agent "cursor" (built in: claude, pi`},
+		"unknown agent path":       {"[user.agents.paths]\ncursor = \"~/c\"\n", "user.agents.paths: unknown agent"},
+		"agent twice":              {"[user.agents]\nenabled = [\"pi\", \"pi\"]\n", `lists "pi" twice`},
+		"unmanaged slash":          {"[user]\nunmanaged = [\"a/b\"]\n", "user.unmanaged"},
+		"old key":                  {"[user]\nlayout = {}\n", "user.layout → user.storage"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -104,32 +144,93 @@ func TestParseErrors(t *testing.T) {
 	}
 }
 
-// M1 across own and vendor skills.
+// M1 across the skills of checkouts and dependencies.
 func TestCheckNames(t *testing.T) {
 	m, err := Parse([]byte(`
-[[environment.own]]
+[user.checkouts.a]
 repo = "me/a"
-path = "~/a"
-[[environment.own]]
+checkout_dir = "~/a"
+[user.checkouts.b]
 repo = "me/b"
-path = "~/b"
-[[environment.vendor]]
-name = "v"
+checkout_dir = "~/b"
+[user.dependencies.v]
 repo = "x/y"
-rev = "`+sha+`"
+commit = "`+sha+`"
 `), ".toml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	refs, err := m.CheckNames(map[int][]string{0: {"s1"}, 1: {"s2"}})
-	if err != nil || len(refs) != 3 || refs[0].Name != "s1" || refs[2].Vendor == nil {
+	refs, err := m.CheckNames(map[string][]string{"a": {"s1"}, "b": {"s2"}})
+	if err != nil || len(refs) != 3 || refs[0].Name != "s1" || refs[2].Dependency == nil {
 		t.Fatalf("refs = %+v, err = %v", refs, err)
 	}
-	if _, err := m.CheckNames(map[int][]string{0: {"v"}}); err == nil || !strings.Contains(err.Error(), `"v" is defined twice`) {
-		t.Errorf("own/vendor clash: %v", err)
+	if _, err := m.CheckNames(map[string][]string{"a": {"v"}}); err == nil || !strings.Contains(err.Error(), `"v" is defined twice`) {
+		t.Errorf("checkout/dependency clash: %v", err)
 	}
-	if _, err := m.CheckNames(map[int][]string{0: {"s"}, 1: {"s"}}); err == nil {
-		t.Error("own/own clash not detected")
+	if _, err := m.CheckNames(map[string][]string{"a": {"s"}, "b": {"s"}}); err == nil || !strings.Contains(err.Error(), "checkout a and checkout b") {
+		t.Errorf("checkout/checkout clash: %v", err)
+	}
+}
+
+// Reordering independent declarations does not change what the manifest
+// resolves to: the same checkouts, dependencies, machines and skills in
+// the same order, in every format.
+func TestReorderingInvariance(t *testing.T) {
+	blocks := []string{
+		"[user.checkouts.a]\nrepo = \"me/a\"\ncheckout_dir = \"~/a\"\ninclude = [\"x-*\", \"y\"]\n",
+		"[user.checkouts.b]\nrepo = \"me/b\"\ncheckout_dir = \"~/b\"\nexclude = [\"z\", \"w\"]\n",
+		"[user.dependencies.d1]\nrepo = \"x/y\"\ncommit = \"" + sha + "\"\n",
+		"[user.dependencies.d2]\nrepo = \"x/z\"\nskill_dir = \"d2\"\ncommit = \"" + sha + "\"\n",
+		"[user.machines.m]\nexclude = [\"d2\", \"y\"]\n",
+		"[user.git_hosts.work]\nbase_url = \"https://git.example.com\"\n",
+	}
+	resolve := func(order []int) string {
+		var b strings.Builder
+		for _, i := range order {
+			b.WriteString(blocks[i])
+		}
+		m, err := Parse([]byte(b.String()), ".toml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		refs, err := m.CheckNames(map[string][]string{"a": {"x-1", "y"}, "b": {"q"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, r := range refs {
+			from := "dep"
+			if r.Checkout != nil {
+				from = r.Checkout.ID
+			}
+			out = append(out, fmt.Sprintf("%s<%s>%v", r.Name, from, m.Machines["m"].Selects(r.Name)))
+		}
+		for _, c := range m.CheckoutList() {
+			out = append(out, c.ID)
+			for _, n := range []string{"x-9", "y", "z", "w"} {
+				out = append(out, fmt.Sprint(c.Selects(n)))
+			}
+		}
+		for _, d := range m.DependencyList() {
+			out = append(out, d.Name+"@"+d.SkillDir)
+		}
+		return strings.Join(out, " ")
+	}
+	want := resolve([]int{0, 1, 2, 3, 4, 5})
+	for _, order := range [][]int{{5, 4, 3, 2, 1, 0}, {3, 0, 5, 1, 4, 2}, {1, 3, 5, 0, 2, 4}} {
+		if got := resolve(order); got != want {
+			t.Errorf("order %v resolves to\n%s\nwant\n%s", order, got, want)
+		}
+	}
+	// Reordering list values (include, exclude) changes nothing either.
+	m1, _ := Parse([]byte(checkout("include = [\"b*\", \"a\"]\nexclude = [\"bz\", \"ba\"]\n")), ".toml")
+	m2, _ := Parse([]byte(checkout("include = [\"a\", \"b*\"]\nexclude = [\"ba\", \"bz\"]\n")), ".toml")
+	c1, c2 := m1.Checkouts["a"], m2.Checkouts["a"]
+	found := []string{"a", "ba", "bb", "bz", "c"}
+	s1, _ := c1.Select(found, "~/x/skills")
+	s2, _ := c2.Select(found, "~/x/skills")
+	if strings.Join(s1, ",") != strings.Join(s2, ",") || strings.Join(s1, ",") != "a,bb" {
+		t.Errorf("list order changes the selection: %v vs %v", s1, s2)
 	}
 }
 
@@ -212,64 +313,72 @@ func TestCacheKey(t *testing.T) {
 	}
 }
 
-func TestLayoutIgnore(t *testing.T) {
-	m, err := Parse([]byte("[environment.layout]\nignore = [\"peon-ping-*\", \"tmp?\"]\n"), ".toml")
+func TestUnmanaged(t *testing.T) {
+	m, err := Parse([]byte("[user]\nunmanaged = [\"peon-ping-*\", \"tmp?\"]\n"), ".toml")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for name, want := range map[string]bool{"peon-ping-toggle": true, "peon-ping": false, "tmp1": true, "archify": false} {
-		if got := m.Layout.Ignored(name); got != want {
-			t.Errorf("Ignored(%q) = %v", name, got)
+		if got := m.IsUnmanaged(name); got != want {
+			t.Errorf("IsUnmanaged(%q) = %v", name, got)
 		}
 	}
-	for _, bad := range []string{`ignore = ["[x"]`, `ignore = ["a/b"]`, `ignore = [""]`} {
-		if _, err := Parse([]byte("[environment.layout]\n"+bad+"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "layout.ignore") {
+	// Other tools' entries need not be skill names.
+	if _, err := Parse([]byte("[user]\nunmanaged = [\"My_Tool\", \".hidden*\"]\n"), ".toml"); err != nil {
+		t.Errorf("unmanaged entry names: %v", err)
+	}
+	for _, bad := range []string{`unmanaged = ["[x"]`, `unmanaged = ["a/b"]`, `unmanaged = [""]`} {
+		if _, err := Parse([]byte("[user]\n"+bad+"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "user.unmanaged") {
 			t.Errorf("%s: err = %v", bad, err)
 		}
 	}
-	m, _ = Parse([]byte("[environment.layout]\nignore = [\"peon-*\"]\n[[environment.vendor]]\nname = \"peon-x\"\nrepo = \"a/b\"\nrev = \""+sha+"\"\n"), ".toml")
-	if _, err := m.CheckNames(nil); err == nil || !strings.Contains(err.Error(), "matches layout.ignore") {
-		t.Errorf("skill matching ignore: %v", err)
+	m, _ = Parse([]byte("[user]\nunmanaged = [\"peon-*\"]\n"+dependency("peon-x", sha)), ".toml")
+	if _, err := m.CheckNames(nil); err == nil || !strings.Contains(err.Error(), "matches user.unmanaged") {
+		t.Errorf("skill matching unmanaged: %v", err)
 	}
 }
 
-// Issue #9: skills (allowlist) then exclude (globs) select from the skills
-// found in an own repository.
-func TestOwnSelect(t *testing.T) {
+// include then exclude (names and globs) select from the skills found in a
+// checkout; exclude wins.
+func TestCheckoutSelect(t *testing.T) {
 	found := []string{"alpha", "beta", "exp-one", "exp-two"}
 	cases := []struct {
 		name, lines string
 		want        string // selected names, or the error
 	}{
 		{"all", "", "alpha beta exp-one exp-two"},
-		{"allowlist", `skills = ["beta", "alpha"]`, "alpha beta"},
+		{"names", `include = ["beta", "alpha"]`, "alpha beta"},
+		{"glob include", `include = ["exp-*"]`, "exp-one exp-two"},
 		{"exclude glob", `exclude = ["exp-*"]`, "alpha beta"},
-		{"allowlist then exclude", `skills = ["alpha", "exp-one"]` + "\n" + `exclude = ["exp-*", "none-*"]`, "alpha"},
-		{"unknown name", `skills = ["alpha", "typo", "gone"]`, `error: own a/b: skills lists "typo", "gone", not found in ~/x/skills`},
+		{"include then exclude", `include = ["alpha", "exp-*"]` + "\n" + `exclude = ["exp-t*", "none-*"]`, "alpha exp-one"},
+		{"exclude wins", `include = ["alpha"]` + "\n" + `exclude = ["alpha"]`, ""},
+		{"glob matching nothing", `include = ["zzz-*"]`, ""},
+		{"unknown name", `include = ["alpha", "typo", "gone"]`, `error: user.checkouts.a: include lists "typo", "gone", not found in ~/x/skills`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			m, err := Parse([]byte(own(c.lines+"\n")), ".toml")
+			m, err := Parse([]byte(checkout(c.lines+"\n")), ".toml")
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := m.Own[0].Select(found)
+			co := m.Checkouts["a"]
+			got, err := co.Select(found, "~/x/skills")
 			res := strings.Join(got, " ")
 			if err != nil {
 				res = "error: " + err.Error()
 			}
-			if !strings.HasPrefix(res, c.want) {
+			if !strings.HasPrefix(res, c.want) || (c.want == "" && res != "") {
 				t.Errorf("got %q, want %q", res, c.want)
 			}
 		})
 	}
 	// YAML and JSON read the same fields.
 	for ext, text := range map[string]string{
-		".yaml": "environment:\n  own:\n    - repo: a/b\n      path: ~/x\n      skills: [alpha]\n      exclude: [\"exp-*\"]\n",
-		".json": `{"environment": {"own": [{"repo": "a/b", "path": "~/x", "skills": ["alpha"], "exclude": ["exp-*"]}]}}`,
+		".yaml": "user:\n  checkouts:\n    a:\n      repo: a/b\n      checkout_dir: ~/x\n      include: [alpha]\n      exclude: [\"exp-*\"]\n",
+		".json": `{"user": {"checkouts": {"a": {"repo": "a/b", "checkout_dir": "~/x", "include": ["alpha"], "exclude": ["exp-*"]}}}}`,
 	} {
 		m, err := Parse([]byte(text), ext)
-		if err != nil || len(m.Own[0].Skills) != 1 || len(m.Own[0].Exclude) != 1 {
+		if err != nil || len(m.Checkouts["a"].Include) != 1 || len(m.Checkouts["a"].Exclude) != 1 {
 			t.Errorf("%s: %+v %v", ext, m, err)
 		}
 	}

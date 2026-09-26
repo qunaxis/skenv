@@ -12,7 +12,7 @@ public.
 
 - [Before you start](#before-you-start)
 - [Set it up](#set-it-up)
-- [`[repo]` in `skenv.toml`](#repo-in-skenvtoml)
+- [`[repository]` in `skenv.toml`](#repository-in-skenvtoml)
 - [Commands](#commands)
 - [Managed files](#managed-files)
 - [CI](#ci)
@@ -71,8 +71,8 @@ create skenv.toml
 create lefthook.yml
 create .github/workflows/check.yml
 ...
-harness 0.5.0 (private, ci github) set up in ~/src/<skills-repo>
-CI jobs run on runners ubuntu-latest (repo.runner); to change them, edit repo.runner and run `skenv repo apply`
+harness 0.6.0 (private, ci github) set up in ~/src/<skills-repo>
+CI jobs run on runners ubuntu-latest (repository.ci.github.runs_on); to change them, edit it and run `skenv repo apply`
 git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active
 ```
@@ -80,40 +80,46 @@ lefthook install: hooks active
 The rest of this page describes the settings, the managed files and the
 pipelines.
 
-## `[repo]` in `skenv.toml`
+## `[repository]` in `skenv.toml`
 
-A repository describes its harness in the `[repo]` section of its skenv file
-(`skenv.toml`, or `skenv.yaml`/`skenv.yml`/`skenv.json`; see
+A repository describes its harness in the `[repository]` section of its
+skenv file (`skenv.toml`, or `skenv.yaml`/`skenv.yml`/`skenv.json`; see
 [the skenv file](skenv-file.md)):
 
 ```toml
-[repo]
-harness    = "0.5.0"                               # version of the templates
-visibility = "private"                             # private | public
-ci         = "github"                              # github | gitlab
-runner     = ["self-hosted", "linux", "docker"]    # private only: runs-on (GitHub) or tags (GitLab)
+[repository]
+template_version = "0.6.0"     # desired template version; `skenv repo upgrade` changes it
+visibility       = "private"   # declared publication policy: private | public
+
+[repository.ci.github]         # or [repository.ci.gitlab]
+runs_on = ["self-hosted", "linux", "docker"]   # private only; GitLab: tags = [...]
 ```
 
-| Key          | Values                    | Default                               | Meaning |
-| ------------ | ------------------------- | ------------------------------------- | ------- |
-| `harness`    | a version such as `0.5.0` | required                              | The template version, and the skenv release the CI installs. `skenv repo apply` sets it. |
-| `visibility` | `private`, `public`       | required                              | Visibility of the repository on its host. Decides the runners and the publication check. |
-| `ci`         | `github`, `gitlab`        | `github` when the key is missing      | The CI system to generate for. `skenv repo init` writes it, detected from `origin` (see [Choosing the CI system](#choosing-the-ci-system)). |
-| `runner`     | a list of strings         | `["self-hosted", "linux", "docker"]`  | Where the jobs of a **private** repository run: the `runs-on` labels on GitHub, the runner `tags:` on GitLab. Ignored for a public repository. |
+| Key                              | Values                    | Default                               | Meaning |
+| -------------------------------- | ------------------------- | ------------------------------------- | ------- |
+| `template_version`               | a version such as `0.6.0` | required                              | The template version the repository asks for, and the skenv release its CI installs. Only `skenv repo init` and `skenv repo upgrade` write it; see [Harness versions](#harness-versions). |
+| `visibility`                     | `private`, `public`       | required                              | The declared publication policy. It decides the runners, the publication check and whether `[user]` is allowed. skenv never reads or changes the access setting on the hosting service: keep the two in line yourself. |
+| `[repository.ci.github]`         | a table                   | used when neither table exists        | Generate GitHub Actions (`.github/workflows/check.yml`). |
+| `[repository.ci.gitlab]`         | a table                   |                                       | Generate GitLab CI (`.gitlab-ci.yml`). Both tables at once are an error. See [Choosing the CI system](#choosing-the-ci-system). |
+| `ci.github.runs_on`              | a list of strings         | `["self-hosted", "linux", "docker"]`  | The `runs-on` labels of the jobs of a **private** repository. |
+| `ci.gitlab.tags`                 | a list of strings         | `["self-hosted", "linux", "docker"]`  | The runner `tags:` of the jobs of a **private** repository. |
 
-The repository that holds your manifest has an `[environment]` section in
-the same file. A public repository must not: `skenv repo init` refuses and
-`skenv repo check` fails, because the manifest is personal (home paths, host
-names, which skills you use).
+`runs_on` and `tags` in a public repository are an error: its CI always
+runs on the runners of the host (see [Runners](#runners)).
+
+The repository that holds your manifest has a `[user]` section in the same
+file. A public repository must not: `skenv repo init` refuses and
+`skenv repo check` fails, because the manifest is personal (home paths,
+machine names, which skills you use).
 
 > [!WARNING]
-> In a private repository the CI jobs run on `runner`, which defaults to a
-> self-hosted runner (`["self-hosted", "linux", "docker"]`). Without such a
-> runner the jobs wait in the queue: GitHub fails them after 24 hours, and
-> GitLab leaves them pending. See [Runners](#runners) for the hosted
-> alternatives. Public repositories always run on the runners of the host
-> and ignore `runner`, so pull and merge requests from forks never execute
-> on your own machines.
+> In a private repository the CI jobs run on `runs_on` (GitHub) or `tags`
+> (GitLab), which default to a self-hosted runner
+> (`["self-hosted", "linux", "docker"]`). Without such a runner the jobs
+> wait in the queue: GitHub fails them after 24 hours, and GitLab leaves
+> them pending. See [Runners](#runners) for the hosted alternatives.
+> Public repositories always run on the runners of the host, so pull and
+> merge requests from forks never execute on your own machines.
 
 ## Commands
 
@@ -125,15 +131,18 @@ skenv repo init --visibility private --runner ubuntu-latest   # GitHub-hosted ru
 skenv repo init --visibility public --ci gitlab               # or: --ci github
 ```
 
-Adds `[repo]` and the schema directive (creating `skenv.toml` if there is
-no skenv file, or `skenv.yaml` or `skenv.json` with `--format yaml|json`)
-and every managed file, then runs `lefthook install`. Refuses if `[repo]` already
-exists. An existing skenv file gets `[repo]` in its own format; `--format`
+Adds `[repository]` with `template_version = "0.6.0"` and the schema
+directive (creating `skenv.toml` if there is no skenv file, or `skenv.yaml`
+or `skenv.json` with `--format yaml|json`) and every managed file, then
+runs `lefthook install`. Refuses if `[repository]` already exists. An
+existing skenv file gets `[repository]` in its own format; `--format`
 that disagrees with it is an error (see
 [Creating the file](skenv-file.md#creating-the-file)). `--ci` picks the CI
 system; without it, the host of `origin` decides, and the output says what
-was detected. `--runner` (comma-separated or repeated) sets `runner` of a
-private repository and is an error for a public one; the output names the
+was detected, and writes `[repository.ci.github]` or
+`[repository.ci.gitlab]`. `--runner` (comma-separated or repeated) sets
+`runs_on` or `tags` of a private repository and is an error for a public
+one; the output names the
 runners and lists the hook tools found and missing on `PATH`. Reference:
 [skenv repo init](commands/skenv_repo_init.md).
 
@@ -143,13 +152,33 @@ runners and lists the hook tools found and missing on `PATH`. Reference:
 skenv repo apply
 ```
 
-Regenerates the managed files and blocks from the templates of this skenv,
-moving an older `harness` to it, then runs `lefthook install`. It also
-points the schema directive of the skenv file at the schema of that
-version, adding the directive when it is missing (see
-[Editor support](editor-support.md)). It keeps `ci` as the skenv file says;
-to switch, edit `ci` (see [Switching the CI system](#switching-the-ci-system)). Reference:
+Regenerates the managed files and blocks from the templates of
+`template_version`, then runs `lefthook install`. It never changes the
+skenv file. skenv embeds the templates of one version (0.6.0); when
+`template_version` is another one, `apply` stops:
+
+```text
+error: skenv.toml: template_version 0.5.0 is not the template set of this skenv (0.6.0); run `skenv repo upgrade` to move the repository to 0.6.0, or use skenv 0.5.0
+```
+
+The pipeline follows the table under `repository.ci`; to switch, see
+[Switching the CI system](#switching-the-ci-system). Reference:
 [skenv repo apply](commands/skenv_repo_apply.md).
+
+### `skenv repo upgrade`
+
+```sh
+skenv repo upgrade --dry-run
+skenv repo upgrade
+```
+
+Moves the repository to the templates of the installed skenv: sets
+`template_version` to 0.6.0 and points the schema directive at that
+version (comments and formatting of the skenv file stay), then regenerates
+the managed files as `apply` does. The generated CI installs the skenv
+release named by `template_version`, so that release must exist before you
+push. Commit the skenv file together with the regenerated files.
+Reference: [skenv repo upgrade](commands/skenv_repo_upgrade.md).
 
 ### `skenv repo check`
 
@@ -157,17 +186,27 @@ to switch, edit `ci` (see [Switching the CI system](#switching-the-ci-system)). 
 skenv repo check
 ```
 
-Compares the repository with the templates. Any drift, and a `CLAUDE.md` or
-`.claude/CLAUDE.md` (it disables `AGENTS.md` in Claude Code), is listed with
-exit code 1. So is a managed pipeline of the CI system that `ci` does not
-name, left over after a switch. A skenv file without a schema directive, or with one for
-another version than `harness`, is a warning on stderr that does not change
-the exit code; `skenv repo apply` fixes it. Reference: [skenv repo check](commands/skenv_repo_check.md).
+Compares the repository with the templates of `template_version`. Each
+difference is listed with exit code 1:
+
+```text
+skenv.toml: template_version 0.5.0; this skenv generates 0.6.0: run `skenv repo upgrade`
+lefthook.yml: generated by the 0.5.0 templates, template_version is 0.6.0: run `skenv repo apply`
+ruff.toml: differs from the 0.6.0 template (edited by hand?): run `skenv repo apply`
+```
+
+So are a missing managed file or block, a `CLAUDE.md` or
+`.claude/CLAUDE.md` (it disables `AGENTS.md` in Claude Code), and a managed
+pipeline of the CI system that `repository.ci` does not name, left over
+after a switch. A skenv file without a schema directive, or with one for
+another version than `template_version`, is a warning on stderr that does
+not change the exit code; `skenv repo upgrade` writes the directive.
+Reference: [skenv repo check](commands/skenv_repo_check.md).
 
 ### Common flags
 
-All commands take `--dir` (default: the current repository); `init` and
-`apply` take `--dry-run`, and `--force` to replace existing files that skenv
+All commands take `--dir` (default: the current repository); `init`,
+`apply` and `upgrade` take `--dry-run`, and `--force` to replace existing files that skenv
 does not manage yet (without it they refuse and list them, so a
 hand-written workflow or `.claude/settings.json` is never lost silently).
 
@@ -175,30 +214,31 @@ hand-written workflow or `.claude/settings.json` is never lost silently).
 > `skenv repo check` fails on a `CLAUDE.md` or `.claude/CLAUDE.md` in the
 > repository, because it disables `AGENTS.md` in Claude Code. Keep
 > repository rules in `AGENTS.md`.
-When `lefthook` is not installed, `init` and `apply` still write the files
+When `lefthook` is not installed, `init`, `apply` and `upgrade` still write the files
 and print a warning.
 
 ### `skenv init` and the harness
 
-`skenv init` starts a manifest (`[environment]`) and
-does not set up `[repo]`, so it has no `--ci`: run `skenv repo init`
+`skenv init` starts a manifest (`[user]`) and
+does not set up `[repository]`, so it has no `--ci`: run `skenv repo init`
 afterwards, which detects the CI system as above. In a repository without
-an `origin` yet, `skenv init --remote <repo>` names the future remote for
-the manifest's own entry (see
+an `origin` yet, `skenv init --remote <repo>` names the future remote of
+the repository's own checkout (see
 [Git hosts](git-hosts.md#starting-a-manifest-with-skenv-init)); `skenv repo init`
 then has no origin to detect from, so pass `--ci gitlab` for GitLab.
 
 ## Managed files
 
-Managed files start with `managed by skenv <harness> — do not edit`:
+Managed files start with `managed by skenv <version> — do not edit`, the
+template version that generated them:
 
 - `lefthook.yml` — pre-commit: `skenv lint --staged`, ruff (format, check)
   on staged `*.py`, shellcheck on staged `*.sh` and shell executables,
   gitleaks on the staged diff; pre-push: `check` of changed skills and, in
   public repositories, `skenv lint --publish` (needs the local stop-list),
   so nothing is pushed before the publication check.
-- The CI pipeline of `ci`: `.github/workflows/check.yml` (GitHub Actions)
-  or `.gitlab-ci.yml` (GitLab CI). See [CI](#ci).
+- The CI pipeline of `repository.ci`: `.github/workflows/check.yml`
+  (GitHub Actions) or `.gitlab-ci.yml` (GitLab CI). See [CI](#ci).
 - `ruff.toml`, `pyrightconfig.json`, `.editorconfig`, `.markdownlint.yaml`.
 - `.claude/settings.json` — the
   [Claude Code hook](claude-code-hook.md).
@@ -206,29 +246,31 @@ Managed files start with `managed by skenv <harness> — do not edit`:
 `AGENTS.md` (repository rules) and `.gitignore` get a managed block between
 `<!-- skenv:begin … -->` / `<!-- skenv:end -->` (`# skenv:begin` / `# skenv:end`);
 text outside the block is yours and is kept by `apply`. The `AGENTS.md`
-block names the pipeline of `ci` and, for a public repository, the name of
-the stop-list secret or variable.
+block names the pipeline of `repository.ci` and, for a public repository,
+the name of the stop-list secret or variable.
 
 ## CI
 
 ### Choosing the CI system
 
-`ci` in `[repo]` is `github` (GitHub Actions, `.github/workflows/check.yml`)
-or `gitlab` (GitLab CI, `.gitlab-ci.yml`). `skenv repo init --ci …` sets it;
-without `--ci`, it comes from the host of `origin`, resolved like a `repo`
-value of the manifest (see [Git hosts](git-hosts.md)):
+The table under `repository.ci` chooses the CI system:
+`[repository.ci.github]` for GitHub Actions (`.github/workflows/check.yml`),
+`[repository.ci.gitlab]` for GitLab CI (`.gitlab-ci.yml`). Neither means
+GitHub Actions; both is an error. `skenv repo init --ci github|gitlab`
+writes the table; without `--ci`, the CI system comes from the host of
+`origin`, resolved like a `repo` value of the manifest (see
+[Git hosts](git-hosts.md)):
 
-| `origin`                                                                 | `ci`     |
-| ------------------------------------------------------------------------ | -------- |
-| on gitlab.com (https or ssh)                                             | `gitlab` |
-| on a host declared with `type = "gitlab"`                                | `gitlab` |
-| on github.com, codeberg.org, another declared or unknown host            | `github` |
-| no `origin`                                                              | `github` |
+| `origin`                                                                 | CI table   |
+| ------------------------------------------------------------------------ | ---------- |
+| on gitlab.com (https or ssh)                                             | `gitlab`   |
+| on a host declared with `provider = "gitlab"`                            | `gitlab`   |
+| on github.com, codeberg.org, another declared or unknown host            | `github`   |
+| no `origin`                                                              | `github`   |
 
-Declared hosts are read from the repository's own `[environment]` when it
-has one, else from the manifest in the tool config. The origin URL is never
-printed; the output only says what decided. A skenv file without `ci`
-means `github`.
+Declared hosts are read from the repository's own `[user.git_hosts]` when
+it has a `[user]` section, else from the manifest in the tool config. The
+origin URL is never printed; the output only says what decided.
 
 ### What the pipeline runs
 
@@ -248,7 +290,7 @@ harness version:
 
 | Tool                     | Version                          |
 | ------------------------ | -------------------------------- |
-| skenv                    | the `harness` version            |
+| skenv                    | the `template_version`           |
 | gitleaks                 | 8.30.1                           |
 | ruff                     | 0.16.9                           |
 | pyright                  | 1.1.414                          |
@@ -262,7 +304,7 @@ harness version:
 ```text [GitHub Actions]
 .github/workflows/check.yml
 - on: push, pull_request
-- private: runs-on = runner; setup actions run with caching off, uv's cache
+- private: runs-on = runs_on; setup actions run with caching off, uv's cache
   and Python builds in $RUNNER_TOOL_CACHE (the runner's shared tool cache,
   not the Actions storage quota)
 - public: runs-on ubuntu-latest
@@ -277,7 +319,7 @@ harness version:
 - every job runs in the node:22-bookworm image: the runner needs the Docker
   (or Kubernetes) executor; tools are downloaded at the pinned versions
 - GIT_DEPTH 0: the full history, for gitleaks and the changed skills
-- private: default tags = runner; public: no tags (the runners the
+- private: default tags = tags; public: no tags (the runners the
   project allows for untagged jobs, see Runners)
 - one `skills` job per Python version (parallel:matrix PYTHON 3.9, 3.12)
   runs ./check of every changed skill; it fails if any of them fails
@@ -287,7 +329,7 @@ harness version:
 
 ### Runners
 
-`runner` applies to private repositories only. A public repository runs on
+`runs_on` and `tags` apply to private repositories only. A public repository runs on
 the runners of the host, never on self-hosted ones, so code from a fork
 never runs on your machines. The same rule holds for both CI systems. On
 GitHub the workflow says `runs-on: ubuntu-latest`. On GitLab the jobs of a
@@ -301,29 +343,33 @@ administrator allows.
 ::: code-group
 
 ```toml [GitHub]
-# runner is the runs-on of every job: labels of a self-hosted runner,
+# runs_on is the runs-on of every job: labels of a self-hosted runner,
 # or a GitHub-hosted runner.
-[repo]
-visibility = "private"
-ci         = "github"
-runner     = ["self-hosted", "linux", "docker"]   # default
-# runner   = ["ubuntu-latest"]                     # GitHub-hosted
+[repository]
+template_version = "0.6.0"
+visibility       = "private"
+
+[repository.ci.github]
+runs_on = ["self-hosted", "linux", "docker"]   # default
+# runs_on = ["ubuntu-latest"]                  # GitHub-hosted
 ```
 
 ```toml [GitLab]
-# runner is the tags: of every job (under default:). A runner picks a job
+# tags are the tags: of every job (under default:). A runner picks a job
 # only when it has all of these tags.
-[repo]
-visibility = "private"
-ci         = "gitlab"
-runner     = ["self-hosted", "linux", "docker"]   # default
-# runner   = ["saas-linux-small-amd64"]            # GitLab.com instance runners
+[repository]
+template_version = "0.6.0"
+visibility       = "private"
+
+[repository.ci.gitlab]
+tags = ["self-hosted", "linux", "docker"]      # default
+# tags = ["saas-linux-small-amd64"]            # GitLab.com instance runners
 ```
 
 :::
 
 On GitLab, register the runner with the Docker executor and exactly the
-tags of `runner` (the default expects `self-hosted`, `linux` and `docker`).
+tags of `tags` (the default expects `self-hosted`, `linux` and `docker`).
 
 ### Changed skills
 
@@ -395,15 +441,25 @@ the stop-list or its base64 in a job, and never commit either.
 
 ### Switching the CI system
 
-`skenv repo apply` keeps `ci` as the skenv file says. To move a repository
-from GitHub to GitLab, or back, edit `ci` and apply:
+`skenv repo apply` generates the pipeline of the table under
+`repository.ci`. To move a repository from GitHub to GitLab, or back,
+replace the table and apply:
+
+```toml
+[repository]
+template_version = "0.6.0"
+visibility       = "private"
+
+[repository.ci.gitlab]   # was [repository.ci.github]; runs_on becomes tags
+tags = ["self-hosted", "linux", "docker"]
+```
 
 ```sh
-skenv repo apply --dry-run   # after editing ci in skenv.toml: shows the plan
+skenv repo apply --dry-run   # shows the plan
 skenv repo apply
 ```
 
-For `ci = "gitlab"` the plan is:
+For `[repository.ci.gitlab]` the plan is:
 
 ```text
 would create .gitlab-ci.yml
@@ -420,37 +476,39 @@ secret or variable.
 
 ## Examples
 
-Each example is complete: the `[repo]` section in each format, then the
-commands that create it. `skenv repo init` writes the section and adds the
-schema directive; in YAML and JSON `[repo]` goes to the top of the file.
+Each example is complete: the `[repository]` section in each format, then
+the commands that create it. `skenv repo init` writes the section and adds
+the schema directive; in YAML and JSON `repository` goes to the top of the
+file.
 
 ### GitHub, private, self-hosted runner
 
 ::: code-group
 
 ```toml [skenv.toml]
-[repo]
-harness    = "0.5.0"
-visibility = "private"
-ci         = "github"
-runner     = ["self-hosted", "linux", "docker"]
+[repository]
+template_version = "0.6.0"
+visibility       = "private"
+
+[repository.ci.github]
+runs_on = ["self-hosted", "linux", "docker"]
 ```
 
 ```yaml [skenv.yaml]
-repo:
-  harness: 0.5.0
+repository:
+  template_version: 0.6.0
   visibility: private
-  ci: github
-  runner: [self-hosted, linux, docker]
+  ci:
+    github:
+      runs_on: [self-hosted, linux, docker]
 ```
 
 ```json [skenv.json]
 {
-  "repo": {
-    "harness": "0.5.0",
+  "repository": {
+    "template_version": "0.6.0",
     "visibility": "private",
-    "ci": "github",
-    "runner": ["self-hosted", "linux", "docker"]
+    "ci": { "github": { "runs_on": ["self-hosted", "linux", "docker"] } }
   }
 }
 ```
@@ -469,25 +527,27 @@ The runner must carry the labels `self-hosted`, `linux` and `docker`.
 ::: code-group
 
 ```toml [skenv.toml]
-[repo]
-harness    = "0.5.0"
-visibility = "public"
-ci         = "github"
+[repository]
+template_version = "0.6.0"
+visibility       = "public"
+
+[repository.ci.github]
 ```
 
 ```yaml [skenv.yaml]
-repo:
-  harness: 0.5.0
+repository:
+  template_version: 0.6.0
   visibility: public
-  ci: github
+  ci:
+    github: {}
 ```
 
 ```json [skenv.json]
 {
-  "repo": {
-    "harness": "0.5.0",
+  "repository": {
+    "template_version": "0.6.0",
     "visibility": "public",
-    "ci": "github"
+    "ci": { "github": {} }
   }
 }
 ```
@@ -505,28 +565,29 @@ git add -A && git commit -m "chore: skenv harness"
 ::: code-group
 
 ```toml [skenv.toml]
-[repo]
-harness    = "0.5.0"
-visibility = "private"
-ci         = "gitlab"
-runner     = ["self-hosted", "linux", "docker"]
+[repository]
+template_version = "0.6.0"
+visibility       = "private"
+
+[repository.ci.gitlab]
+tags = ["self-hosted", "linux", "docker"]
 ```
 
 ```yaml [skenv.yaml]
-repo:
-  harness: 0.5.0
+repository:
+  template_version: 0.6.0
   visibility: private
-  ci: gitlab
-  runner: [self-hosted, linux, docker]
+  ci:
+    gitlab:
+      tags: [self-hosted, linux, docker]
 ```
 
 ```json [skenv.json]
 {
-  "repo": {
-    "harness": "0.5.0",
+  "repository": {
+    "template_version": "0.6.0",
     "visibility": "private",
-    "ci": "gitlab",
-    "runner": ["self-hosted", "linux", "docker"]
+    "ci": { "gitlab": { "tags": ["self-hosted", "linux", "docker"] } }
   }
 }
 ```
@@ -553,25 +614,27 @@ With an origin on gitlab.com, `--ci gitlab` can be left out.
 ::: code-group
 
 ```toml [skenv.toml]
-[repo]
-harness    = "0.5.0"
-visibility = "public"
-ci         = "gitlab"
+[repository]
+template_version = "0.6.0"
+visibility       = "public"
+
+[repository.ci.gitlab]
 ```
 
 ```yaml [skenv.yaml]
-repo:
-  harness: 0.5.0
+repository:
+  template_version: 0.6.0
   visibility: public
-  ci: gitlab
+  ci:
+    gitlab: {}
 ```
 
 ```json [skenv.json]
 {
-  "repo": {
-    "harness": "0.5.0",
+  "repository": {
+    "template_version": "0.6.0",
     "visibility": "public",
-    "ci": "gitlab"
+    "ci": { "gitlab": {} }
   }
 }
 ```
@@ -595,52 +658,54 @@ on that server, so `skenv repo init` detects GitLab CI.
 ::: code-group
 
 ```toml [skenv.toml]
-[repo]
-harness    = "0.5.0"
-visibility = "private"
-ci         = "gitlab"
-runner     = ["skills", "docker"]
+[repository]
+template_version = "0.6.0"
+visibility       = "private"
 
-[environment.hosts.work]
-url  = "https://git.example.com"
-type = "gitlab"
+[repository.ci.gitlab]
+tags = ["skills", "docker"]
 
-[[environment.own]]
-repo = "work:platform/skills"
-path = "~/src/skills"
+[user.git_hosts.work]
+base_url = "https://git.example.com"
+provider = "gitlab"
+
+[user.checkouts.skills]
+repo         = "work:platform/skills"
+checkout_dir = "."
 ```
 
 ```yaml [skenv.yaml]
-repo:
-  harness: 0.5.0
+repository:
+  template_version: 0.6.0
   visibility: private
-  ci: gitlab
-  runner: [skills, docker]
-environment:
-  hosts:
+  ci:
+    gitlab:
+      tags: [skills, docker]
+user:
+  git_hosts:
     work:
-      url: https://git.example.com
-      type: gitlab
-  own:
-    - repo: work:platform/skills
-      path: ~/src/skills
+      base_url: https://git.example.com
+      provider: gitlab
+  checkouts:
+    skills:
+      repo: work:platform/skills
+      checkout_dir: .
 ```
 
 ```json [skenv.json]
 {
-  "repo": {
-    "harness": "0.5.0",
+  "repository": {
+    "template_version": "0.6.0",
     "visibility": "private",
-    "ci": "gitlab",
-    "runner": ["skills", "docker"]
+    "ci": { "gitlab": { "tags": ["skills", "docker"] } }
   },
-  "environment": {
-    "hosts": {
-      "work": { "url": "https://git.example.com", "type": "gitlab" }
+  "user": {
+    "git_hosts": {
+      "work": { "base_url": "https://git.example.com", "provider": "gitlab" }
     },
-    "own": [
-      { "repo": "work:platform/skills", "path": "~/src/skills" }
-    ]
+    "checkouts": {
+      "skills": { "repo": "work:platform/skills", "checkout_dir": "." }
+    }
   }
 }
 ```
@@ -652,18 +717,18 @@ git remote add origin git@git.example.com:platform/skills.git
 skenv repo init --visibility private   # prints: ci gitlab: detected from origin, on a GitLab host
 ```
 
-`skenv repo init` writes the default `runner`; replace it with the tags of
+`skenv repo init` writes the default `tags`; replace them with the tags of
 your runner (here `skills` and `docker`) and run `skenv repo apply`. A
 separate skills repository on the same server finds `work` in the manifest
 of the tool config, so its `skenv repo init` detects GitLab CI as well.
 
 ## Troubleshooting
 
-**Jobs stay queued or pending.** No runner has the labels or tags of
-`runner`. GitHub shows "Waiting for a runner to pick up this job"; GitLab
+**Jobs stay queued or pending.** No runner has the labels of `runs_on` or
+the tags of `tags`. GitHub shows "Waiting for a runner to pick up this job"; GitLab
 says the job is stuck because no runner has the tags. Register a runner
 with exactly those labels or tags (on GitLab with the Docker executor), or
-set `runner` to hosted runners (`["ubuntu-latest"]` on GitHub,
+set `runs_on` or `tags` to hosted runners (`["ubuntu-latest"]` on GitHub,
 `["saas-linux-small-amd64"]` on GitLab.com) and run `skenv repo apply`.
 Public repositories use hosted or shared runners only: on a self-managed
 GitLab instance, enable instance runners for the project.
@@ -703,12 +768,27 @@ and 3.12. Third-party Python imports for pyright go to
 
 ## Harness versions
 
-skenv embeds one template set, the harness version of its release (0.5.0).
-`skenv repo check` reports a repository on an older `harness`, and
-`skenv repo apply` moves it to the current one. `skenv doctor` warns about
-own repositories whose `harness` is older than the templates of the
-installed skenv. The CI pipeline installs the skenv release named by
-`harness`.
+skenv embeds one template set, the harness version of its release (0.6.0).
+Two versions describe a repository:
+
+- **Desired**: `repository.template_version`, the version the repository
+  asks for, and the skenv release its CI installs. Only `skenv repo init`
+  and `skenv repo upgrade` write it; `sync`, `repo apply` and `repo check`
+  never change the skenv file.
+- **Last applied**: the `managed by skenv <version>` header of each
+  generated file and block, written by the run that generated it.
+
+`skenv repo apply` generates the files of the desired version and stops
+when that is not the embedded one. `skenv repo check` reports a desired
+version older than the embedded one ("run `skenv repo upgrade`") and files
+whose header names another version or whose content was edited ("run
+`skenv repo apply`"). A `template_version` newer than the installed skenv
+is an error: upgrade skenv. `skenv doctor` warns about checkouts whose
+`template_version` is older than the templates of the installed skenv.
+
+To move a repository to a new skenv release: install it, run
+`skenv repo upgrade`, and commit the skenv file with the regenerated
+files.
 
 The publication check and the lint rules are described in
 [Validation and publication](lint.md).

@@ -3,8 +3,8 @@
 skenv publishes a JSON Schema for [the skenv file](skenv-file.md) and one
 for [the tool config](configuration.md). With them an editor completes key
 names, shows a description when you hover over a key, and marks unknown
-keys and wrong values as you type: a short `rev`, a misspelt `visibility`,
-`[environment]` in a public repository.
+keys and wrong values as you type: a short `commit`, a misspelt
+`visibility`, `[user]` in a public repository.
 
 - [How the editor finds the schema](#how-the-editor-finds-the-schema)
 - [Schema URLs](#schema-urls)
@@ -28,13 +28,14 @@ nothing to set up:
 A `skenv.toml` created by `skenv repo init` starts like this:
 
 ```toml
-#:schema https://qunaxis.github.io/skenv/schemas/v0.5.0/skenv.schema.json
-# Repository harness: `skenv repo apply` regenerates the managed files.
-[repo]
-harness    = "0.5.0"
-visibility = "private"
-ci         = "github"
-runner     = ["self-hosted", "linux", "docker"]  # runs-on of the CI jobs
+#:schema https://qunaxis.github.io/skenv/schemas/v0.6.0/skenv.schema.json
+# Repository templates and checks: `skenv repo apply` regenerates the managed files.
+[repository]
+template_version = "0.6.0"
+visibility       = "private"
+
+[repository.ci.github]
+runs_on = ["self-hosted", "linux", "docker"]  # runs-on of the CI jobs
 ```
 
 Who writes or updates the directive:
@@ -45,8 +46,8 @@ Who writes or updates the directive:
   to its own version and adds none.
 - `skenv repo init` and `skenv init` add the
   directive to the skenv file (creating `skenv.toml`, or the format of
-  `--format`, if there is none), and `skenv repo apply` keeps it at the
-  version of `repo.harness`. `skenv repo check` warns when it is missing or
+  `--format`, if there is none), and `skenv repo upgrade` moves it to the
+  version it sets in `repository.template_version`. `skenv repo check` warns when it is missing or
   points at another version; the warning does not change the exit code,
   because the directive does not change what skenv does.
 - `skenv vendor add|update|remove` keep the directive, like every comment,
@@ -64,9 +65,9 @@ never touches.
 | the skenv file  | `https://qunaxis.github.io/skenv/schemas/skenv.schema.json`  | `https://qunaxis.github.io/skenv/schemas/v<X.Y.Z>/skenv.schema.json`  |
 | the tool config | `https://qunaxis.github.io/skenv/schemas/config.schema.json` | `https://qunaxis.github.io/skenv/schemas/v<X.Y.Z>/config.schema.json` |
 
-The directive skenv writes is pinned to a release: in a repository with a
-harness, the version in `repo.harness`, which is also the skenv its CI
-installs; elsewhere, the version of the skenv that wrote the file, or the
+The directive skenv writes is pinned to a release: in a repository with
+`[repository]`, the version in `template_version`, which is also the
+skenv its CI installs; elsewhere, the version of the skenv that wrote the file, or the
 latest URL when that is a development build. Versions before 0.4.0, the
 first with schemas, get the latest URL too. A pinned schema never shows a key
 as valid that the skenv reading the file does not know. The unversioned
@@ -108,9 +109,9 @@ For a file without a directive, map the schema in `settings.json`:
 ```
 
 To check that it works, open a `skenv.toml` written by `skenv repo init`:
-typing inside `[repo]` or a new `[[environment.vendor]]` table offers the
-keys, hovering over `rev` shows its description, and a short `rev` or an
-unknown key is underlined.
+typing inside `[repository]` or a new `[user.dependencies.<name>]` table
+offers the keys, hovering over `commit` shows its description, and a short
+`commit` or an unknown key is underlined.
 
 ## JetBrains IDEs
 
@@ -158,12 +159,13 @@ directive go into the `lsp` section of `settings.json`, as for VS Code
 Some rules need the file system or the whole file, so only skenv checks
 them (`skenv doctor`, `skenv sync`):
 
-- skill names are unique across own and vendor skills, and the skills of
-  an own repository are the directories found in it;
-- vendor names are unique;
-- a `layout.ignore` pattern must be a valid glob and must not match a
-  skill of the manifest;
-- `repo.harness` must not be newer than the templates of the skenv that
-  reads it;
+- skill names are unique across the skills checkouts select and the
+  dependencies, and the skills of a checkout are the directories found in
+  it; a literal name in `include` must be one of them;
+- an `unmanaged` pattern must not match a selected skill;
+- a machine name set in the tool config must have a `[user.machines]`
+  entry;
+- `template_version` must not be newer than the templates of the skenv
+  that reads it;
 - a directory holds only one skenv file, and `~/.config/skenv/` only one
   config file.

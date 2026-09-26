@@ -2,14 +2,20 @@
 // skenv.toml (or skenv.yaml, skenv.yml, skenv.json) in its root.
 //
 // The file has three optional top-level sections, independent of each
-// other:
+// other (docs/adr/0002-config-format.md):
 //
-//   - [repo]: the harness of a skills repository (harness, visibility,
-//     runner), written by `skenv repo init|apply`;
-//   - [environment]: the manifest of a user's machines (layout, own,
-//     vendor, host), edited by `skenv vendor add|update|remove`;
+//   - [repository]: the development tooling of a skills repository
+//     (template_version, visibility, ci), written by `skenv repo
+//     init|upgrade`;
+//   - [user]: the manifest, the skills of the current OS user's agents
+//     (checkouts, dependencies, machines, agents, storage, git_hosts,
+//     unmanaged), edited by `skenv vendor add|update|remove`;
 //   - [project]: the skills a project repository carries (dir, mirrors,
-//     mirrors_mode, vendor, from), edited by `skenv vendor ... --project`.
+//     mirrors_mode, git_hosts, dependencies, from), edited by `skenv
+//     vendor ... --project`.
+//
+// Keys of the format before skenv 0.6 are errors that name their
+// replacement (legacy.go); there is no legacy reading.
 //
 // Nothing else may appear at the top level, except "$schema" (a string,
 // ignored) for editors. Each section is decoded strictly: unknown keys are
@@ -46,13 +52,13 @@ var Names = []string{"skenv.toml", "skenv.yaml", "skenv.yml", "skenv.json"}
 
 // Sections of the file.
 const (
-	Repo        = "repo"
-	Environment = "environment"
-	Project     = "project"
+	Repository = "repository"
+	User       = "user"
+	Project    = "project"
 )
 
 // Sections lists the sections in the order the docs present them.
-var Sections = []string{Repo, Environment, Project}
+var Sections = []string{Repository, User, Project}
 
 // oldManifest is the manifest file of skenv before 0.4.
 const oldManifest = "env.toml"
@@ -87,9 +93,8 @@ func Find(dir string) (string, error) {
 
 // OldManifestError explains that env.toml is no longer read.
 func OldManifestError(path string) error {
-	return fmt.Errorf("%s is no longer read: move its content under [environment] in skenv.toml "+
-		"(tables become [environment.layout], [[environment.own]], [[environment.vendor]], "+
-		"[environment.host.<name>]) and delete it", path)
+	return fmt.Errorf("%s is no longer read: move its content under [user] in skenv.toml and delete it; "+
+		"the keys are renamed, see %s", path, MigrationURL)
 }
 
 // Doc is a parsed skenv file.
@@ -145,6 +150,9 @@ func Parse(data []byte, ext string) (*Doc, error) {
 	if d.raw == nil {
 		d.raw = map[string]any{}
 	}
+	if err := legacyError(d.raw); err != nil {
+		return nil, err
+	}
 	var unknown []string
 	for k := range d.raw {
 		if !slices.Contains(Sections, k) && k != docedit.SchemaKey {
@@ -153,12 +161,7 @@ func Parse(data []byte, ext string) (*Doc, error) {
 	}
 	if len(unknown) > 0 {
 		sort.Strings(unknown)
-		for _, k := range unknown {
-			if k == "harness" || k == "visibility" || k == "runner" {
-				return nil, fmt.Errorf("unknown top-level keys: %s; this is the skenv.toml of skenv before 0.4: move harness, visibility and runner under [repo] (see docs/skenv-file.md)", strings.Join(unknown, ", "))
-			}
-		}
-		return nil, fmt.Errorf("unknown top-level keys: %s (settings live under [repo], [environment] and [project])", strings.Join(unknown, ", "))
+		return nil, fmt.Errorf("unknown top-level keys: %s (settings live under [repository], [user] and [project])", strings.Join(unknown, ", "))
 	}
 	for _, s := range Sections {
 		if v, ok := d.raw[s]; ok {
@@ -266,7 +269,7 @@ func (d *Doc) Decode(section string, out any) error {
 }
 
 // IsDefined reports whether the key path exists, for example
-// IsDefined("environment", "layout", "targets").
+// IsDefined("user", "agents", "enabled").
 func (d *Doc) IsDefined(keys ...string) bool {
 	var cur any = d.raw
 	for _, k := range keys {
@@ -281,22 +284,23 @@ func (d *Doc) IsDefined(keys ...string) bool {
 	return true
 }
 
-// Harness returns repo.harness as written, "" when it is missing or not a
-// string.
-func (d *Doc) Harness() string {
-	r, _ := d.raw[Repo].(map[string]any)
-	v, _ := r["harness"].(string)
+// TemplateVersion returns repository.template_version as written, "" when
+// it is missing or not a string.
+func (d *Doc) TemplateVersion() string {
+	r, _ := d.raw[Repository].(map[string]any)
+	v, _ := r["template_version"].(string)
 	return v
 }
 
 var versionRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 
 // SchemaVersion is the skenv release whose schema the directive of this
-// file names: repo.harness in a repository with a harness, because that is
-// the skenv its CI installs (`skenv repo check` compares with it); the
-// running skenv otherwise ("" for a development build: the latest schema).
+// file names: repository.template_version in a repository with templates,
+// because that is the skenv its CI installs (`skenv repo check` compares
+// with it); the running skenv otherwise ("" for a development build: the
+// latest schema).
 func (d *Doc) SchemaVersion() string {
-	if h := d.Harness(); versionRe.MatchString(h) {
+	if h := d.TemplateVersion(); versionRe.MatchString(h) {
 		return h
 	}
 	return schemas.Running()

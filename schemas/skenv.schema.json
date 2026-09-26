@@ -2,18 +2,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qunaxis.github.io/skenv/schemas/skenv.schema.json",
   "title": "skenv file",
-  "description": "The skenv file of a repository: skenv.toml, skenv.yaml, skenv.yml or skenv.json in its root. [repo] is the harness of a skills repository, [environment] the manifest of your machines, [project] the skills a project repository carries. Rules the schema cannot check are enforced by skenv: skill names are unique across own and vendor skills (and across vendor and from skills of [project]), layout.ignore must not match a manifest skill, project.dir and project.mirrors do not overlap, and a directory holds only one skenv file. Docs: https://qunaxis.github.io/skenv/skenv-file",
+  "description": "The skenv file of a repository: skenv.toml, skenv.yaml, skenv.yml or skenv.json in its root. [repository] is the development tooling of a skills repository, [user] the manifest (the skills of your agents), [project] the skills a project repository carries. Rules the schema cannot check are enforced by skenv: skill names are unique across checkouts and dependencies (and across dependencies and from entries of [project]), user.unmanaged must not match a selected skill, project.dir and project.mirrors do not overlap, and a directory holds only one skenv file. Docs: https://qunaxis.github.io/skenv/skenv-file",
   "type": "object",
   "properties": {
     "$schema": {
       "description": "The URL of this schema, for editors. skenv ignores it.",
       "type": "string"
     },
-    "repo": {
-      "$ref": "#/$defs/repo"
+    "repository": {
+      "$ref": "#/$defs/repository"
     },
-    "environment": {
-      "$ref": "#/$defs/environment"
+    "user": {
+      "$ref": "#/$defs/user"
     },
     "project": {
       "$ref": "#/$defs/project"
@@ -22,7 +22,7 @@
   "additionalProperties": false,
   "if": {
     "properties": {
-      "repo": {
+      "repository": {
         "properties": {
           "visibility": {
             "const": "public"
@@ -34,34 +34,34 @@
       }
     },
     "required": [
-      "repo"
+      "repository"
     ]
   },
   "then": {
     "properties": {
-      "environment": {
-        "description": "A public repository must not carry [environment]: the manifest is personal (home paths, host names, which skills you use). Keep it in a private repository.",
+      "user": {
+        "description": "A public repository must not carry [user]: the manifest is personal (home paths, machine names, which skills you use). Keep it in a private repository.",
         "not": {},
-        "errorMessage": "A public repository must not carry [environment]: the manifest is personal. Keep it in a private repository."
+        "errorMessage": "A public repository must not carry [user]: the manifest is personal. Keep it in a private repository."
       }
     }
   },
   "$defs": {
-    "repo": {
-      "description": "The [repo] section of the skenv file: the harness of a skills repository, the tooling that `skenv repo apply` generates.",
+    "repository": {
+      "description": "The [repository] section of the skenv file: the development tooling of a skills repository that `skenv repo apply` generates, and its publication policy.",
       "type": "object",
       "properties": {
-        "harness": {
-          "description": "The version of the harness templates, which is also the skenv release the generated CI installs. It must not be newer than the templates of the skenv that reads it; `skenv repo apply` moves it to the version of the running skenv.",
+        "template_version": {
+          "description": "The version of the templates this repository asks for, which is also the skenv release its generated CI installs. It must not be newer than the templates of the skenv that reads it.",
           "type": "string",
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
           "examples": [
-            "0.5.0"
+            "0.6.0"
           ],
-          "patternErrorMessage": "A version such as 0.5.0."
+          "patternErrorMessage": "A version such as 0.6.0."
         },
         "visibility": {
-          "description": "The visibility of the repository on its host: \"private\" or \"public\". A public repository must not have [environment], and its CI always runs on the runners of the host (ubuntu-latest on GitHub, the shared runners on GitLab), never on self-hosted ones.",
+          "description": "The declared publication policy: \"private\" or \"public\". skenv never reads or changes the access setting on the hosting service. A public repository must not carry [user], and its CI runs `skenv lint --publish` on the runners of the host (ubuntu-latest on GitHub, the shared runners on GitLab).",
           "type": "string",
           "enum": [
             "private",
@@ -69,19 +69,49 @@
           ]
         },
         "ci": {
-          "description": "The CI system the harness generates for: \"github\" (.github/workflows/check.yml) or \"gitlab\" (.gitlab-ci.yml). `skenv repo init` detects it from the host of origin; a file without it means \"github\". Switching it makes `skenv repo apply` remove the managed file of the other CI.",
-          "type": "string",
-          "enum": [
-            "github",
-            "gitlab"
-          ],
-          "default": "github"
+          "$ref": "#/$defs/ci",
+          "description": "The CI system the templates generate for, by the table present: github (.github/workflows/check.yml) or gitlab (.gitlab-ci.yml), at most one. Without either: github. Switching it makes `skenv repo apply` remove the managed file of the other one."
+        }
+      },
+      "required": [
+        "template_version",
+        "visibility"
+      ],
+      "additionalProperties": false
+    },
+    "ci": {
+      "description": "Chooses the CI system: one of its tables.",
+      "type": "object",
+      "properties": {
+        "github": {
+          "$ref": "#/$defs/github",
+          "description": "GitHub Actions."
         },
-        "runner": {
-          "description": "Where the CI jobs run, used only when visibility is \"private\": the runs-on labels on GitHub, the runner tags on GitLab. Default: [\"self-hosted\", \"linux\", \"docker\"]; use [\"ubuntu-latest\"] for GitHub-hosted runners or [\"saas-linux-small-amd64\"] for the GitLab.com instance runners.",
+        "gitlab": {
+          "$ref": "#/$defs/gitlab",
+          "description": "GitLab CI."
+        }
+      },
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "github",
+          "gitlab"
+        ],
+        "errorMessage": "Keep one CI table: github or gitlab."
+      }
+    },
+    "github": {
+      "description": "GitHub Actions (.github/workflows/check.yml).",
+      "type": "object",
+      "properties": {
+        "runs_on": {
+          "description": "The runs-on labels of the jobs of a private repository. Default: [\"self-hosted\", \"linux\", \"docker\"]; use [\"ubuntu-latest\"] for the GitHub-hosted runners. A public repository always runs on ubuntu-latest, and setting it there is an error.",
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:/-]+$",
+            "patternErrorMessage": "A runner label: letters, digits and . _ : / -"
           },
           "default": [
             "self-hosted",
@@ -90,21 +120,85 @@
           ]
         }
       },
-      "required": [
-        "harness",
-        "visibility"
-      ],
       "additionalProperties": false
     },
-    "environment": {
-      "description": "The [environment] section of the skenv file: the skills every machine that runs `skenv sync` should have. Paths may start with \"~\".",
+    "gitlab": {
+      "description": "GitLab CI (.gitlab-ci.yml).",
       "type": "object",
       "properties": {
-        "layout": {
-          "$ref": "#/$defs/layout",
-          "description": "Where skills are stored and linked."
+        "tags": {
+          "description": "The runner tags of the jobs of a private repository. Default: [\"self-hosted\", \"linux\", \"docker\"]; use [\"saas-linux-small-amd64\"] for the GitLab.com instance runners. A public repository always runs on the shared runners, and setting it there is an error.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:/-]+$",
+            "patternErrorMessage": "A runner label: letters, digits and . _ : / -"
+          },
+          "default": [
+            "self-hosted",
+            "linux",
+            "docker"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "user": {
+      "description": "The [user] section of the skenv file: the skills made available to the agents of the current OS user, across projects, on every machine that runs `skenv sync`. Local paths may start with \"~\"; relative ones resolve against the directory of the skenv file.",
+      "type": "object",
+      "properties": {
+        "checkouts": {
+          "description": "Git repositories kept as editable working copies, by an ID of your choice: every selected skill directory in them is linked, and edits show up immediately.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/checkout"
+          },
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+            "patternErrorMessage": "An ID is lowercase letters, digits, \"-\" and \"_\", starting with a letter or digit."
+          }
         },
-        "hosts": {
+        "dependencies": {
+          "description": "Single skills pinned to a commit and copied into the store, keyed by the installed skill name. Skill names are unique across checkouts and dependencies.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/dependency"
+          },
+          "propertyNames": {
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "maxLength": 64,
+            "not": {
+              "const": "synced",
+              "errorMessage": "\"synced\" is reserved: ~/.claude/skills/synced is managed by Claude."
+            },
+            "patternErrorMessage": "A skill name is lowercase letters, digits and single hyphens, with no hyphen at the start or end."
+          }
+        },
+        "machines": {
+          "description": "Holds rules for one machine each, keyed by the machine name: $SKENV_MACHINE, else the tool config `machine`, else the full hostname, else the short one (never both).",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/machine"
+          }
+        },
+        "agents": {
+          "$ref": "#/$defs/agents",
+          "description": "Chooses the agent directories that get a link per skill."
+        },
+        "storage": {
+          "$ref": "#/$defs/storage",
+          "description": "Where skenv keeps the skills it installs."
+        },
+        "unmanaged": {
+          "description": "Lists glob patterns over entry names (no \"/\") in the store and the agent directories that belong to other tools: doctor does not report them and sync never touches them, not even with --adopt. A selected skill must not match a pattern.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[^/]+$",
+            "patternErrorMessage": "A glob over entry names, without \"/\"."
+          }
+        },
+        "git_hosts": {
           "description": "Declares git servers by alias, usually self-hosted ones: \"<alias>:group/repo\" in repo is a repository on that server. They live in the manifest so it resolves the same on every machine.",
           "type": "object",
           "additionalProperties": {
@@ -122,72 +216,21 @@
             },
             "patternErrorMessage": "An alias is lowercase letters, digits and \"-\", starting with a letter."
           }
-        },
-        "own": {
-          "description": "Lists your skills repositories, kept as git working copies: every skill directory in them is linked.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/own"
-          }
-        },
-        "vendor": {
-          "description": "Lists third-party skills, each pinned to a commit and copied into the store. Skill names are unique across own and vendor skills.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/vendor"
-          }
-        },
-        "host": {
-          "description": "Holds per-machine overrides, keyed by the full or the short hostname.",
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/host"
-          }
         }
       },
       "additionalProperties": false
     },
-    "layout": {
-      "description": "Where skills are stored and linked.",
-      "type": "object",
-      "properties": {
-        "store": {
-          "description": "The directory that holds every skill: links to own skills, copies of vendored ones. Codex reads it directly. Default: \"~/.agents/skills\".",
-          "type": "string",
-          "examples": [
-            "~/.agents/skills"
-          ]
-        },
-        "targets": {
-          "description": "The agent directories that get a link per skill. When set (even to an empty list) it replaces the built-in table: Claude Code ($CLAUDE_CONFIG_DIR/skills, else ~/.claude/skills) and pi (~/.pi/agent/skills), each only if the agent is installed.",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "ignore": {
-          "description": "Lists glob patterns over entry names (no \"/\") in the store and the agent directories that belong to other tools: doctor does not report them and sync never touches them, not even with --adopt. A manifest skill must not match a pattern.",
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^[^/]+$",
-            "patternErrorMessage": "A glob over entry names, without \"/\"."
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    "own": {
-      "description": "A skills repository of yours, kept as a git working copy so that edits show up immediately.",
+    "checkout": {
+      "description": "A git repository kept as an editable working copy, so that edits show up immediately. Ownership does not matter: your repository, a fork or a team repository.",
       "type": "object",
       "properties": {
         "repo": {
-          "description": "The repository to clone: \"owner/repo\" on github.com, \"gitlab:group/sub/repo\", \"codeberg:owner/repo\", \"<alias>:path\" of a host in hosts, or a full git URL.",
+          "description": "The repository to clone: \"owner/repo\" or \"github:owner/repo\" on github.com, \"gitlab:group/sub/repo\", \"codeberg:owner/repo\", \"<alias>:path\" of a host in git_hosts, or a full git URL.",
           "type": "string",
           "minLength": 1
         },
-        "path": {
-          "description": "Where the working copy lives (\"~\" allowed). Point it at the existing clone, or sync clones a second one there.",
+        "checkout_dir": {
+          "description": "Where the working copy lives: \"~/...\" in the home directory, a relative path against the directory of this file (\".\" is the repository that holds the manifest). Point it at the existing clone, or sync clones a second one there.",
           "type": "string",
           "minLength": 1
         },
@@ -198,89 +241,151 @@
           "default": "skills",
           "patternErrorMessage": "A relative path inside the repository (\".\" for its root), without \"..\", empty segments or a trailing \"/\"."
         },
-        "skills": {
-          "description": "Lists the skills of this repository to install; without it every skill is installed, and a skill added to the repository later is too. A name that is not a skill of the repository is an error. It must not be empty: remove the entry instead.",
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-            "maxLength": 64,
-            "not": {
-              "const": "synced",
-              "errorMessage": "\"synced\" is reserved: ~/.claude/skills/synced is managed by Claude."
-            },
-            "patternErrorMessage": "A skill name is lowercase letters, digits and single hyphens, with no hyphen at the start or end."
-          },
-          "minItems": 1,
-          "uniqueItems": true
-        },
-        "exclude": {
-          "description": "Lists glob patterns over skill names (no \"/\") that are not installed, applied after skills; host.<name>.skip applies after both. A pattern that matches nothing is fine.",
+        "include": {
+          "description": "Lists skill names and glob patterns over names (no \"/\") of the skills to install. Omitted: every skill, including ones added later; [] selects none. A name without a pattern that is not a skill of the repository is an error.",
           "type": "array",
           "items": {
             "type": "string",
             "pattern": "^[^/]+$",
-            "patternErrorMessage": "A glob over skill names, without \"/\"."
+            "patternErrorMessage": "A skill name or a glob over names, without \"/\"."
+          },
+          "uniqueItems": true
+        },
+        "exclude": {
+          "description": "Lists skill names and glob patterns over names (no \"/\") that are not installed, applied after include; exclude wins. A pattern that matches nothing is fine.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[^/]+$",
+            "patternErrorMessage": "A skill name or a glob over names, without \"/\"."
           }
         }
       },
       "required": [
         "repo",
-        "path"
+        "checkout_dir"
       ],
       "additionalProperties": false
     },
-    "vendor": {
-      "description": "A third-party skill pinned to a commit; `skenv vendor add|update|remove` edit these entries (with --project, the ones of [project]).",
+    "dependency": {
+      "description": "A single skill pinned to a commit; `skenv vendor add|update|remove` edit these entries (with --project, the ones of [project]). Its key is the installed skill name: 1 to 64 lowercase letters, digits and single hyphens, with no hyphen at the start or end; \"synced\" is reserved.",
       "type": "object",
       "properties": {
-        "name": {
-          "description": "The skill name: 1 to 64 lowercase letters, digits and single hyphens, with no hyphen at the start or end; \"synced\" is reserved.",
-          "type": "string",
-          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-          "maxLength": 64,
-          "not": {
-            "const": "synced",
-            "errorMessage": "\"synced\" is reserved: ~/.claude/skills/synced is managed by Claude."
-          },
-          "patternErrorMessage": "A skill name is lowercase letters, digits and single hyphens, with no hyphen at the start or end."
-        },
         "repo": {
-          "description": "The repository: \"owner/repo\" on github.com, \"gitlab:group/sub/repo\", \"codeberg:owner/repo\", \"<alias>:path\" of a host in hosts, or a full git URL.",
+          "description": "The repository: \"owner/repo\" or \"github:owner/repo\" on github.com, \"gitlab:group/sub/repo\", \"codeberg:owner/repo\", \"<alias>:path\" of a host in git_hosts, or a full git URL.",
           "type": "string",
           "minLength": 1
         },
-        "path": {
+        "skill_dir": {
           "description": "The directory with SKILL.md inside the repository, relative to its root; \".\" for the root. Default: \".\".",
           "type": "string",
           "pattern": "^(\\.|([^/.][^/]*|\\.[^/.][^/]*|\\.\\.[^/]+)(/([^/.][^/]*|\\.[^/.][^/]*|\\.\\.[^/]+))*)?$",
           "default": ".",
           "patternErrorMessage": "A relative path inside the repository (\".\" for its root), without \"..\", empty segments or a trailing \"/\"."
         },
-        "rev": {
-          "description": "The full 40-character lowercase commit SHA. Branches, tags and short SHAs are rejected: a vendored skill changes only when you update it.",
+        "commit": {
+          "description": "The full 40-character lowercase commit SHA. Branches, tags and short SHAs are rejected: a dependency changes only when you update it.",
           "type": "string",
           "pattern": "^[0-9a-f]{40}$",
           "patternErrorMessage": "A full 40-character lowercase commit SHA; branches, tags and short SHAs are not allowed."
         }
       },
       "required": [
-        "name",
         "repo",
-        "rev"
+        "commit"
       ],
       "additionalProperties": false
     },
-    "host": {
-      "description": "Holds the overrides of one machine.",
+    "machine": {
+      "description": "Holds the rules of one machine. They only narrow the skills the sources select: a machine cannot install a skill its checkout excludes.",
       "type": "object",
       "properties": {
-        "skip": {
-          "description": "Lists skills that are neither stored nor linked on this host.",
+        "include": {
+          "description": "Lists skill names and glob patterns over names (no \"/\"): on this machine only matching skills are installed. Omitted: all; [] selects none.",
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[^/]+$",
+            "patternErrorMessage": "A skill name or a glob over names, without \"/\"."
+          },
+          "uniqueItems": true
+        },
+        "exclude": {
+          "description": "Lists skill names and glob patterns over names (no \"/\") that are not installed on this machine, applied after include.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[^/]+$",
+            "patternErrorMessage": "A skill name or a glob over names, without \"/\"."
           }
+        },
+        "checkout_dirs": {
+          "description": "Overrides checkout_dir on this machine, by checkout ID.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+            "patternErrorMessage": "An ID is lowercase letters, digits, \"-\" and \"_\", starting with a letter or digit."
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "agents": {
+      "description": "Chooses the agent directories that get a link per skill. The built-in agents are \"claude\" ($CLAUDE_CONFIG_DIR/skills, else ~/.claude/skills) and \"pi\" (~/.pi/agent/skills). Codex and other agents that follow the ~/.agents/skills convention read the store directly.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Lists the built-in agents to link skills for, whether or not they are installed. Omitted: each built-in agent whose base directory (~/.claude, ~/.pi/agent) exists; []: none.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "pi"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "paths": {
+          "description": "Overrides the skills directory of a built-in agent, by name; the other agents keep theirs.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "propertyNames": {
+            "enum": [
+              "claude",
+              "pi"
+            ]
+          }
+        },
+        "extra_dirs": {
+          "description": "More directories that get a link per skill, added to the agents, never replacing them.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "storage": {
+      "description": "Where skenv keeps the skills it installs.",
+      "type": "object",
+      "properties": {
+        "dir": {
+          "description": "The store: links to the skills of checkouts, copies of dependencies. Codex reads the default one directly. Default: \"~/.agents/skills\".",
+          "type": "string",
+          "examples": [
+            "~/.agents/skills",
+            "~/.local/share/skenv/skills"
+          ]
         }
       },
       "additionalProperties": false
@@ -289,16 +394,17 @@
       "description": "A git server declared in the manifest, usually a self-hosted one: \"<alias>:group/repo\" is a repository on it. It lives in the manifest rather than in the tool config, so the manifest resolves the same on every machine.",
       "type": "object",
       "properties": {
-        "url": {
-          "description": "The https base of the server, such as \"https://git.example.com\": \"<alias>:group/repo\" is cloned from <url>/group/repo.git. It must not carry credentials; use a git credential helper.",
+        "base_url": {
+          "description": "The base of the repositories on the server, and its scheme is the transport: \"https://git.example.com\" clones <base_url>/group/repo.git over https, \"ssh://git@git.example.com\" (with an optional port and path prefix) over ssh. It must not carry a password or https credentials; use a git credential helper or an ssh key.",
           "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^/@?#]+(/[^?#]*)?$",
+          "pattern": "^([Hh][Tt][Tt][Pp][Ss]?://[^/@?#]+|[Ss][Ss][Hh]://([^/:@?#]+@)?[^/@?#]+)(/[^?#]*)?$",
           "examples": [
-            "https://git.example.com"
+            "https://git.example.com",
+            "ssh://git@git.example.com"
           ],
-          "patternErrorMessage": "A base URL such as \"https://git.example.com\", without credentials."
+          "patternErrorMessage": "A base URL such as \"https://git.example.com\" (no credentials) or \"ssh://git@git.example.com\"."
         },
-        "type": {
+        "provider": {
           "description": "The software of the server: \"github\", \"gitlab\" (subgroups of any depth), \"gitea\" (Gitea, Forgejo) or \"generic\" (any path, cloned as written, \".git\" is not added). It sets the accepted paths and is recorded for CI templates and imports. Default: \"generic\".",
           "type": "string",
           "enum": [
@@ -308,17 +414,10 @@
             "generic"
           ],
           "default": "generic"
-        },
-        "ssh": {
-          "description": "The ssh address of the server, such as \"git@git.example.com\" or \"ssh://git@git.example.com:2222\"; add the path prefix of repositories over ssh when it differs from the one in url. skenv clones over https; this address is recognised in remotes and named in the url.insteadOf hint when access fails. Default: git@<host of url>.",
-          "type": "string",
-          "examples": [
-            "git@git.example.com"
-          ]
         }
       },
       "required": [
-        "url"
+        "base_url"
       ],
       "additionalProperties": false
     },
@@ -364,8 +463,8 @@
           ],
           "default": "symlink"
         },
-        "hosts": {
-          "description": "Declares git servers by alias for the repo values of this section, as environment.hosts does for the manifest: the project resolves them the same for everyone who clones it, without anyone's manifest.",
+        "git_hosts": {
+          "description": "Declares git servers by alias for the repo values of this section, as user.git_hosts does for the manifest: the project resolves them the same for everyone who clones it, without anyone's manifest.",
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/gitHost"
@@ -383,18 +482,31 @@
             "patternErrorMessage": "An alias is lowercase letters, digits and \"-\", starting with a letter."
           }
         },
-        "vendor": {
-          "description": "Lists third-party skills, each pinned to a commit and copied into dir.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/vendor"
+        "dependencies": {
+          "description": "Third-party skills, each pinned to a commit and copied into dir, keyed by the skill name.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/dependency"
+          },
+          "propertyNames": {
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "maxLength": 64,
+            "not": {
+              "const": "synced",
+              "errorMessage": "\"synced\" is reserved: ~/.claude/skills/synced is managed by Claude."
+            },
+            "patternErrorMessage": "A skill name is lowercase letters, digits and single hyphens, with no hyphen at the start or end."
           }
         },
         "from": {
-          "description": "Lists skills repositories (your own, for example) to copy some of their skills from, each pinned to a commit.",
-          "type": "array",
-          "items": {
+          "description": "Lists skills repositories (your own, for example) to copy some of their skills from, each pinned to one commit, by an ID of your choice.",
+          "type": "object",
+          "additionalProperties": {
             "$ref": "#/$defs/from"
+          },
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+            "patternErrorMessage": "An ID is lowercase letters, digits, \"-\" and \"_\", starting with a letter or digit."
           }
         }
       },
@@ -405,7 +517,7 @@
       "type": "object",
       "properties": {
         "repo": {
-          "description": "The repository: \"owner/repo\" on github.com, \"gitlab:group/sub/repo\", \"codeberg:owner/repo\", \"<alias>:path\" of a host in project.hosts, or a full git URL.",
+          "description": "The repository: \"owner/repo\" or \"github:owner/repo\" on github.com, \"gitlab:group/sub/repo\", \"codeberg:owner/repo\", \"<alias>:path\" of a host in project.git_hosts, or a full git URL.",
           "type": "string",
           "minLength": 1
         },
@@ -417,7 +529,7 @@
           "patternErrorMessage": "A relative path inside the repository (\".\" for its root), without \"..\", empty segments or a trailing \"/\"."
         },
         "skills": {
-          "description": "Lists the skills to copy, by directory name under skills_dir. Required: every copy is committed to the project, so each is named.",
+          "description": "Lists the skills to copy, by directory name under skills_dir (no patterns). Required: every copy is committed to the project, so each is named.",
           "type": "array",
           "items": {
             "type": "string",
@@ -432,7 +544,7 @@
           "minItems": 1,
           "uniqueItems": true
         },
-        "rev": {
+        "commit": {
           "description": "The full 40-character lowercase commit SHA to copy the skills at.",
           "type": "string",
           "pattern": "^[0-9a-f]{40}$",
@@ -442,7 +554,7 @@
       "required": [
         "repo",
         "skills",
-        "rev"
+        "commit"
       ],
       "additionalProperties": false
     }

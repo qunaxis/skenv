@@ -7,12 +7,13 @@ Scaffold a skill
 ### Synopsis
 
 Create `skills/<name>/` with `SKILL.md` (frontmatter) and `references/` in the git
-repository at `--dir`, or in an own repository of the manifest: the only one,
-else the one whose `[repo]` section has `--visibility` (default private).
-Neither needs a harness (`skenv repo init`).
+repository at `--dir`, or in a checkout of the manifest: the only one, else
+the one whose `[repository]` section has `--visibility` (default private).
+Neither needs repository templates (`skenv repo init`).
 
-A skill in an own repository of the manifest reaches your agents with
-`skenv link`: own skills are linked from the working copy, nothing to pull.
+A skill in a checkout of the manifest reaches your agents with "skenv
+link": the skills of checkouts are linked from the working copy, nothing
+to pull.
 
 - Reads: the manifest and the skenv file of the target repository.
 - Changes: creates `skills/<name>/` in the target repository; nothing else.
@@ -37,7 +38,7 @@ next steps:
   - run `skenv link` to make it available to your agents
 ```
 
-Scaffold it in the own repository of the manifest:
+Scaffold it in the checkout of the manifest:
 
 ```console
 $ skenv new release-checklist
@@ -50,10 +51,10 @@ next steps:
 ### Options
 
 ```
-      --dir string          target repository instead of the manifest's own repositories
+      --dir string          target repository instead of the manifest's checkouts
   -h, --help                help for new
-      --manifest string     skenv file with the [environment] section, or its directory
-      --visibility string   with several own repositories: the visibility in [repo] of the target, private or public (default "private")
+      --manifest string     skenv file with the [user] section, or its directory
+      --visibility string   with several checkouts: the visibility in [repository] of the target, private or public (default "private")
 ```
 
 ### SEE ALSO

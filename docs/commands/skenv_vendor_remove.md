@@ -6,11 +6,11 @@ Remove a third-party skill and its installed copy
 
 ### Synopsis
 
-Remove a vendored skill from the manifest and its managed paths.
+Remove a dependency from the manifest and its managed paths.
 
-With `--project`: remove its [[project.vendor]] entry and sync the project,
-which removes the copy and its mirrors. A skill of a [[project.from]] entry
-is removed by editing the skills of that entry.
+With `--project`: remove its `[project.dependencies.<name>]` table and sync the
+project, which removes the copy and its mirrors. A skill of a
+`[project.from.<id>]` entry is removed by editing the skills of that entry.
 
 - Reads: the manifest (or `[project]`) and the state file.
 - Changes: the manifest (or `[project]`), and removes the paths the state file
@@ -28,12 +28,12 @@ skenv vendor remove <name> [flags]
 
 ```console
 $ skenv vendor remove diagrams
-remove vendor diagrams from ~/src/skills/skenv.toml
+remove dependency diagrams from ~/src/skills/skenv.toml
 remove ~/.agents/skills/diagrams (skill "diagrams" is no longer in the manifest)
 remove ~/.claude/skills/diagrams (skill "diagrams" is no longer in the manifest)
 remove ~/.pi/agent/skills/diagrams (skill "diagrams" is no longer in the manifest)
 manifest changed but not committed; to commit:
-  git -C ~/src/skills commit -m "chore(manifest): remove vendor skill diagrams" -- skenv.toml
+  git -C ~/src/skills commit -m "chore(manifest): remove dependency diagrams" -- skenv.toml
 vendor remove: 4 changes, 0 warnings, 0 errors
 ```
 
@@ -41,12 +41,12 @@ Remove a skill pinned in the current project:
 
 ```console
 $ skenv vendor remove diagrams --project
-remove vendor diagrams from [project] of ~/src/web-app/skenv.toml
+remove dependency diagrams from [project] of ~/src/web-app/skenv.toml
 remove .agents/skills/diagrams (no longer in [project])
 remove .claude/skills/diagrams (no skill diagrams in .agents/skills)
 the project skills changed; to commit them:
   git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
-  git -C ~/src/web-app commit -m "chore(skills): remove vendor skill diagrams"
+  git -C ~/src/web-app commit -m "chore(skills): remove dependency diagrams"
 vendor: 3 changes, 0 warnings, 0 errors
 ```
 
@@ -56,7 +56,7 @@ vendor: 3 changes, 0 warnings, 0 errors
       --adopt             move conflicting unmanaged paths to the backup directory and replace them
       --dry-run           print the plan; write nothing
   -h, --help              help for remove
-      --manifest string   skenv file with the [environment] section, or its directory
+      --manifest string   skenv file with the [user] section, or its directory
       --project           edit [project] of the current repository instead of the manifest, and sync the project
 ```
 

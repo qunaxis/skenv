@@ -3,18 +3,17 @@ becomes managed: 1 entry in ~/src/skills/skenv.toml
   unmatched: no commit matched, pinned to the tip of the branch; the installed copy may differ
     release-notes from example-vendor/tools (tools/release-notes) at 27f221f8f2a4: skillFolderHash 000000000000 is not in the history of the default branch, and no commit has the files of the installed copy; HEAD of the default branch
 not imported: 1
-  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "notes" to layout.ignore
+  ~/.claude/skills/notes: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into a checkout, or add "notes" to user.unmanaged
 remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/skills/skenv.toml
 +++ ~/src/skills/skenv.toml
- path = "tools/diagrams"
- rev = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
+ skill_dir = "tools/diagrams"
+ commit    = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
 +
-+[[environment.vendor]]
-+name = "release-notes"
-+repo = "example-vendor/tools"
-+path = "tools/release-notes"
-+rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
++[user.dependencies.release-notes]
++repo      = "example-vendor/tools"
++skill_dir = "tools/release-notes"
++commit    = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
 import: 1 manifest entry (1 unmatched), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
 manifest changed but not committed; to commit:
   git -C ~/src/skills commit -m "chore(manifest): import installed skills" -- skenv.toml

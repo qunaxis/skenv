@@ -1,7 +1,3 @@
-exit 0
-pull ~/src/skills (b1e543d → c36c5ec)
-vendor diagrams from example-vendor/tools@ebb66f94cb1c (tools/diagrams)
-link ~/.agents/skills/write-tests → ~/src/skills/skills/write-tests
-link ~/.claude/skills/write-tests → ../../.agents/skills/write-tests
-link ~/.pi/agent/skills/write-tests → ../../../.agents/skills/write-tests
-sync: 5 changes, 0 warnings, 0 errors
+exit 2
+pull ~/src/skills (714da16 → 9232059)
+skenv: manifest ~/src/skills/skenv.toml: toml: line 1: expected '.' or '=', but got '[' instead

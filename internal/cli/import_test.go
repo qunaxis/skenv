@@ -99,14 +99,12 @@ func importWorld(t *testing.T) (*world, map[string]string) {
 	// The manifest: an own repository with alpha, and an ignore pattern.
 	w.push("me/skills", map[string]string{
 		"skenv.toml": `# my manifest
-[environment]
+[user]
+unmanaged = ["peon-*"]
 
-[environment.layout]
-ignore = ["peon-*"]
-
-[[environment.own]]
-repo = "me/skills"
-path = "~/src/skills"
+[user.checkouts.skills]
+repo         = "me/skills"
+checkout_dir = "~/src/skills"
 `,
 		"skills/alpha/SKILL.md": skillMD("alpha", ""),
 	}, "feat: manifest")
@@ -168,24 +166,24 @@ func TestImport(t *testing.T) {
 	before := snapshot(t, dirs...)
 	out, errOut := w.mustRun(0, "import", "--dry-run")
 	assertUnchanged(t, before, dirs...)
-	if !strings.Contains(out, "+++ ~/src/skills/skenv.toml\n") || !strings.Contains(out, "+[[environment.vendor]]\n") ||
+	if !strings.Contains(out, "+++ ~/src/skills/skenv.toml\n") || !strings.Contains(out, "+[user.dependencies.archify]\n") ||
 		!strings.Contains(out, "would remove alpha, archify, drifted, lost, other from ~/.agents/.skill-lock.json") {
 		t.Errorf("dry run:\n%s%s", out, errOut)
 	}
 
 	out, errOut = w.mustRun(0, "import")
 	text := readFile(t, manifestFile)
-	if !strings.HasPrefix(text, "# my manifest\n[environment]\n\n[environment.layout]\n") {
+	if !strings.HasPrefix(text, "# my manifest\n[user]\nunmanaged = [\"peon-*\"]\n") {
 		t.Errorf("the manifest lost its comment:\n%s", text)
 	}
 	for name, rev := range revs {
 		path := "tools/" + name
-		if !strings.Contains(text, "name = \""+name+"\"\nrepo = \"ext/tools\"\npath = \""+path+"\"\nrev  = \""+rev+"\"\n") {
+		if !strings.Contains(text, "[user.dependencies."+name+"]\nrepo      = \"ext/tools\"\nskill_dir = \""+path+"\"\ncommit    = \""+rev+"\"\n") {
 			t.Errorf("vendor %s is not pinned to %.12s:\n%s", name, rev, text)
 		}
 	}
-	if !strings.Contains(text, "[[environment.own]]\nrepo = \"me/mine\"\npath = \"~/src/mine\"\nskills = [\"a\", \"b\"]\n") {
-		t.Errorf("own me/mine with a selection is missing:\n%s", text)
+	if !strings.Contains(text, "[user.checkouts.mine]\nrepo         = \"me/mine\"\ncheckout_dir = \"~/src/mine\"\ninclude      = [\"a\", \"b\"]\n") {
+		t.Errorf("checkout me/mine with a selection is missing:\n%s", text)
 	}
 	if strings.Contains(errOut, "pinned without a matching commit") {
 		t.Errorf("the unmatched group is repeated as a warning:\n%s", errOut)
@@ -200,15 +198,15 @@ func TestImport(t *testing.T) {
 			"  unmatched: no commit matched, pinned to the tip of the branch; the installed copy may differ\n" +
 			"    drifted from ext/tools (tools/drifted) at " + revs["drifted"][:12] + ": skillFolderHash 111111111111 is not in the history of the default branch, " +
 			"and no commit has the files of the installed copy; HEAD of the default branch\n" +
-			"  own: repositories kept as git working copies\n" +
-			"    me/mine at ~/src/mine (skills a, b)\n" +
+			"  checkout: repositories kept as git working copies\n" +
+			"    mine: me/mine at ~/src/mine (include a, b)\n" +
 			"not imported: 3\n",
 		"  ~/.claude/skills/handmade: not in ~/.agents/.skill-lock.json and not a link into a git working copy",
-		`add "handmade" to layout.ignore`,
+		`add "handmade" to user.unmanaged`,
 		`  ~/.agents/skills/local-one: in ~/.agents/.skill-lock.json, but installed from a "local" source`,
 		"  removed, in ~/.agents/.skill-lock.json: not installed",
 		"remove alpha, archify, drifted, lost, other from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over",
-		"import: 5 manifest entries (2 exact, 1 same files, 1 unmatched, 1 own), 5 removed from the skills lock, 2 unmanaged, 0 warnings, 0 errors\n",
+		"import: 5 manifest entries (2 exact, 1 same files, 1 unmatched, 1 checkout), 5 removed from the skills lock, 2 unmanaged, 0 warnings, 0 errors\n",
 		"next: `skenv sync --adopt` replaces the installed copies with managed ones, the unmatched drifted included",
 	} {
 		if !strings.Contains(out, want) {
@@ -283,7 +281,7 @@ func TestInitImport(t *testing.T) {
 	assertUnchanged(t, before, dirs...)
 	for _, want := range []string{
 		"would create ~/src/skills/skenv.toml",
-		"    me/skills at ~/src/skills (the repository of the manifest)",
+		"    skills: me/skills at ~/src/skills (the repository of the manifest)",
 		"    archify from ext/tools (tools/archify) at " + rev[:12],
 		"would run skenv sync --adopt, leaving the unmatched as installed: drifted; then decide for each:\n" +
 			"  drifted: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to ~/.local/state/skenv/backup), " +
@@ -296,7 +294,7 @@ func TestInitImport(t *testing.T) {
 
 	out, _ = w.mustRun(0, "init", "--import", "--dir", w.path("src/skills"))
 	text := readFile(t, w.path("src/skills/skenv.toml"))
-	if !strings.Contains(text, "rev  = \""+rev+"\"") || !strings.Contains(text, "repo = \"me/skills\"\npath = \"~/src/skills\"\n") {
+	if !strings.Contains(text, "commit    = \""+rev+"\"") || !strings.Contains(text, "[user.checkouts.skills]\nrepo         = \"me/skills\"\ncheckout_dir = \".\"\n") {
 		t.Errorf("skenv.toml:\n%s\n%s", text, out)
 	}
 	if !strings.Contains(readFile(t, w.path(".config/skenv/config.toml")), "~/src/skills/skenv.toml") {
@@ -399,9 +397,9 @@ func TestImportWithoutManifest(t *testing.T) {
 	}
 }
 
-// A skenv file without [environment] gets one, as `skenv init` adds it; a
-// public [repo] refuses and writes nothing.
-func TestImportAddsEnvironment(t *testing.T) {
+// A skenv file without [user] gets one, as `skenv init` adds it; a public
+// [repository] refuses and writes nothing.
+func TestImportAddsUser(t *testing.T) {
 	noLefthook(t)
 	w, repo := harnessRepo(t)
 	w.mustRun(0, "repo", "init", "--visibility", "private", "--dir", repo)
@@ -409,7 +407,7 @@ func TestImportAddsEnvironment(t *testing.T) {
 	withRepo := readFile(t, file)
 	out, _ := w.mustRun(0, "import", "--manifest", repo)
 	text := readFile(t, file)
-	if !strings.HasPrefix(text, withRepo) || !strings.Contains(text, "\n[environment]\n") || !strings.Contains(out, "add [environment] to ~/skills-repo/skenv.toml") {
+	if !strings.HasPrefix(text, withRepo) || !strings.Contains(text, "\n[user]\n") || !strings.Contains(out, "add [user] to ~/skills-repo/skenv.toml") {
 		t.Errorf("skenv.toml:\n%s\n%s", text, out)
 	}
 	if out, _ := w.mustRun(0, "import", "--manifest", repo); !strings.Contains(out, "nothing to import") || readFile(t, file) != text {
@@ -453,7 +451,7 @@ func TestImportLockVariants(t *testing.T) {
 	w.git(tools, "push", "--quiet", "origin", "v1")
 	w.git(tools, "checkout", "--quiet", "main")
 
-	w.push("me/skills", map[string]string{"skenv.toml": "[environment]\n"}, "feat: manifest")
+	w.push("me/skills", map[string]string{"skenv.toml": "[user]\n"}, "feat: manifest")
 	w.cloneSync("me/skills", "~/src/skills")
 
 	w.installed("rooty", map[string]string{"SKILL.md": skillMD("rooty", "v1")})
@@ -480,12 +478,12 @@ func TestImportLockVariants(t *testing.T) {
 	out, errOut := w.mustRun(0, "import")
 	text := readFile(t, w.path("src/skills/skenv.toml"))
 	for name, want := range map[string]string{
-		"rooty":       "repo = \"ext/root\"\npath = \".\"\nrev  = \"" + rootV1 + "\"",
-		"tagged":      "path = \"tools/tagged\"\nrev  = \"" + side + "\"",
-		"other":       "path = \"tools/other\"\nrev  = \"" + rev1 + "\"",
-		"pretty-name": "path = \"tools/pretty-name\"\nrev  = \"" + rev1 + "\"",
+		"rooty":       "repo      = \"ext/root\"\nskill_dir = \".\"\ncommit    = \"" + rootV1 + "\"",
+		"tagged":      "skill_dir = \"tools/tagged\"\ncommit    = \"" + side + "\"",
+		"other":       "skill_dir = \"tools/other\"\ncommit    = \"" + rev1 + "\"",
+		"pretty-name": "skill_dir = \"tools/pretty-name\"\ncommit    = \"" + rev1 + "\"",
 	} {
-		if !strings.Contains(text, "name = \""+name+"\"\n") || !strings.Contains(text, want) {
+		if !strings.Contains(text, "[user.dependencies."+name+"]\n") || !strings.Contains(text, want) {
 			t.Errorf("%s: want %q in\n%s\n%s%s", name, want, text, out, errOut)
 		}
 	}
@@ -515,7 +513,7 @@ func TestImportSearchesFromUpdatedAt(t *testing.T) {
 	at("2026-03-01T00:00:00Z")
 	w.push("ext/tools", map[string]string{"tools/x/SKILL.md": skillMD("x", "v1")}, "revert: x v1")
 	tools := filepath.Join(w.work, "ext__tools")
-	w.push("me/skills", map[string]string{"skenv.toml": "[environment]\n"}, "feat: manifest")
+	w.push("me/skills", map[string]string{"skenv.toml": "[user]\n"}, "feat: manifest")
 	w.cloneSync("me/skills", "~/src/skills")
 
 	w.installed("x", map[string]string{"SKILL.md": skillMD("x", "v1")})

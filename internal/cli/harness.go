@@ -212,13 +212,14 @@ func repoCmd(a *app) *cobra.Command {
 		return c
 	}
 	initC := sub("init", "init --visibility private|public [--ci github|gitlab] [--runner label,...]", "Set up the harness of a skills repository",
-		"Set up the harness of a skills repository: the [repo] section and the schema\ndirective of the skenv file, lefthook.yml, the CI pipeline, linter configs and\nthe managed blocks of AGENTS.md and .gitignore; then `lefthook install`.\nRefuses if [repo] exists.\n\n"+
-			"--ci picks the CI system: github (.github/workflows/check.yml) or gitlab\n(.gitlab-ci.yml). Without it, the host of origin decides: gitlab when origin\nis on gitlab.com or on a host declared with type \"gitlab\" in the manifest\n(this repository's own [environment], else the manifest in the config file),\ngithub otherwise, also when there is no origin.\n\n"+
-			"CI jobs of a public repository run on the hosted runners (ubuntu-latest on\nGitHub, the shared runners on GitLab). Those of a private one run on --runner: the runs-on labels on GitHub, the\nrunner tags on GitLab; default self-hosted, linux, docker (a self-hosted\nDocker runner). --runner ubuntu-latest picks the GitHub-hosted runners.\nAfterwards repo.runner in the skenv file holds it; change it there and run\n`skenv repo apply`.\n\n"+
+		"Set up the harness of a skills repository: the [repository] section and the\nschema directive of the skenv file, lefthook.yml, the CI pipeline, linter\nconfigs and the managed blocks of AGENTS.md and .gitignore; then `lefthook\ninstall`. Refuses if [repository] exists.\n\n"+
+			"--visibility is a declared policy: skenv never reads or changes the access\nsetting on the hosting service. A public repository must not carry [user],\nand its CI also runs `skenv lint --publish`.\n\n"+
+			"--ci picks the CI system: github (.github/workflows/check.yml) or gitlab\n(.gitlab-ci.yml). Without it, the host of origin decides: gitlab when origin\nis on gitlab.com or on a host declared with provider \"gitlab\" in the manifest\n(this repository's own [user], else the manifest in the config file),\ngithub otherwise, also when there is no origin.\n\n"+
+			"CI jobs of a public repository run on the hosted runners (ubuntu-latest on\nGitHub, the shared runners on GitLab). Those of a private one run on --runner: the runs-on labels on GitHub, the\nrunner tags on GitLab; default self-hosted, linux, docker (a self-hosted\nDocker runner). --runner ubuntu-latest picks the GitHub-hosted runners.\nAfterwards repository.ci.github.runs_on (or repository.ci.gitlab.tags) holds\nit; change it there and run `skenv repo apply`.\n\n"+
 			"The generated git hooks need lefthook, uv and gitleaks on PATH; the output\nsays which of them are missing. Skill management and sync need none of\nthem: this harness is optional tooling for a repository you publish or\nshare.\n\n"+
-			"Without a skenv file it creates skenv.toml, or skenv.yaml or skenv.json with\n--format. An existing skenv file gets [repo] added in its own format;\n--format that disagrees with it is an error, and nothing is written.\n\n"+
+			"Without a skenv file it creates skenv.toml, or skenv.yaml or skenv.json with\n--format. An existing skenv file gets [repository] added in its own format;\n--format that disagrees with it is an error, and nothing is written.\n\n"+
 			"- Reads: the repository, its origin and skenv file, and the hosts declared\n  in the manifest (to detect the CI system).\n"+
-			"- Changes: the skenv file ([repo], created if absent), the managed files\n  and blocks, and the git hooks (lefthook install).\n"+
+			"- Changes: the skenv file ([repository], created if absent), the managed\n  files and blocks, and the git hooks (lefthook install).\n"+
 			"- Network: none.\n"+
 			"- Conflicts: a file that exists and that skenv does not manage yet is an\n  error; --force replaces it.\n"+
 			"- Preview: --dry-run writes nothing and does not run lefthook install.\n"+
@@ -229,26 +230,35 @@ func repoCmd(a *app) *cobra.Command {
 			"skenv repo init --visibility private --ci gitlab\n"+
 			"# A private repository on GitHub, with jobs on the GitHub-hosted runners\n"+
 			"skenv repo init --visibility private --runner ubuntu-latest")
-	initC.Flags().StringVar(&visibility, "visibility", "", "private or public (required)")
+	initC.Flags().StringVar(&visibility, "visibility", "", "private or public, the declared publication policy (required)")
 	_ = initC.RegisterFlagCompletionFunc("visibility", cobra.FixedCompletions([]string{"private", "public"}, cobra.ShellCompDirectiveNoFileComp))
 	initC.Flags().StringSliceVar(&runner, "runner", nil, "private repositories: runs-on labels (GitHub) or runner tags (GitLab) of the CI jobs, comma-separated or repeated (default self-hosted,linux,docker)")
 	initC.Flags().StringVar(&ci, "ci", "", "CI system: github or gitlab (default: detected from the host of origin, else github)")
 	_ = initC.RegisterFlagCompletionFunc("ci", cobra.FixedCompletions(harness.CIs, cobra.ShellCompDirectiveNoFileComp))
 	formatFlag(initC, &format, "format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)")
 	apply := sub("apply", "apply", "Regenerate the managed files of the harness",
-		"Regenerate the managed files and blocks from the templates of this skenv\n(harness "+harness.Latest+"; an older repo.harness is moved to it) and point\nthe schema directive of the skenv file at that version; then\n`lefthook install`.\n\nThe CI pipeline follows repo.ci of the skenv file. To switch CI systems, edit\nrepo.ci and run apply: it writes the pipeline of the new one and removes the\nmanaged file of the other (.github/workflows/check.yml or .gitlab-ci.yml).\n\n"+
-			"- Reads: the skenv file ([repo]) and the managed files.\n"+
-			"- Changes: the managed files and blocks, repo.harness and the schema\n  directive of the skenv file, and the git hooks (lefthook install).\n"+
+		"Regenerate the managed files and blocks from the templates of\nrepository.template_version; then `lefthook install`. apply never changes\nthe skenv file: template_version is what the repository asks for, and\nthis skenv embeds the templates of "+harness.Latest+" only. Another version\nis an error: run `skenv repo upgrade` to move the repository to "+harness.Latest+",\nor use the skenv release it names.\n\nThe CI pipeline follows the table under repository.ci. To switch CI systems,\nreplace [repository.ci.github] with [repository.ci.gitlab] (or back) and run\napply: it writes the pipeline of the new one and removes the managed file\nof the other (.github/workflows/check.yml or .gitlab-ci.yml).\n\n"+
+			"- Reads: the skenv file ([repository]) and the managed files.\n"+
+			"- Changes: the managed files and blocks, and the git hooks (lefthook\n  install).\n"+
 			"- Network: none.\n"+
 			"- Conflicts: a file that exists and that skenv does not manage yet is an\n  error; --force replaces it.\n"+
 			"- Preview: --dry-run writes nothing and does not run lefthook install.\n"+
 			"- Next: commit the changed files.",
 		"# Restore a managed file edited by hand\nskenv repo apply")
+	upgrade := sub("upgrade", "upgrade", "Move the repository to the templates of this skenv",
+		"Set repository.template_version to "+harness.Latest+", the templates of this skenv,\nand point the schema directive of the skenv file at that version (comments\nand formatting stay), then regenerate the managed files as `skenv repo\napply` does. The generated CI installs the skenv release of\ntemplate_version, so that release must exist before you push.\n\n"+
+			"- Reads: the skenv file ([repository]) and the managed files.\n"+
+			"- Changes: repository.template_version and the schema directive of the\n  skenv file, the managed files and blocks, and the git hooks (lefthook\n  install).\n"+
+			"- Network: none.\n"+
+			"- Conflicts: a file that exists and that skenv does not manage yet is an\n  error; --force replaces it.\n"+
+			"- Preview: --dry-run writes nothing and does not run lefthook install.\n"+
+			"- Next: commit the skenv file and the changed files.",
+		"# Move the repository to the templates of the installed skenv\nskenv repo upgrade --dry-run\nskenv repo upgrade")
 	check := sub("check", "check", "Compare the managed files with the harness templates",
-		"Compare the managed files and blocks with the templates of this skenv\n(harness "+harness.Latest+"). Exit code 0: in sync, 1: drift (files listed), 2: error.\nA missing or outdated schema directive in the skenv file is a warning that\ndoes not change the exit code.",
+		"Compare repository.template_version with the templates of this skenv\n("+harness.Latest+"), and the managed files and blocks with the templates of that\nversion: a file generated by another version (its header), or edited by\nhand, is drift. Exit code 0: in sync, 1: drift (files listed), 2: error.\nA missing or outdated schema directive in the skenv file is a warning that\ndoes not change the exit code.",
 		"# The managed files match the harness\nskenv repo check\n# A managed file was edited by hand\nskenv repo check")
-	c := group("repo", "Set up and check the harness of a skills repository", initC, apply, check)
-	c.Example = "skenv repo init --visibility private\nskenv repo init --visibility public --ci gitlab\nskenv repo check\nskenv repo apply"
+	c := group("repo", "Set up and check the harness of a skills repository", initC, apply, upgrade, check)
+	c.Example = "skenv repo init --visibility private\nskenv repo init --visibility public --ci gitlab\nskenv repo check\nskenv repo apply\nskenv repo upgrade"
 	c.PersistentFlags().StringVar(&dir, "dir", ".", "repository (any directory inside it)")
 	return c
 }
@@ -282,15 +292,19 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, form
 			return engine.ExitFatal, err
 		}
 		if detected != "" {
-			fmt.Fprintf(env.Stdout, "ci %s: %s; --ci overrides it\n", c.CI, detected)
+			fmt.Fprintf(env.Stdout, "ci %s: %s; --ci overrides it\n", c.Provider, detected)
 		}
 		setUp, run := "set up", "run"
 		if dryRun {
 			setUp, run = "would be set up", "would run"
 		}
-		fmt.Fprintf(env.Stdout, "harness %s (%s, ci %s) %s in %s\n", c.Harness, c.Visibility, c.CI, setUp, root)
+		fmt.Fprintf(env.Stdout, "harness %s (%s, ci %s) %s in %s\n", c.TemplateVersion, c.Visibility, c.Provider, setUp, root)
 		if c.Visibility == "private" {
-			fmt.Fprintf(env.Stdout, "CI jobs %s on runners %s (repo.runner); to change them, edit repo.runner and run `skenv repo apply`\n", run, strings.Join(c.Runner, ", "))
+			key := "repository.ci.github.runs_on"
+			if c.Provider == harness.CIGitLab {
+				key = "repository.ci.gitlab.tags"
+			}
+			fmt.Fprintf(env.Stdout, "CI jobs %s on runners %s (%s); to change them, edit it and run `skenv repo apply`\n", run, strings.Join(c.Runner, ", "), key)
 		}
 		printHookTools(env)
 		return lefthookInstall(ctx, env, root, dryRun), nil
@@ -299,33 +313,51 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, form
 		if err != nil {
 			return engine.ExitFatal, err
 		}
-		old := c.Harness
-		c.Harness = harness.Latest
-		// Refuse (foreign files without --force) before the version moves.
-		if _, err := harness.Apply(root, c, true, force); err != nil {
-			return engine.ExitFatal, err
-		}
-		// repo.harness and the schema directive of the skenv file.
-		updated, err := harness.Update(root, harness.Latest, dryRun)
-		if err != nil {
-			return engine.ExitFatal, err
-		}
-		if old != harness.Latest {
-			prefix := ""
-			if dryRun {
-				prefix = "would move "
-			}
-			fmt.Fprintf(env.Stdout, "%sharness %s → %s\n", prefix, old, harness.Latest)
-		} else if updated {
-			printChanges(env, []harness.Change{{Path: filepath.Base(c.File), Action: "update"}}, dryRun)
+		if c.TemplateVersion != harness.Latest {
+			return engine.ExitFatal, fmt.Errorf("%s: template_version %s is not the template set of this skenv (%s); "+
+				"run `skenv repo upgrade` to move the repository to %s, or use skenv %s", filepath.Base(c.File), c.TemplateVersion, harness.Latest, harness.Latest, c.TemplateVersion)
 		}
 		changes, err := harness.Apply(root, c, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
 			return engine.ExitFatal, err
 		}
-		if len(changes) == 0 && !updated {
+		if len(changes) == 0 {
 			fmt.Fprintln(env.Stdout, "repo apply: up to date")
+		}
+		return lefthookInstall(ctx, env, root, dryRun), nil
+	case "upgrade":
+		c, err := harness.LoadConfig(root)
+		if err != nil {
+			return engine.ExitFatal, err
+		}
+		old := c.TemplateVersion
+		c.TemplateVersion = harness.Latest
+		// Refuse (foreign files without --force) before the version moves.
+		if _, err := harness.Apply(root, c, true, force); err != nil {
+			return engine.ExitFatal, err
+		}
+		// repository.template_version and the schema directive.
+		updated, err := harness.Update(root, harness.Latest, dryRun)
+		if err != nil {
+			return engine.ExitFatal, err
+		}
+		prefix := ""
+		if dryRun {
+			prefix = "would move "
+		}
+		switch {
+		case old != harness.Latest:
+			fmt.Fprintf(env.Stdout, "%stemplate_version %s → %s\n", prefix, old, harness.Latest)
+		case updated:
+			printChanges(env, []harness.Change{{Path: filepath.Base(c.File), Action: "update"}}, dryRun)
+		default:
+			fmt.Fprintf(env.Stdout, "template_version is %s already\n", harness.Latest)
+		}
+		changes, err := harness.Apply(root, c, dryRun, force)
+		printChanges(env, changes, dryRun)
+		if err != nil {
+			return engine.ExitFatal, err
 		}
 		return lefthookInstall(ctx, env, root, dryRun), nil
 	}
@@ -351,9 +383,9 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, form
 	return engine.ExitOK, nil
 }
 
-// detectCI is repo.ci for `repo init` without --ci: gitlab when origin is
-// on a GitLab host, github otherwise. The hosts declared in the manifest
-// count: the [environment] of the repository itself, else the manifest of
+// detectCI is the CI system for `repo init` without --ci: gitlab when
+// origin is on a GitLab host, github otherwise. The hosts declared in the
+// manifest count: the [user] of the repository itself, else the manifest of
 // the config file. The origin URL is never printed (it may carry
 // credentials); why says what decided.
 func detectCI(ctx context.Context, env engine.Env, root string) (ci, why string) {
@@ -380,13 +412,13 @@ func detectCI(ctx context.Context, env engine.Env, root string) (ci, why string)
 func declaredHosts(ctx context.Context, env engine.Env, root string) manifest.Hosts {
 	file, err := skenvfile.Find(root)
 	if err == nil && file != "" {
-		if doc, err := skenvfile.Read(file); err == nil && doc.Has(skenvfile.Environment) {
+		if doc, err := skenvfile.Read(file); err == nil && doc.Has(skenvfile.User) {
 			m, err := manifest.Load(file)
 			if err != nil {
 				fmt.Fprintf(env.Stderr, "warning: hosts of %s not read, CI detection ignores them: %v\n", filepath.Base(file), err)
 				return nil
 			}
-			return m.Hosts
+			return m.GitHosts
 		}
 	}
 	file, err = engine.ResolveManifest(ctx, env, "")
@@ -398,7 +430,7 @@ func declaredHosts(ctx context.Context, env engine.Env, root string) manifest.Ho
 		fmt.Fprintf(env.Stderr, "warning: hosts of the manifest not read, CI detection ignores them: %v\n", err)
 		return nil
 	}
-	return m.Hosts
+	return m.GitHosts
 }
 
 func printChanges(env engine.Env, changes []harness.Change, dryRun bool) {

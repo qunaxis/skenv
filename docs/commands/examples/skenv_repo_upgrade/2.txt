@@ -1,0 +1,12 @@
+exit 0
+template_version 0.5.0 → 0.6.0
+update lefthook.yml
+update .github/workflows/check.yml
+update ruff.toml
+update pyrightconfig.json
+update .editorconfig
+update .markdownlint.yaml
+update AGENTS.md
+update .gitignore
+update .claude/settings.json
+lefthook install: hooks active

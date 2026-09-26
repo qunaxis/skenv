@@ -394,9 +394,12 @@ func (d *yamlDoc) replaceEmpty(k, v *yaml.Node, open, closing string, lines []st
 }
 
 func (d *yamlDoc) Remove(path []any) error {
+	if key, ok := path[len(path)-1].(string); ok {
+		return d.removeKey(path[:len(path)-1], key)
+	}
 	idx, ok := path[len(path)-1].(int)
 	if !ok {
-		return errors.New("docedit: Remove needs an index")
+		return errors.New("docedit: Remove needs an index or a key")
 	}
 	k, seq, err := d.find(path[:len(path)-1])
 	if err != nil {
@@ -422,6 +425,39 @@ func (d *yamlDoc) Remove(path []any) error {
 		return d.splice(start, end+1, nil)
 	}
 	// The last item: leave an empty list behind rather than a null.
+	return d.emptyAfter(k, " []", start, end)
+}
+
+// removeKey deletes key from the mapping at path. The last key leaves an
+// empty {} behind rather than a null.
+func (d *yamlDoc) removeKey(path []any, key string) error {
+	pk, m, err := d.find(path)
+	if err != nil {
+		return err
+	}
+	if m.Kind != yaml.MappingNode {
+		return fmt.Errorf("%s is not a mapping", pathString(path))
+	}
+	if isFlow(m) {
+		return fmt.Errorf("%s is written in flow style ({...}); write it as a block mapping so that skenv can edit it", pathString(path))
+	}
+	if err := editable(m, path); err != nil {
+		return err
+	}
+	k, v := pair(m, key)
+	if k == nil {
+		return fmt.Errorf("%s does not exist", pathString(append(append([]any{}, path...), key)))
+	}
+	start, end := k.Line-1, d.entryEnd(k, v)
+	if len(m.Content) > 2 || pk == nil {
+		return d.splice(start, end+1, nil)
+	}
+	return d.emptyAfter(pk, " {}", start, end)
+}
+
+// emptyAfter removes the lines [start, end] and writes empty (" []" or
+// " {}") after the colon of the key k, whose last entry they were.
+func (d *yamlDoc) emptyAfter(k *yaml.Node, empty string, start, end int) error {
 	kl := k.Line - 1
 	line := d.lines[kl]
 	at := byteOffset(line, k.Column)
@@ -437,7 +473,7 @@ func (d *yamlDoc) Remove(path []any) error {
 		return fmt.Errorf("%s: cannot find the colon after the key", k.Value)
 	}
 	at += colon + 1
-	keyLine := line[:at] + " []" + line[at:]
+	keyLine := line[:at] + empty + line[at:]
 	repl := append(append([]string{}, d.lines[kl+1:start]...), d.lines[end+1:]...)
 	return d.splice(kl, len(d.lines), append([]string{keyLine}, repl...))
 }

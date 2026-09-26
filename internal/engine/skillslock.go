@@ -291,7 +291,7 @@ func (e *base) lockRev(cache, repo string, le lockEntry, dir string) (rev string
 	}
 	if files, err := copyBlobs(dir); err == nil {
 		for _, c := range commits {
-			if got, err := e.commitBlobs(cache, c, folder); err == nil && maps(got, files) {
+			if got, err := e.commitBlobs(cache, c, folder); err == nil && sameBlobs(got, files) {
 				return c, revByCopy, tip, nil
 			}
 		}
@@ -462,7 +462,7 @@ func blobID(content []byte) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func maps(a, b map[string]string) bool {
+func sameBlobs(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false
 	}

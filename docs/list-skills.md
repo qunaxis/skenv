@@ -31,16 +31,17 @@ The header names the active manifest, the store (`~/.agents/skills`, which
 Codex reads directly) and the agent directories found on this machine.
 Then one line per skill of the manifest:
 
-- **KIND**: `editable` for a skill of an own repository, linked from its
-  git working copy; `pinned` for a third-party copy at a commit.
+- **KIND**: `editable` for a skill of a checkout, linked from its git
+  working copy; `pinned` for a dependency, a copy at a commit.
 - **SOURCE**: the repository as the manifest writes it.
 - **VERSION**: the commit of a pinned skill, the working copy of an
   editable one.
 - **STATE**: `installed` (in the store and linked into every agent
   directory), `not synced` (recorded in the manifest, not installed yet:
   run `skenv sync`), `conflict` (something skenv did not create is in the
-  way: see [Resolve conflicts](conflicts.md)), `not selected` (excluded by
-  `skills`/`exclude` of its own repository) or `skipped on this host`.
+  way: see [Resolve conflicts](conflicts.md)), `not selected` (left out by
+  `include`/`exclude` of its checkout) or `excluded on this machine` (by
+  the [machine rules](manifest.md#machine-rules)).
 
 `list` works offline, changes nothing and exits 0. It covers the manifest
 of the machine only; the skills of a project are committed files, and
@@ -69,8 +70,8 @@ agent-mismatch  code-review  ~/.claude/skills/code-review  linked for some agent
 1 discrepancies
 ```
 
-`doctor` changes no skill, link or file, but runs `git fetch` in each own
-repository (network access; it updates their remote-tracking branches) to
+`doctor` changes no skill, link or file, but runs `git fetch` in each
+checkout (network access; it updates their remote-tracking branches) to
 report `unpushed` and `behind`. Exit code 0: in sync, 1: discrepancies, 2:
 could not run. `sync` exits 0 even when it leaves something undone with a
 warning, so `doctor` is the check that the machine matches. Inside a
@@ -81,18 +82,19 @@ project it checks the project instead. Reference:
 
 | Class                         | Meaning                                                                                             |
 | ----------------------------- | --------------------------------------------------------------------------------------------------- |
-| `missing`                     | a skill is not in the store, or not linked for any agent; an own repository is not cloned           |
+| `missing`                     | a skill is not in the store, or not linked for any agent; a checkout is not cloned                  |
 | `agent-mismatch`              | a skill is linked for some agents but not all                                                       |
-| `manifest-checkout`           | the manifest is not in the working copy its own entry names, so `sync` never pulls it: `skenv use` that working copy, or clone the repository there |
-| `extra-managed`               | a path skenv created is no longer in the manifest, not selected, or skipped on this host (`sync` removes it) |
+| `manifest-checkout`           | the manifest is not in the working copy its checkout names, so `sync` never pulls it: `skenv use` that working copy, or clone the repository there |
+| `extra-managed`               | a path skenv created is no longer in the manifest, not selected, or excluded on this machine (`sync` removes it) |
 | `unmanaged`                   | something in the store or an agent directory that is not from the manifest                          |
 | `conflict`                    | a path the manifest needs is taken by something skenv did not create                                |
-| `wrong-rev`                   | a vendored copy does not match the pinned repo/path/rev                                             |
+| `wrong-rev`                   | a dependency's copy does not match its `repo`, `skill_dir` or `commit`                             |
 | `broken-link`                 | a managed symlink dangles or points elsewhere                                                       |
-| `dirty`, `unpushed`, `behind` | an own working copy has uncommitted changes, is ahead of or behind its upstream (after `git fetch`) |
+| `dirty`, `unpushed`, `behind` | a checkout has uncommitted changes, is ahead of or behind its upstream (after `git fetch`) |
 
-`doctor` also warns about own repositories whose `harness` is older than
-the newest templates of the installed skenv (see
+`doctor` also warns about checkouts whose `template_version` is older than
+the templates of the installed skenv; `skenv repo upgrade` there moves
+them (see
 [Repository checks and CI](harness.md)). Inside a project `doctor` has its
 own classes; see
 [`doctor` classes in a project](project-skills.md#doctor-classes-in-a-project).

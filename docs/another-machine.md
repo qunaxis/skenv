@@ -51,18 +51,24 @@ next steps:
 `codeberg:owner/repo` or a full git URL for other hosts (see
 [Git hosts](git-hosts.md)).
 
-The manifest usually lists its own repository as an own entry, and its
-`path` is the working copy `sync` keeps up to date. Without a directory
-argument, `skenv clone` puts a new clone at that `path` when nothing is
-there yet (the output says `moved it to ...`). If you clone elsewhere,
-`clone` warns: `sync` would keep a second working copy at `path` and never
-pull the checkout that holds your manifest, so manifest changes pushed from
-other machines would not arrive. Follow the advice in the warning: clone to
-that path (`skenv clone <owner>/<skills-repo> <path>`), or `skenv use <path>`
-when a working copy is already there. Until then `sync` warns and
-`skenv doctor` reports `manifest-checkout` (exit 1). Changing `path` in the
-manifest moves it on every machine, so do that only if every machine
-should use the new location.
+The manifest usually lists its own repository as a checkout with
+`checkout_dir = "."` (what `skenv init` writes): the repository that holds
+the manifest, wherever you clone it. Then any directory works.
+
+If the checkout names a fixed path instead (`checkout_dir =
+"~/src/<skills-repo>"`), that path is the working copy `sync` keeps up to
+date. Without a directory argument, `skenv clone` puts a new clone at that
+path when nothing is there yet (the output says `moved it to ...`). If you
+clone elsewhere, `clone` warns: `sync` would keep a second working copy at
+`checkout_dir` and never pull the checkout that holds your manifest, so
+manifest changes pushed from other machines would not arrive. Follow the
+advice in the warning: clone to that path
+(`skenv clone <owner>/<skills-repo> <path>`), or `skenv use <path>` when a
+working copy is already there. Until then `sync` warns and `skenv doctor`
+reports `manifest-checkout` (exit 1). To keep the checkout at another path
+on this machine only, set it in the
+[machine rules](manifest.md#machine-rules) (`[user.machines.<name>.checkout_dirs]`);
+changing `checkout_dir` moves it on every machine.
 
 ## 2. Preview and apply
 
@@ -96,7 +102,7 @@ of that name, installed by hand or with `npx skills`.
   [Adopt existing skills](adopting.md#step-by-step).
 
 `sync` ends with `sync: N changes, N warnings, N errors`. It exits 0 even
-when it leaves something undone with a warning (an own repository with
+when it leaves something undone with a warning (a checkout with
 uncommitted changes is not pulled, for example), so check the result.
 
 ## 3. Verify
@@ -108,8 +114,8 @@ skenv doctor
 
 `skenv list` shows the manifest, the store and the agent directories it
 found, and every skill with its state; after a successful sync each one is
-`installed` (or `not selected` / `skipped on this host`, if the manifest
-says so):
+`installed` (or `not selected` / `excluded on this machine`, if the
+manifest says so):
 
 ```text
 manifest  ~/src/<skills-repo>/skenv.toml
@@ -150,7 +156,7 @@ current directory by itself; `skenv use` is the only switch.
 - A change made on one machine (`skenv vendor add`, a new skill, an edit of
   the manifest) reaches the others after you **commit and push** it there,
   and they run `skenv sync` (or autostart runs it within the hour).
-- `skenv sync` pulls own repositories with `--ff-only`. A working copy with
+- `skenv sync` pulls checkouts with `--ff-only`. A working copy with
   uncommitted changes or a diverged branch is left alone with a warning;
   `skenv doctor` reports it as `dirty`, `unpushed` or `behind`, and a
   manifest outside the working copy that `sync` pulls as

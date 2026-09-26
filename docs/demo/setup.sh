@@ -54,22 +54,21 @@ publish "$work/commit-helper" example-vendor/commit-helper >/dev/null
 skill "$work/agent-skills/skills/release-notes" release-notes "Draft release notes from merged pull requests."
 skill "$work/agent-skills/skills/sql-style" sql-style "Review SQL against the team style guide."
 cat >"$work/agent-skills/skenv.toml" <<TOML
-[[environment.own]]      # our skills, kept as a git working copy
-repo = "example-org/agent-skills"
-path = "~/src/agent-skills"
+[user.checkouts.agent-skills]  # our skills, kept as a git working copy
+repo         = "example-org/agent-skills"
+checkout_dir = "."              # this repository, wherever it is cloned
 
-[[environment.vendor]]   # someone else's skill, pinned to a commit
-name = "pdf-tools"
-repo = "example-vendor/pdf-tools"
-path = "pdf-tools"
-rev  = "$pdf_rev"
+[user.dependencies.pdf-tools]  # someone else's skill, pinned to a commit
+repo      = "example-vendor/pdf-tools"
+skill_dir = "pdf-tools"
+commit    = "$pdf_rev"
 TOML
 publish "$work/agent-skills" example-org/agent-skills >/dev/null
 rm -rf "$work"
 
 cat >"$sandbox/.demorc" <<RC
 export HOME="$sandbox" PATH="$sandbox/.local/bin:\$PATH" GIT_CONFIG_NOSYSTEM=1
-unset CLAUDE_CONFIG_DIR SKENV_MANIFEST XDG_CONFIG_HOME GIT_CONFIG_GLOBAL PROMPT_COMMAND
+unset CLAUDE_CONFIG_DIR SKENV_MANIFEST SKENV_MACHINE XDG_CONFIG_HOME GIT_CONFIG_GLOBAL PROMPT_COMMAND
 export PS1='\$ ' LC_ALL=C
 # An empty line after each command's output, so the blocks read apart; not
 # after a caption comment (nothing runs) or a clear.

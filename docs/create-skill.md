@@ -27,8 +27,8 @@ next steps:
 ```
 
 `--dir` is any directory inside the target git repository. Without it,
-`skenv new` uses the only own repository of the manifest; with several, the
-one whose `[repo]` has `--visibility` (default `private`). Reference:
+`skenv new` uses the only checkout of the manifest; with several, the one
+whose `[repository]` has `--visibility` (default `private`). Reference:
 [skenv new](commands/skenv_new.md).
 
 ## 2. Write and check it
@@ -50,8 +50,8 @@ exits 1 with one line per problem (see
 
 The last line of `skenv new` says what to do:
 
-- **`run skenv link`**: the repository is an own repository of your
-  manifest. Own skills are linked from the working copy, so there is
+- **`run skenv link`**: the repository is a checkout of your manifest.
+  Skills of a checkout are linked from the working copy, so there is
   nothing to pull:
 
   ```sh
@@ -59,13 +59,13 @@ The last line of `skenv new` says what to do:
   skenv list   # my-skill: editable, installed
   ```
 
-- **`... is not an own repository of the manifest`**: add the repository
-  under `[[environment.own]]` (see
-  [Add a repository of your own skills](manage-skills.md#add-a-repository-of-your-own-skills))
+- **`... is not a checkout of the manifest`**: add the repository under
+  `[user.checkouts.<id>]` (see
+  [Add a checkout of your own skills](manage-skills.md#add-a-checkout-of-your-own-skills))
   and run `skenv sync`.
-- **`... lists its skills in skills, without my-skill`** or **`matches
-  exclude`**: the entry selects only some skills; add the name to `skills`,
-  or change `exclude`, in the manifest.
+- **`... selects its skills with include, which does not match my-skill`**
+  or **`matches exclude`**: the checkout selects only some skills; add the
+  name to `include`, or change `exclude`, in the manifest.
 - **`no manifest is configured`**: start one with `skenv init` (see
   [Create your first environment](first-environment.md)).
 

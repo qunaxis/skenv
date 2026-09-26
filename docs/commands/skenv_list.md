@@ -7,8 +7,8 @@ List the skills of the manifest and whether they are installed
 ### Synopsis
 
 List the manifest, the store and the agent directories, then every skill of
-the manifest: KIND is editable for an own skill (linked from a git working
-copy, VERSION is its path) and pinned for a vendored one (a copy at a
+the manifest: KIND is editable for a skill of a checkout (linked from a git
+working copy, VERSION is its path) and pinned for a dependency (a copy at a
 commit, VERSION is the commit). STATE is:
 
 - installed: in the store and linked into every agent directory;
@@ -16,10 +16,11 @@ commit, VERSION is the commit). STATE is:
   date: run `skenv sync`;
 - conflict: a path skenv does not manage is in the way: `skenv sync --adopt`
   backs it up and replaces it;
-- not selected: a skill of an own repository left out by skills or exclude;
-- skipped on this host: left out by `host.<name>.skip`.
+- not selected: a skill of a checkout left out by its include or exclude;
+- excluded on this machine: left out by the rules of this machine
+  (`user.machines.<name>`).
 
-Own repositories that are not cloned yet are listed below the table. It is
+Checkouts that are not cloned yet are listed below the table. It is
 read-only and offline and exits 0: `skenv doctor` is the check. Project skills
 are files committed with the project; `skenv doctor --project` checks them.
 
@@ -50,7 +51,7 @@ write-tests     editable  example-org/skills    ~/src/skills  not synced
 ```
   -h, --help              help for list
       --json              print the list as JSON
-      --manifest string   skenv file with the [environment] section, or its directory
+      --manifest string   skenv file with the [user] section, or its directory
 ```
 
 ### SEE ALSO

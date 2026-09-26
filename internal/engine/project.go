@@ -73,7 +73,7 @@ func OpenProject(ctx context.Context, env Env, opts Options, file string) (*Proj
 		return nil, err
 	}
 	e := &ProjectEngine{base: newBase(ctx, env, opts), root: filepath.Dir(file), file: file, p: p, removed: map[string]bool{}}
-	e.hosts = p.Hosts
+	e.hosts, e.hostsDir = p.GitHosts, e.root
 	if err := e.checkDirs(); err != nil {
 		return nil, fmt.Errorf("%s: %w", e.show(file), err)
 	}
@@ -248,7 +248,7 @@ func (e *ProjectEngine) modified(p string, mk marker) (bool, error) {
 // (a project-own skill) and a copy edited locally are replaced only with
 // --adopt, after a backup.
 func (e *ProjectEngine) syncCopy(s manifest.ProjectSkill, dst string) {
-	from := fmt.Sprintf("%s@%.12s (%s)", s.Repo, s.Rev, s.Path)
+	from := fmt.Sprintf("%s@%.12s (%s)", s.Repo, s.Commit, s.Path)
 	fi, err := os.Lstat(dst)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -277,7 +277,7 @@ func (e *ProjectEngine) syncCopy(s manifest.ProjectSkill, dst string) {
 			return
 		}
 		remote, _ := e.hosts.Resolve(s.Repo) // Validate resolved it already
-		same := mk.matches(remote, s.Path, s.Rev)
+		same := mk.matches(remote, s.Path, s.Commit)
 		if same && !modified {
 			return
 		}
@@ -296,7 +296,7 @@ func (e *ProjectEngine) syncCopy(s manifest.ProjectSkill, dst string) {
 		case same:
 			e.changef("restore %s from %s", e.rel(dst), from)
 		case mk.matches(remote, s.Path, mk.Rev):
-			e.changef("update %s %.12s → %.12s (%s, %s)", e.rel(dst), mk.Rev, s.Rev, s.Repo, s.Path)
+			e.changef("update %s %.12s → %.12s (%s, %s)", e.rel(dst), mk.Rev, s.Commit, s.Repo, s.Path)
 		default:
 			e.changef("update %s from %s@%.12s (%s) to %s", e.rel(dst), mk.Repo, mk.Rev, mk.Path, from)
 		}
@@ -305,7 +305,7 @@ func (e *ProjectEngine) syncCopy(s manifest.ProjectSkill, dst string) {
 		return
 	}
 	remote, _ := e.hosts.Resolve(s.Repo) // Validate resolved it already
-	if err := e.copySkill(s.Repo, remote.URL, s.Path, s.Rev, dst, true); err != nil {
+	if err := e.copySkill(s.Repo, remote.URL, s.Path, s.Commit, dst, true); err != nil {
 		e.errorf("copy %s: %v", s.Name, err)
 		return
 	}

@@ -6,15 +6,15 @@ Use an existing manifest on this machine
 
 ### Synopsis
 
-Record the manifest at `<path>`, a skenv file with an `[environment]` section or
+Record the manifest at `<path>`, a skenv file with a `[user]` section or
 a directory that holds one (`skenv use .` in the root of your skills repository),
 as `manifest` in the config file. A manifest recorded before is replaced,
 and the output names it. skenv never switches manifests by itself: the
 current directory does not select one.
 
-The manifest usually lists its own repository as an own repository; when
-its path is not the checkout of `<path>`, use warns: sync would clone a second
-working copy there.
+The manifest usually lists its own repository as a checkout; when its
+checkout_dir is not the checkout of `<path>`, use warns: sync would clone a
+second working copy there.
 
 - Reads: the skenv file and the config file.
 - Changes: `manifest` in the config file (`~/.config/skenv/config.toml` unless

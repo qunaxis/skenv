@@ -19,15 +19,14 @@ import (
 )
 
 // NewManifest starts a manifest in the git repository that contains dir
-// (`skenv init`): it adds an [environment] section to
-// the skenv file of the repository, or creates skenv.<format> with one,
-// and records the file as "manifest" in the tool config. The repository
-// itself becomes the first [[environment.own]] entry: from its origin, or
-// from remote (`--remote`) when it has no origin yet. An empty manifest is
-// not synced.
+// (`skenv init`): it adds a [user] section to the skenv file of the
+// repository, or creates skenv.<format> with one, and records the file as
+// "manifest" in the tool config. The repository itself becomes the first
+// checkout, with checkout_dir ".": from its origin, or from remote
+// (`--remote`) when it has no origin yet. An empty manifest is not synced.
 //
-// It refuses, before writing anything, when the file has [environment]
-// already, when its [repo] is public (the manifest is personal), and when
+// It refuses, before writing anything, when the file has [user] already,
+// when its [repository] is public (the manifest is personal), and when
 // format disagrees with the existing file. A new tool config takes the
 // format of the skenv file; an existing one keeps its own.
 func NewManifest(ctx context.Context, env Env, dir, format, remote string, dryRun bool) (int, error) {
@@ -48,11 +47,11 @@ func NewManifest(ctx context.Context, env Env, dir, format, remote string, dryRu
 	}
 	fmt.Fprintf(env.Stdout, "next steps:\n")
 	if p.own == nil {
-		fmt.Fprintf(env.Stdout, "  - list your skills repositories under environment.own in %s\n", filepath.Base(p.file))
+		fmt.Fprintf(env.Stdout, "  - list your skills repositories under user.checkouts in %s\n", filepath.Base(p.file))
 	}
 	fmt.Fprintf(env.Stdout, "  - skenv vendor add <repo> --path <dir>         pin a third-party skill\n")
 	fmt.Fprintf(env.Stdout, "  - skenv sync                                  link the skills of the manifest\n")
-	// The own entry is a built-in short form or a URL: both work there.
+	// The checkout is a built-in short form or a URL: both work there.
 	again := "<repo>"
 	if p.own != nil {
 		again = p.own.Repo
@@ -65,10 +64,10 @@ func NewManifest(ctx context.Context, env Env, dir, format, remote string, dryRu
 // yet.
 type manifestPlan struct {
 	file     string // the skenv file to write
-	existing bool   // the file exists (without [environment])
+	existing bool   // the file exists (without [user])
 	data     []byte // its content, empty for a new file
 	// own is the repository itself: from origin, or from --remote.
-	own       *manifest.Own
+	own       *manifest.Checkout
 	cfgFormat string // format of a new tool config, "" to keep the existing one
 	cfgPath   string
 	replaced  string // the manifest the config named before, if another one
@@ -111,8 +110,8 @@ func planManifest(ctx context.Context, env Env, dir, format, remote string) (*ma
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", show(existing), err)
 		}
-		if doc.Has(skenvfile.Environment) {
-			return nil, fmt.Errorf("%s has [environment] already; `skenv init` only starts a new manifest "+
+		if doc.Has(skenvfile.User) {
+			return nil, fmt.Errorf("%s has [user] already; `skenv init` only starts a new manifest "+
 				"(to use this one on this machine: `skenv use %s`)", show(existing), show(root))
 		}
 		if err := refusePublic(p.data, filepath.Ext(existing), show(existing)); err != nil {
@@ -120,8 +119,10 @@ func planManifest(ctx context.Context, env Env, dir, format, remote string) (*ma
 		}
 	}
 
-	// The repository itself is the first own entry when its origin, or
-	// --remote for a repository without one, is on a network host.
+	// The repository itself is the first checkout when its origin, or
+	// --remote for a repository without one, is on a network host. Its
+	// checkout_dir is ".": the repository that holds the manifest, wherever
+	// it is cloned.
 	origin, err := env.Git.Run(ctx, root, "config", "--get", "remote.origin.url")
 	hasOrigin := err == nil && strings.TrimSpace(origin) != ""
 	switch {
@@ -132,10 +133,10 @@ func planManifest(ctx context.Context, env Env, dir, format, remote string) (*ma
 		if err != nil {
 			return nil, err
 		}
-		p.own = &manifest.Own{Repo: repo, Path: show(root)}
+		p.own = &manifest.Checkout{ID: manifest.NewID(repo, nil), Repo: repo, CheckoutDir: "."}
 	case hasOrigin:
 		if repo, ok := ownRepo(origin); ok {
-			p.own = &manifest.Own{Repo: repo, Path: show(root)}
+			p.own = &manifest.Checkout{ID: manifest.NewID(repo, nil), Repo: repo, CheckoutDir: "."}
 		}
 	}
 
@@ -174,7 +175,7 @@ func homeShow(home string) func(string) string {
 	}
 }
 
-// refusePublic refuses to add [environment] to a skenv file whose [repo]
+// refusePublic refuses to add [user] to a skenv file whose [repository]
 // is public: the manifest is personal.
 func refusePublic(data []byte, ext, name string) error {
 	c, ok, err := harness.Parse(data, ext)
@@ -182,34 +183,34 @@ func refusePublic(data []byte, ext, name string) error {
 		return err
 	}
 	if ok && c.Visibility == "public" {
-		return fmt.Errorf("%s: [repo] says visibility = \"public\", and a public repository must not carry [environment]: "+
-			"the manifest is personal (home paths, host names, which skills you use); start it in a private repository", name)
+		return fmt.Errorf("%s: [repository] says visibility = \"public\", and a public repository must not carry [user]: "+
+			"the manifest is personal (home paths, machine names, which skills you use); start it in a private repository", name)
 	}
 	return nil
 }
 
-// build returns the skenv file with [environment] added, own as its first
-// own repository when not nil.
-func (p *manifestPlan) build(own *manifest.Own) ([]byte, error) {
-	out, err := manifest.AddEnvironment(p.data, filepath.Ext(p.file), own)
+// build returns the skenv file with [user] added, own as its first
+// checkout when not nil.
+func (p *manifestPlan) build(own *manifest.Checkout) ([]byte, error) {
+	out, err := manifest.AddUser(p.data, filepath.Ext(p.file), own)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", p.show(p.file), err)
 	}
 	return skenvfile.Stamp(out, filepath.Ext(p.file), true)
 }
 
-func (p *manifestPlan) message(own *manifest.Own) string {
-	msg := "create " + p.show(p.file) + " with [environment]"
+func (p *manifestPlan) message(own *manifest.Checkout) string {
+	msg := "create " + p.show(p.file) + " with [user]"
 	if p.existing {
-		msg = "add [environment] to " + p.show(p.file)
+		msg = "add [user] to " + p.show(p.file)
 	}
 	if own != nil {
-		msg += ", " + own.Repo + " as its first own repository"
+		msg += ", " + own.Repo + " as its first checkout (" + own.ID + ")"
 	}
 	return msg
 }
 
-func (p *manifestPlan) printPlan(env Env, own *manifest.Own) {
+func (p *manifestPlan) printPlan(env Env, own *manifest.Checkout) {
 	fmt.Fprintf(env.Stdout, "would %s\n", p.message(own))
 	fmt.Fprintf(env.Stdout, "would record %s in %s\n", p.show(p.file), p.show(p.cfgPath))
 	if p.replaced != "" {
@@ -219,7 +220,7 @@ func (p *manifestPlan) printPlan(env Env, own *manifest.Own) {
 
 // write writes the skenv file and records it as "manifest" in the tool
 // config.
-func (p *manifestPlan) write(env Env, out []byte, own *manifest.Own) error {
+func (p *manifestPlan) write(env Env, out []byte, own *manifest.Checkout) error {
 	if err := manifest.WriteFile(p.file, out); err != nil {
 		return err
 	}

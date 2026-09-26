@@ -1,9 +1,9 @@
 // Package harness generates and verifies the tooling of a skills repository
 // ("repository harness"): git hooks, the CI pipeline of GitHub Actions or
 // GitLab CI, linter configs and the
-// managed blocks of AGENTS.md and .gitignore. The templates of one harness
-// version (Latest) are embedded; `skenv repo apply` moves a repository to
-// it. Its settings are the [repo] section of the skenv file.
+// managed blocks of AGENTS.md and .gitignore. The templates of one
+// version (Latest) are embedded. Its settings are the [repository] section
+// of the skenv file.
 package harness
 
 import (
@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"text/template"
@@ -34,8 +35,9 @@ import (
 const ConfigFile = "skenv.toml"
 
 // Latest is the harness version of the embedded templates; `repo init`
-// and `repo apply` write it. The CI workflow installs this skenv release.
-const Latest = "0.5.0"
+// and `repo upgrade` write it as repository.template_version, and `repo
+// apply` generates it only. The CI workflow installs this skenv release.
+const Latest = "0.6.0"
 
 // DefaultRunner is the runner of private repositories (the self-hosted
 // Docker runner): the runs-on labels on GitHub, the tags on GitLab.
@@ -45,16 +47,16 @@ var DefaultRunner = []string{"self-hosted", "linux", "docker"}
 // unquoted into a YAML flow list.
 var runnerRe = regexp.MustCompile(`^[A-Za-z0-9._:/-]+$`)
 
-// CI systems, the values of repo.ci.
+// CI systems, the tables of repository.ci.
 const (
 	CIGitHub = "github"
 	CIGitLab = "gitlab"
 )
 
-// CIs lists the values of repo.ci.
+// CIs lists the tables of repository.ci.
 var CIs = []string{CIGitHub, CIGitLab}
 
-// DetectCI is the default repo.ci for a repository whose origin is on a
+// DetectCI is the default CI system for a repository whose origin is on a
 // host of hostType (manifest.TypeGitLab, ...): GitLab CI on GitLab,
 // GitHub Actions on any other host.
 func DetectCI(hostType string) string {
@@ -67,47 +69,90 @@ func DetectCI(hostType string) string {
 //go:embed templates
 var templates embed.FS
 
-// Config is the [repo] section of the skenv file: the harness of a skills
-// repository, the tooling that `skenv repo apply` generates.
+// Config is the [repository] section of the skenv file: the development
+// tooling of a skills repository that `skenv repo apply` generates, and its
+// publication policy.
 //
 // The first paragraph of this comment and the comments of the fields are
 // the descriptions of the JSON Schema (`make schemas`): write them for
 // users.
 type Config struct {
-	// Harness is the version of the harness templates, which is also the
-	// skenv release the generated CI installs. It must not be newer than
-	// the templates of the skenv that reads it; `skenv repo apply` moves it
-	// to the version of the running skenv.
-	Harness string `toml:"harness" yaml:"harness" json:"harness"`
-	// Visibility is the visibility of the repository on its host: "private"
-	// or "public". A public repository must not have [environment], and its
-	// CI always runs on the runners of the host (ubuntu-latest on GitHub,
-	// the shared runners on GitLab), never on self-hosted ones.
+	// TemplateVersion is the version of the templates this repository
+	// asks for, which is also the skenv release its generated CI installs.
+	// It must not be newer than the templates of the skenv that reads it.
+	TemplateVersion string `toml:"template_version" yaml:"template_version" json:"template_version"`
+	// Visibility is the declared publication policy: "private" or
+	// "public". skenv never reads or changes the access setting on the
+	// hosting service. A public repository must not carry [user], and its
+	// CI runs `skenv lint --publish` on the runners of the host
+	// (ubuntu-latest on GitHub, the shared runners on GitLab).
 	Visibility string `toml:"visibility" yaml:"visibility" json:"visibility"`
-	// CI is the CI system the harness generates for: "github"
-	// (.github/workflows/check.yml) or "gitlab" (.gitlab-ci.yml). `skenv
-	// repo init` detects it from the host of origin; a file without it
-	// means "github". Switching it makes `skenv repo apply` remove the
-	// managed file of the other CI.
-	CI string `toml:"ci" yaml:"ci" json:"ci"`
-	// Runner is where the CI jobs run, used only when visibility is
-	// "private": the runs-on labels on GitHub, the runner tags on GitLab.
-	// Default: ["self-hosted", "linux", "docker"]; use ["ubuntu-latest"]
-	// for GitHub-hosted runners or ["saas-linux-small-amd64"] for the
-	// GitLab.com instance runners.
-	Runner []string `toml:"runner" yaml:"runner" json:"runner"`
+	// CI is the CI system the templates generate for, by the table
+	// present: github (.github/workflows/check.yml) or gitlab
+	// (.gitlab-ci.yml), at most one. Without either: github. Switching it
+	// makes `skenv repo apply` remove the managed file of the other one.
+	CI CIConfig `toml:"ci" yaml:"ci" json:"ci"`
 
-	// File is the skenv file; HasEnvironment reports whether it also
-	// carries the [environment] section (a manifest).
-	File           string `toml:"-" yaml:"-" json:"-"`
-	HasEnvironment bool   `toml:"-" yaml:"-" json:"-"`
+	// Provider is the CI system in use and Runner its runs-on labels or
+	// tags, after defaults.
+	Provider string   `toml:"-" yaml:"-" json:"-"`
+	Runner   []string `toml:"-" yaml:"-" json:"-"`
+	// File is the skenv file; HasUser reports whether it also carries the
+	// [user] section (a manifest).
+	File    string `toml:"-" yaml:"-" json:"-"`
+	HasUser bool   `toml:"-" yaml:"-" json:"-"`
+	// tables are the tables present under repository.ci.
+	tables []string
 }
 
-// errNoRepo is returned when the repository has no [repo] section.
-var errNoRepo = errors.New("no [repo] section in the skenv file; run `skenv repo init`")
+// CIConfig chooses the CI system: one of its tables.
+type CIConfig struct {
+	// GitHub is GitHub Actions.
+	GitHub GitHubCI `toml:"github" yaml:"github" json:"github"`
+	// GitLab is GitLab CI.
+	GitLab GitLabCI `toml:"gitlab" yaml:"gitlab" json:"gitlab"`
+}
 
-// ReadRaw decodes the [repo] section of the skenv file in root without
-// validating it; ok is false when there is no skenv file or no [repo].
+// GitHubCI is GitHub Actions (.github/workflows/check.yml).
+type GitHubCI struct {
+	// RunsOn are the runs-on labels of the jobs of a private repository.
+	// Default: ["self-hosted", "linux", "docker"]; use ["ubuntu-latest"]
+	// for the GitHub-hosted runners. A public repository always runs on
+	// ubuntu-latest, and setting it there is an error.
+	RunsOn []string `toml:"runs_on" yaml:"runs_on" json:"runs_on"`
+}
+
+// GitLabCI is GitLab CI (.gitlab-ci.yml).
+type GitLabCI struct {
+	// Tags are the runner tags of the jobs of a private repository.
+	// Default: ["self-hosted", "linux", "docker"]; use
+	// ["saas-linux-small-amd64"] for the GitLab.com instance runners. A
+	// public repository always runs on the shared runners, and setting it
+	// there is an error.
+	Tags []string `toml:"tags" yaml:"tags" json:"tags"`
+}
+
+// decode reads the [repository] section of doc into c and records which
+// CI tables it has.
+func (c *Config) decode(doc *skenvfile.Doc) error {
+	if err := doc.Decode(skenvfile.Repository, c); err != nil {
+		return err
+	}
+	c.tables = nil
+	for _, ci := range CIs {
+		if doc.IsDefined(skenvfile.Repository, "ci", ci) {
+			c.tables = append(c.tables, ci)
+		}
+	}
+	return nil
+}
+
+// errNoRepo is returned when the repository has no [repository] section.
+var errNoRepo = errors.New("no [repository] section in the skenv file; run `skenv repo init`")
+
+// ReadRaw decodes the [repository] section of the skenv file in root
+// without validating it; ok is false when there is no skenv file or no
+// [repository].
 func ReadRaw(root string) (*Config, bool, error) {
 	file, err := skenvfile.Find(root)
 	if err != nil || file == "" {
@@ -117,18 +162,18 @@ func ReadRaw(root string) (*Config, bool, error) {
 	if err != nil {
 		return nil, true, err
 	}
-	if !doc.Has(skenvfile.Repo) {
+	if !doc.Has(skenvfile.Repository) {
 		return nil, false, nil
 	}
-	c := &Config{File: file, HasEnvironment: doc.Has(skenvfile.Environment)}
-	if err := doc.Decode(skenvfile.Repo, c); err != nil {
+	c := &Config{File: file, HasUser: doc.Has(skenvfile.User)}
+	if err := c.decode(doc); err != nil {
 		return nil, true, fmt.Errorf("%s: %w", file, err)
 	}
 	return c, true, nil
 }
 
-// LoadConfig reads and validates the [repo] section of the skenv file in
-// root.
+// LoadConfig reads and validates the [repository] section of the skenv
+// file in root.
 func LoadConfig(root string) (*Config, error) {
 	c, ok, err := ReadRaw(root)
 	if err != nil {
@@ -140,59 +185,72 @@ func LoadConfig(root string) (*Config, error) {
 	return c, c.validate()
 }
 
-// Version returns the harness version recorded in root without validating
-// the rest; ok is false when root has no [repo] section.
+// Version returns the template version recorded in root without
+// validating the rest; ok is false when root has no [repository] section.
 func Version(root string) (version string, ok bool, err error) {
 	c, ok, err := ReadRaw(root)
 	if c == nil {
 		return "", ok, err
 	}
-	return c.Harness, ok, err
+	return c.TemplateVersion, ok, err
 }
 
-// VersionPattern is the format of repo.harness.
+// VersionPattern is the format of repository.template_version.
 const VersionPattern = `^[0-9]+\.[0-9]+\.[0-9]+$`
 
 // VersionRe matches VersionPattern.
 var VersionRe = regexp.MustCompile(VersionPattern)
 
-// Parse decodes and validates the [repo] section of a skenv file in the
-// format of ext, with the rule that a public repository has no
-// [environment]. ok is false when there is no [repo].
+// Parse decodes and validates the [repository] section of a skenv file in
+// the format of ext, with the rule that a public repository has no
+// [user]. ok is false when there is no [repository].
 func Parse(data []byte, ext string) (c *Config, ok bool, err error) {
 	doc, err := skenvfile.Parse(data, ext)
-	if err != nil || !doc.Has(skenvfile.Repo) {
+	if err != nil || !doc.Has(skenvfile.Repository) {
 		return nil, false, err
 	}
-	c = &Config{File: ConfigFile, HasEnvironment: doc.Has(skenvfile.Environment)}
-	if err := doc.Decode(skenvfile.Repo, c); err != nil {
+	c = &Config{File: ConfigFile, HasUser: doc.Has(skenvfile.User)}
+	if err := c.decode(doc); err != nil {
 		return nil, true, err
 	}
 	if err := c.validate(); err != nil {
 		return nil, true, err
 	}
-	if c.Visibility == "public" && c.HasEnvironment {
-		return nil, true, errors.New(errPublicEnvironment)
+	if c.Visibility == "public" && c.HasUser {
+		return nil, true, errors.New(errPublicUser)
 	}
 	return c, true, nil
 }
 
-// errPublicEnvironment explains why a public repository must not carry the
+// errPublicUser explains why a public repository must not carry the
 // manifest.
-const errPublicEnvironment = "a public repository must not carry [environment]: the manifest is personal " +
-	"(home paths, host names, which skills you use); keep it in a private repository"
+const errPublicUser = "a public repository must not carry [user]: the manifest is personal " +
+	"(home paths, machine names, which skills you use); keep it in a private repository"
 
 func (c *Config) validate() error {
 	name := filepath.Base(c.File)
 	if c.File == "" {
 		name = ConfigFile
 	}
-	switch c.CI {
-	case "":
-		c.CI = CIGitHub
-	case CIGitHub, CIGitLab:
+	switch len(c.tables) {
+	case 0:
+		if c.Provider == "" {
+			c.Provider = CIGitHub
+		}
+	case 1:
+		c.Provider = c.tables[0]
 	default:
-		return fmt.Errorf("%s: repo.ci must be %q or %q, got %q", name, CIGitHub, CIGitLab, c.CI)
+		return fmt.Errorf("%s: repository.ci has both github and gitlab; keep the table of the CI system you use", name)
+	}
+	if !slices.Contains(CIs, c.Provider) {
+		return fmt.Errorf("%s: CI %q must be %q or %q", name, c.Provider, CIGitHub, CIGitLab)
+	}
+	key, set := "repository.ci.github.runs_on", c.CI.GitHub.RunsOn
+	if c.Provider == CIGitLab {
+		key, set = "repository.ci.gitlab.tags", c.CI.GitLab.Tags
+	}
+	if len(c.tables) > 0 {
+		c.Runner = set
 	}
 	switch c.Visibility {
 	case "private":
@@ -201,48 +259,64 @@ func (c *Config) validate() error {
 		}
 		for _, r := range c.Runner {
 			if !runnerRe.MatchString(r) {
-				return fmt.Errorf("%s: repo.runner %q is not a runner label: use letters, digits and . _ : / -", name, r)
+				return fmt.Errorf("%s: %s %q is not a runner label: use letters, digits and . _ : / -", name, key, r)
 			}
 		}
 	case "public":
+		if len(c.Runner) > 0 {
+			return fmt.Errorf("%s: %s is for private repositories: the CI of a public one runs on the runners of the host; remove it", name, key)
+		}
 	default:
-		return fmt.Errorf("%s: repo.visibility must be \"private\" or \"public\", got %q", name, c.Visibility)
+		return fmt.Errorf("%s: repository.visibility must be \"private\" or \"public\", got %q", name, c.Visibility)
 	}
-	if c.Harness == "" {
-		return fmt.Errorf("%s: repo.harness is required", name)
+	if c.TemplateVersion == "" {
+		return fmt.Errorf("%s: repository.template_version is required", name)
 	}
-	if !VersionRe.MatchString(c.Harness) {
-		return fmt.Errorf("%s: repo.harness %q must be a version such as %s", name, c.Harness, Latest)
+	if !VersionRe.MatchString(c.TemplateVersion) {
+		return fmt.Errorf("%s: repository.template_version %q must be a version such as %s", name, c.TemplateVersion, Latest)
 	}
-	if Compare(c.Harness, Latest) > 0 {
-		return fmt.Errorf("%s: harness %s is newer than %s of this skenv; upgrade skenv", name, c.Harness, Latest)
+	if Compare(c.TemplateVersion, Latest) > 0 {
+		return fmt.Errorf("%s: template_version %s is newer than %s of this skenv; upgrade skenv", name, c.TemplateVersion, Latest)
 	}
 	return nil
 }
 
 // repoHeader is the first comment of a skenv file that `repo init`
 // creates.
-const repoHeader = "# Repository harness: `skenv repo apply` regenerates the managed files.\n"
+const repoHeader = "# Repository templates and checks: `skenv repo apply` regenerates the managed files.\n"
 
 func (c *Config) encode() []byte {
 	var b bytes.Buffer
 	b.WriteString(repoHeader)
-	b.WriteString("[repo]\n")
-	fmt.Fprintf(&b, "harness    = %q\n", c.Harness)
-	fmt.Fprintf(&b, "visibility = %q\n", c.Visibility)
-	fmt.Fprintf(&b, "ci         = %q\n", c.CI)
+	b.WriteString("[repository]\n")
+	fmt.Fprintf(&b, "template_version = %q\n", c.TemplateVersion)
+	fmt.Fprintf(&b, "visibility       = %q\n", c.Visibility)
+	fmt.Fprintf(&b, "\n[repository.ci.%s]\n", c.Provider)
 	if c.Visibility == "private" {
 		quoted := make([]string, len(c.Runner))
 		for i, r := range c.Runner {
 			quoted[i] = strconv.Quote(r)
 		}
-		what := "runs-on of the CI jobs"
-		if c.CI == CIGitLab {
-			what = "tags of the CI jobs"
+		key, what := "runs_on", "runs-on of the CI jobs"
+		if c.Provider == CIGitLab {
+			key, what = "tags", "runner tags of the CI jobs"
 		}
-		fmt.Fprintf(&b, "runner     = [%s]  # %s\n", strings.Join(quoted, ", "), what)
+		fmt.Fprintf(&b, "%s = [%s]  # %s\n", key, strings.Join(quoted, ", "), what)
 	}
 	return b.Bytes()
+}
+
+// ciMap is the ci value of c for YAML and JSON.
+func (c *Config) ciMap() docedit.Map {
+	table := docedit.Map{}
+	if c.Visibility == "private" {
+		key := "runs_on"
+		if c.Provider == CIGitLab {
+			key = "tags"
+		}
+		table = docedit.Map{{Key: key, Value: c.Runner}}
+	}
+	return docedit.Map{{Key: c.Provider, Value: table}}
 }
 
 // kind of a managed item.
@@ -281,7 +355,7 @@ var items = []item{
 func (c *Config) managed() []item {
 	var out []item
 	for _, it := range items {
-		if it.CI == "" || it.CI == c.CI {
+		if it.CI == "" || it.CI == c.Provider {
 			out = append(out, it)
 		}
 	}
@@ -292,7 +366,7 @@ func (c *Config) managed() []item {
 func (c *Config) otherCI() []item {
 	var out []item
 	for _, it := range items {
-		if it.CI != "" && it.CI != c.CI {
+		if it.CI != "" && it.CI != c.Provider {
 			out = append(out, it)
 		}
 	}
@@ -324,7 +398,7 @@ func render(c *Config, it item) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	data := tmplData{Harness: c.Harness, Private: c.Visibility == "private", GitLab: c.CI == CIGitLab, RunsOn: "ubuntu-latest"}
+	data := tmplData{Harness: c.TemplateVersion, Private: c.Visibility == "private", GitLab: c.Provider == CIGitLab, RunsOn: "ubuntu-latest"}
 	if data.Private {
 		data.RunsOn = "[" + strings.Join(c.Runner, ", ") + "]"
 		quoted := make([]string, len(c.Runner))
@@ -338,14 +412,14 @@ func render(c *Config, it item) (string, error) {
 		return "", err
 	}
 	text := strings.TrimRight(body.String(), "\n") + "\n"
-	begin, end := markers(it, c.Harness)
+	begin, end := markers(it, c.TemplateVersion)
 	if it.Kind == block {
 		return begin + "\n" + text + end + "\n", nil
 	}
 	if it.Comment == jsonHeader {
 		return text, nil
 	}
-	return it.Comment + " " + Header(c.Harness) + "\n" + text, nil
+	return it.Comment + " " + Header(c.TemplateVersion) + "\n" + text, nil
 }
 
 // markers returns the begin and end lines of a managed block.
@@ -409,11 +483,11 @@ func Check(root string) ([]Drift, error) {
 	}
 	var out []Drift
 	file := filepath.Base(c.File)
-	if c.Visibility == "public" && c.HasEnvironment {
-		out = append(out, Drift{Path: file, Reason: errPublicEnvironment})
+	if c.Visibility == "public" && c.HasUser {
+		out = append(out, Drift{Path: file, Reason: errPublicUser})
 	}
-	if c.Harness != Latest {
-		return append(out, Drift{Path: file, Reason: fmt.Sprintf("harness %s; this skenv generates %s: run `skenv repo apply`", c.Harness, Latest)}), nil
+	if c.TemplateVersion != Latest {
+		return append(out, Drift{Path: file, Reason: fmt.Sprintf("template_version %s; this skenv generates %s: run `skenv repo upgrade`", c.TemplateVersion, Latest)}), nil
 	}
 	for _, p := range []string{"CLAUDE.md", filepath.Join(".claude", "CLAUDE.md")} {
 		if _, err := os.Lstat(filepath.Join(root, p)); err == nil {
@@ -422,7 +496,7 @@ func Check(root string) ([]Drift, error) {
 	}
 	for _, it := range c.otherCI() {
 		if data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(it.Path))); err == nil && isManaged(data) {
-			out = append(out, Drift{Path: it.Path, Reason: fmt.Sprintf("managed file of ci = %q, and this repository has ci = %q: run `skenv repo apply` to remove it", it.CI, c.CI)})
+			out = append(out, Drift{Path: it.Path, Reason: fmt.Sprintf("managed file of CI %s, and this repository has repository.ci.%s: run `skenv repo apply` to remove it", it.CI, c.Provider)})
 		}
 	}
 	for _, it := range c.managed() {
@@ -441,7 +515,7 @@ func Check(root string) ([]Drift, error) {
 		got := normalize(string(data))
 		if it.Kind == whole {
 			if got != want {
-				out = append(out, Drift{Path: it.Path, Reason: "differs from the harness " + c.Harness + " template"})
+				out = append(out, Drift{Path: it.Path, Reason: c.differs(got, "")})
 			}
 			continue
 		}
@@ -453,10 +527,24 @@ func Check(root string) ([]Drift, error) {
 		case !ok:
 			out = append(out, Drift{Path: it.Path, Reason: "managed block is missing"})
 		case strings.Join(lines[start:end+1], "") != want:
-			out = append(out, Drift{Path: it.Path, Reason: "managed block differs from the harness " + c.Harness + " template"})
+			out = append(out, Drift{Path: it.Path, Reason: c.differs(lines[start], "managed block ")})
 		}
 	}
 	return out, nil
+}
+
+// appliedRe finds the version of the templates that generated a file or
+// block, in its header or begin marker: the last-applied version, which is
+// observed state (the desired one is repository.template_version).
+var appliedRe = regexp.MustCompile(`managed by skenv ([0-9]+\.[0-9]+\.[0-9]+)`)
+
+// differs is the drift reason of a managed file (what "") or block whose
+// content, starting with head, is not the template of c.TemplateVersion.
+func (c *Config) differs(head, what string) string {
+	if m := appliedRe.FindStringSubmatch(head); m != nil && m[1] != c.TemplateVersion {
+		return fmt.Sprintf("%sgenerated by the %s templates, template_version is %s: run `skenv repo apply`", what, m[1], c.TemplateVersion)
+	}
+	return what + "differs from the " + c.TemplateVersion + " template (edited by hand?): run `skenv repo apply`"
 }
 
 // isManaged reports whether a file carries the skenv header in its first
@@ -626,17 +714,17 @@ func Init(root, visibility, ci, format string, runner []string, dryRun, force bo
 		}
 		return nil, nil, fmt.Errorf("--runner is for private repositories: the CI jobs of a public one run on %s", hosted)
 	}
-	c := &Config{Harness: Latest, Visibility: visibility, CI: ci, Runner: runner, File: file}
+	c := &Config{TemplateVersion: Latest, Visibility: visibility, Provider: ci, Runner: runner, File: file}
 	var data []byte
 	if file != "" {
 		doc, err := skenvfile.Read(file)
 		if err != nil {
 			return nil, nil, err
 		}
-		if doc.Has(skenvfile.Repo) {
-			return nil, nil, fmt.Errorf("%s already has [repo]; use `skenv repo apply` to regenerate the managed files", filepath.Base(file))
+		if doc.Has(skenvfile.Repository) {
+			return nil, nil, fmt.Errorf("%s already has [repository]; use `skenv repo apply` to regenerate the managed files", filepath.Base(file))
 		}
-		c.HasEnvironment = doc.Has(skenvfile.Environment)
+		c.HasUser = doc.Has(skenvfile.User)
 		if data, err = os.ReadFile(file); err != nil {
 			return nil, nil, err
 		}
@@ -646,8 +734,8 @@ func Init(root, visibility, ci, format string, runner []string, dryRun, force bo
 	if err := c.validate(); err != nil {
 		return nil, nil, err
 	}
-	if c.Visibility == "public" && c.HasEnvironment {
-		return nil, nil, fmt.Errorf("%s: %s", filepath.Base(c.File), errPublicEnvironment)
+	if c.Visibility == "public" && c.HasUser {
+		return nil, nil, fmt.Errorf("%s: %s", filepath.Base(c.File), errPublicUser)
 	}
 	if !force {
 		// Refuse before writing the skenv file, so a rerun with --force works.
@@ -695,11 +783,8 @@ func addRepo(data []byte, ext string, c *Config) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	repo := docedit.Map{{Key: "harness", Value: c.Harness}, {Key: "visibility", Value: c.Visibility}, {Key: "ci", Value: c.CI}}
-	if c.Visibility == "private" {
-		repo = append(repo, docedit.Field{Key: "runner", Value: c.Runner})
-	}
-	if err := d.Put(nil, skenvfile.Repo, repo, true); err != nil {
+	repo := docedit.Map{{Key: "template_version", Value: c.TemplateVersion}, {Key: "visibility", Value: c.Visibility}, {Key: "ci", Value: c.ciMap()}}
+	if err := d.Put(nil, skenvfile.Repository, repo, true); err != nil {
 		return nil, err
 	}
 	out := d.Bytes()
@@ -712,12 +797,13 @@ func addRepo(data []byte, ext string, c *Config) ([]byte, error) {
 }
 
 var (
-	repoHeaderRe = regexp.MustCompile(`^\s*\[\s*repo\s*\]\s*(#.*)?$`)
+	repoHeaderRe = regexp.MustCompile(`^\s*\[\s*repository\s*\]\s*(#.*)?$`)
 	tableRe      = regexp.MustCompile(`^\s*\[`)
-	harnessKeyRe = regexp.MustCompile(`^(\s*harness\s*=\s*)"[^"]*"(.*)$`)
+	versionKeyRe = regexp.MustCompile(`^(\s*template_version\s*=\s*)"[^"]*"(.*)$`)
 )
 
-// Update sets repo.harness in the skenv file of root to version and moves
+// Update sets repository.template_version in the skenv file of root to
+// version and moves
 // its schema directive there (adding it when missing). Comments, key order
 // and formatting stay in every format. It reports whether the file
 // changes; with dryRun nothing is written.
@@ -754,7 +840,7 @@ func setHarness(data []byte, ext, version string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if doc.Harness() == version {
+	if doc.TemplateVersion() == version {
 		return data, nil
 	}
 	if ext != ".toml" {
@@ -762,7 +848,7 @@ func setHarness(data []byte, ext, version string) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := d.SetString([]any{skenvfile.Repo, "harness"}, version); err != nil {
+		if err := d.SetString([]any{skenvfile.Repository, "template_version"}, version); err != nil {
 			return nil, err
 		}
 		return d.Bytes(), nil
@@ -779,23 +865,24 @@ func setHarness(data []byte, ext, version string) ([]byte, error) {
 			inRepo = false
 			continue
 		}
-		if m := harnessKeyRe.FindStringSubmatch(trimmed); inRepo && m != nil {
+		if m := versionKeyRe.FindStringSubmatch(trimmed); inRepo && m != nil {
 			lines[i] = m[1] + strconv.Quote(version) + m[2] + l[len(trimmed):]
 			return []byte(strings.Join(lines, "")), nil
 		}
 	}
-	return nil, errors.New(`no harness = "..." line under [repo]`)
+	return nil, errors.New(`no template_version = "..." line under [repository]`)
 }
 
 // DirectiveWarning describes a missing or outdated schema directive in the
-// skenv file of c: it should name the schema of repo.harness. It is only a
+// skenv file of c: it should name the schema of
+// repository.template_version. It is only a
 // warning, because the directive does not change what skenv does.
 func DirectiveWarning(c *Config) (string, error) {
 	data, err := os.ReadFile(c.File)
 	if err != nil {
 		return "", err
 	}
-	return schemas.Check(data, filepath.Ext(c.File), schemas.Skenv, c.Harness), nil
+	return schemas.Check(data, filepath.Ext(c.File), schemas.Skenv, c.TemplateVersion), nil
 }
 
 func writeKeepMode(file string, data []byte) error {

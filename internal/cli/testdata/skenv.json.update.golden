@@ -1,30 +1,26 @@
 {
   "$schema": "https://qunaxis.github.io/skenv/schemas/skenv.schema.json",
-  "environment": {
-    "vendor": [
-      {
-        "name": "archify",
+  "user": {
+    "dependencies": {
+      "archify": {
         "repo": "ext/tools",
-        "path": "tools/archify",
-        "rev": "<new-rev>"
+        "skill_dir": "tools/archify",
+        "commit": "<new-rev>"
       },
-      {
-        "name": "other",
+      "other": {
         "repo": "ext/tools",
-        "path": "tools/other",
-        "rev": "<rev>"
+        "skill_dir": "tools/other",
+        "commit": "<rev>"
       }
-    ],
-    "own": [
-      {
+    },
+    "checkouts": {
+      "skills": {
         "repo": "me/skills",
-        "path": "~/src/skills"
+        "checkout_dir": "~/src/skills"
       }
-    ],
-    "layout": {
-      "ignore": [
-        "tool<x>&*"
-      ]
-    }
+    },
+    "unmanaged": [
+      "tool<x>&*"
+    ]
   }
 }

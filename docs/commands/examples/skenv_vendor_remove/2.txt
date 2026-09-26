@@ -1,8 +1,8 @@
 exit 0
-remove vendor diagrams from [project] of ~/src/web-app/skenv.toml
+remove dependency diagrams from [project] of ~/src/web-app/skenv.toml
 remove .agents/skills/diagrams (no longer in [project])
 remove .claude/skills/diagrams (no skill diagrams in .agents/skills)
 the project skills changed; to commit them:
   git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
-  git -C ~/src/web-app commit -m "chore(skills): remove vendor skill diagrams"
+  git -C ~/src/web-app commit -m "chore(skills): remove dependency diagrams"
 vendor: 3 changes, 0 warnings, 0 errors

@@ -1,16 +1,18 @@
 package manifest
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
 var testHosts = Hosts{
-	"work":  {URL: "https://git.example.com", Type: TypeGitLab},
-	"forge": {URL: "https://forge.example.com/", Type: TypeGitea, SSH: "ssh://git@forge.example.com:2222"},
-	"plain": {URL: "https://git.example.org/scm", Type: TypeGeneric},
-	"hub":   {URL: "https://github.example.com", Type: TypeGitHub},
+	"work": {BaseURL: "https://git.example.com", Provider: TypeGitLab},
+	// base_url selects the transport: this host is cloned over ssh.
+	"forge": {BaseURL: "ssh://git@forge.example.com:2222", Provider: TypeGitea},
+	"plain": {BaseURL: "https://git.example.org/scm", Provider: TypeGeneric},
+	"hub":   {BaseURL: "https://github.example.com", Provider: TypeGitHub},
 }
 
 func TestResolve(t *testing.T) {
@@ -23,6 +25,8 @@ func TestResolve(t *testing.T) {
 		{"tt-a1i/archify", "https://github.com/tt-a1i/archify.git", TypeGitHub},
 		{"tt-a1i/archify.git", "https://github.com/tt-a1i/archify.git", TypeGitHub},
 		{" o/r ", "https://github.com/o/r.git", TypeGitHub},
+		// github: names the same host explicitly
+		{"github:tt-a1i/archify", "https://github.com/tt-a1i/archify.git", TypeGitHub},
 		// built-in prefixes, subgroups of any depth on gitlab
 		{"gitlab:group/repo", "https://gitlab.com/group/repo.git", TypeGitLab},
 		{"gitlab:group/sub/deeper/repo.git", "https://gitlab.com/group/sub/deeper/repo.git", TypeGitLab},
@@ -30,7 +34,7 @@ func TestResolve(t *testing.T) {
 		// declared aliases
 		{"work:group/sub/repo", "https://git.example.com/group/sub/repo.git", TypeGitLab},
 		{"work:group/repo.git/", "https://git.example.com/group/repo.git", TypeGitLab},
-		{"forge:owner/repo", "https://forge.example.com/owner/repo.git", TypeGitea},
+		{"forge:owner/repo", "ssh://git@forge.example.com:2222/owner/repo.git", TypeGitea},
 		{"hub:owner/repo", "https://github.example.com/owner/repo.git", TypeGitHub},
 		{"plain:repo", "https://git.example.org/scm/repo", TypeGeneric},
 		{"plain:a/b/repo.git", "https://git.example.org/scm/a/b/repo.git", TypeGeneric},
@@ -64,15 +68,15 @@ func TestResolve(t *testing.T) {
 
 func TestResolveErrors(t *testing.T) {
 	for repo, want := range map[string]string{
-		"":                  "repo is empty",
-		"gitlab:repo":       "group/repo or group/subgroup",
-		"codeberg:a/b/c":    "owner/repo",
-		"hub:a/b/c":         "owner/repo",
-		"work:g/../r":       "not a repository path",
-		"gitlab:g//r":       "not a repository path",
-		"myserver:group/r":  `unknown host prefix "myserver:"`,
-		"GitLab:group/r":    `unknown host prefix "GitLab:"`,
-		"github:owner/repo": `unknown host prefix "github:"`,
+		"":                 "repo is empty",
+		"gitlab:repo":      "group/repo or group/subgroup",
+		"codeberg:a/b/c":   "owner/repo",
+		"hub:a/b/c":        "owner/repo",
+		"work:g/../r":      "not a repository path",
+		"gitlab:g//r":      "not a repository path",
+		"myserver:group/r": `unknown host prefix "myserver:"`,
+		"GitLab:group/r":   `unknown host prefix "GitLab:"`,
+		"github:a/b/c":     "owner/repo",
 	} {
 		_, err := testHosts.Resolve(repo)
 		if err == nil || !strings.Contains(err.Error(), want) {
@@ -81,7 +85,7 @@ func TestResolveErrors(t *testing.T) {
 	}
 	// The error lists the known prefixes and how to declare the missing one.
 	_, err := testHosts.Resolve("acme:g/r")
-	for _, want := range []string{"gitlab:, codeberg:, forge:, hub:, plain:, work:", "[environment.hosts.acme]"} {
+	for _, want := range []string{"github:, gitlab:, codeberg:, forge:, hub:, plain:, work:", "[user.git_hosts.acme]"} {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("unknown prefix error %v lacks %q", err, want)
 		}
@@ -157,7 +161,6 @@ func TestShortForm(t *testing.T) {
 func TestAccessHint(t *testing.T) {
 	for repo, want := range map[string]string{
 		"work:g/r":                    `url."git@git.example.com:".insteadOf "https://git.example.com/"`,
-		"forge:o/r":                   `url."ssh://git@forge.example.com:2222/".insteadOf "https://forge.example.com/"`,
 		"plain:r":                     `url."git@git.example.org:".insteadOf "https://git.example.org/scm/"`,
 		"o/r":                         `url."git@github.com:".insteadOf "https://github.com/"`,
 		"https://elsewhere.example/r": "credential helper",
@@ -170,55 +173,89 @@ func TestAccessHint(t *testing.T) {
 			t.Errorf("AccessHint of %q = %q, want %q", repo, got, want)
 		}
 	}
-	// No ssh hint for a repository that is already on ssh.
-	r, _ := testHosts.Resolve("git@git.example.com:g/r.git")
-	if strings.Contains(r.AccessHint(), "insteadOf") {
-		t.Errorf("ssh URL got an insteadOf hint: %s", r.AccessHint())
+	// No ssh hint for a repository that is already on ssh, or on a host
+	// whose base_url is ssh.
+	for _, repo := range []string{"git@git.example.com:g/r.git", "forge:o/r"} {
+		r, _ := testHosts.Resolve(repo)
+		if strings.Contains(r.AccessHint(), "insteadOf") {
+			t.Errorf("%s got an insteadOf hint: %s", repo, r.AccessHint())
+		}
 	}
 }
 
 func TestParseHosts(t *testing.T) {
-	m, err := Parse([]byte(`[environment.hosts.work]
-url = "https://git.example.com"
-type = "gitlab"
+	m, err := Parse([]byte(`[user.git_hosts.work]
+base_url = "https://git.example.com"
+provider = "gitlab"
 
-[environment.hosts.plain]
-url = "https://git.example.org"
+[user.git_hosts.plain]
+base_url = "https://git.example.org"
 
-[[environment.own]]
+[user.git_hosts.ssh]
+base_url = "ssh://git@git.example.net:2222/scm"
+provider = "gitlab"
+
+[user.checkouts.skills]
 repo = "work:group/sub/skills"
-path = "~/src/skills"
+checkout_dir = "~/src/skills"
 
-[[environment.vendor]]
-name = "tool"
+[user.dependencies.tool]
 repo = "plain:tools.git"
-rev = "`+strings.Repeat("a", 40)+`"
+commit = "`+strings.Repeat("a", 40)+`"
 `), ".toml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Hosts["plain"].Type != TypeGeneric || m.Hosts["work"].Type != TypeGitLab {
-		t.Errorf("hosts = %+v", m.Hosts)
+	if m.GitHosts["plain"].Provider != TypeGeneric || m.GitHosts["work"].Provider != TypeGitLab {
+		t.Errorf("hosts = %+v", m.GitHosts)
 	}
-	if m.Own[0].Repo != "work:group/sub/skills" {
-		t.Errorf("the manifest keeps what was written, got %q", m.Own[0].Repo)
+	if m.Checkouts["skills"].Repo != "work:group/sub/skills" {
+		t.Errorf("the manifest keeps what was written, got %q", m.Checkouts["skills"].Repo)
+	}
+	if r, err := m.Remote("ssh:g/r"); err != nil || r.URL != "ssh://git@git.example.net:2222/scm/g/r.git" {
+		t.Errorf("ssh base_url: %+v, %v", r, err)
+	}
+	if got, ok := m.GitHosts.ShortForm("https://git.example.net/scm/g/r.git"); !ok || got != "ssh:g/r" {
+		t.Errorf("https form of an ssh host: %q, %v", got, ok)
 	}
 
 	for body, want := range map[string]string{
-		`[environment.hosts.Work]` + "\nurl = \"https://a.example\"\n":                                           "hosts.Work: the alias must be",
-		`[environment.hosts.gitlab]` + "\nurl = \"https://a.example\"\n":                                         `"gitlab" is built in`,
-		`[environment.hosts.work]` + "\ntype = \"gitlab\"\n":                                                     "hosts.work.url: is required",
-		`[environment.hosts.work]` + "\nurl = \"git.example.com\"\n":                                             "must be a base URL",
-		`[environment.hosts.work]` + "\nurl = \"https://user:tok@git.example.com\"\n":                            "must not carry credentials",
-		`[environment.hosts.work]` + "\nurl = \"oauth2:tok@git.example.com\"\n":                                  "hosts.work.url: must be a base URL",
-		`[environment.hosts.work]` + "\nurl = \"https://a.example\"\ntype = \"bitbucket\"":                       `hosts.work.type: "bitbucket" must be one of github, gitlab, gitea, generic`,
-		`[environment.hosts.work]` + "\nurl = \"https://a.example\"\nssh = \"https://a\"":                        "must be user@host",
-		"[[environment.own]]\nrepo = \"acme:g/r\"\npath = \"~/x\"\n":                                             `own[0]: repo "acme:g/r": unknown host prefix`,
-		"[[environment.vendor]]\nname = \"t\"\nrepo = \"gitlab:r\"\nrev = \"" + strings.Repeat("a", 40) + "\"\n": `vendor "t": repo "gitlab:r"`,
+		`[user.git_hosts.Work]` + "\nbase_url = \"https://a.example\"\n":                             "git_hosts.Work: the alias must be",
+		`[user.git_hosts.gitlab]` + "\nbase_url = \"https://a.example\"\n":                           `"gitlab" is built in`,
+		`[user.git_hosts.github]` + "\nbase_url = \"https://a.example\"\n":                           `"github" is built in`,
+		`[user.git_hosts.work]` + "\nprovider = \"gitlab\"\n":                                        "git_hosts.work.base_url: is required",
+		`[user.git_hosts.work]` + "\nbase_url = \"git.example.com\"\n":                               "must be a base URL",
+		`[user.git_hosts.work]` + "\nbase_url = \"https://user:tok@git.example.com\"\n":              "must not carry credentials",
+		`[user.git_hosts.work]` + "\nbase_url = \"ssh://git:pw@git.example.com\"\n":                  "must not carry a password",
+		`[user.git_hosts.work]` + "\nbase_url = \"ftp://git.example.com\"\n":                         `scheme "ftp": use https:// or ssh://`,
+		`[user.git_hosts.work]` + "\nbase_url = \"oauth2:tok@git.example.com\"\n":                    "git_hosts.work.base_url: must be a base URL",
+		`[user.git_hosts.work]` + "\nbase_url = \"https://a.example\"\nprovider = \"bitbucket\"":     `git_hosts.work.provider: "bitbucket" must be one of github, gitlab, gitea, generic`,
+		"[user.checkouts.x]\nrepo = \"acme:g/r\"\ncheckout_dir = \"~/x\"\n":                          `user.checkouts.x: repo "acme:g/r": unknown host prefix`,
+		"[user.dependencies.t]\nrepo = \"gitlab:r\"\ncommit = \"" + strings.Repeat("a", 40) + "\"\n": `user.dependencies.t: repo "gitlab:r"`,
 	} {
 		_, err := Parse([]byte(body), ".toml")
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Parse(%q) = %v, want an error with %q", body, err, want)
 		}
+	}
+}
+
+// A relative local repo resolves against the directory of the skenv file,
+// not the working directory.
+func TestResolveIn(t *testing.T) {
+	r, err := Hosts(nil).ResolveIn("/m/dir", "../remotes/r.git")
+	if err != nil || r.URL != "/m/remotes/r.git" {
+		t.Errorf("ResolveIn = %+v, %v", r, err)
+	}
+	home, _ := os.UserHomeDir()
+	if r, err := Hosts(nil).ResolveIn("/m", "~/src/skills"); err != nil || r.URL != filepath.Join(home, "src/skills") {
+		t.Errorf("~ in a local repo: %+v, %v", r, err)
+	}
+	m, err := ParseIn([]byte("[user.dependencies.x]\nrepo = \"./r\"\ncommit = \""+strings.Repeat("a", 40)+"\"\n"), ".toml", "/m/dir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, err := m.Remote(m.Dependencies["x"].Repo); err != nil || r.URL != "/m/dir/r" {
+		t.Errorf("Remote = %+v, %v", r, err)
 	}
 }

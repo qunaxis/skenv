@@ -1,0 +1,12 @@
+exit 0
+would move template_version 0.5.0 → 0.6.0
+would update lefthook.yml
+would update .github/workflows/check.yml
+would update ruff.toml
+would update pyrightconfig.json
+would update .editorconfig
+would update .markdownlint.yaml
+would update AGENTS.md
+would update .gitignore
+would update .claude/settings.json
+would run lefthook install

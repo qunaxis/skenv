@@ -53,8 +53,8 @@ func (e *Engine) claim(p, skill string) bool {
 		e.errorf("%s is managed by Claude and never touched by skenv", e.show(p))
 		return false
 	}
-	if e.m.Layout.Ignored(filepath.Base(p)) {
-		e.errorf("%s matches layout.ignore and is never touched by skenv", e.show(p))
+	if e.m.IsUnmanaged(filepath.Base(p)) {
+		e.errorf("%s matches user.unmanaged and is never touched by skenv", e.show(p))
 		return false
 	}
 	if _, err := os.Lstat(p); errors.Is(err, fs.ErrNotExist) || e.owned(p) {
@@ -128,12 +128,19 @@ func symlinkAtomic(p, dest string) error {
 }
 
 // replace renames src over dst. A directory at dst (a previously vendored
-// skill) cannot be renamed over, so it is moved aside first and removed
-// after the swap.
+// skill), or anything at dst when src is a directory, cannot be renamed
+// over, so it is moved aside first and removed after the swap.
 func replace(src, dst string) error {
 	fi, err := os.Lstat(dst)
-	if err != nil || fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir() {
+	if err != nil {
 		return os.Rename(src, dst)
+	}
+	if !fi.IsDir() {
+		// A symlink or a file can be renamed over, except by a directory
+		// (a copy replacing a link, after storage.dir moved).
+		if si, serr := os.Lstat(src); serr != nil || !si.IsDir() {
+			return os.Rename(src, dst)
+		}
 	}
 	old := filepath.Join(filepath.Dir(dst), fmt.Sprintf(".skenv-old-%s-%d", filepath.Base(dst), os.Getpid()))
 	_ = os.RemoveAll(old)
@@ -150,8 +157,8 @@ func replace(src, dst string) error {
 // removeManaged deletes a managed path after checking it still looks like
 // something skenv created; otherwise it only forgets it.
 func (e *Engine) removeManaged(p string, entry state.Entry) {
-	if e.m.Layout.Ignored(filepath.Base(p)) {
-		e.warnf("%s matches layout.ignore; leaving it in place and forgetting it", e.show(p))
+	if e.m.IsUnmanaged(filepath.Base(p)) {
+		e.warnf("%s matches user.unmanaged; leaving it in place and forgetting it", e.show(p))
 		if !e.opts.DryRun {
 			e.unmanage(p)
 		}

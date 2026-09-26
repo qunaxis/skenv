@@ -18,7 +18,7 @@ and which other agent directories mirror them.
 - [`doctor` classes in a project](#doctor-classes-in-a-project)
 - [CI](#ci)
 - [Examples](#examples)
-- [With `[repo]` and `[environment]`](#with-repo-and-environment)
+- [With `[repository]` and `[user]`](#with-repository-and-user)
 
 ## When to use project skills
 
@@ -28,8 +28,8 @@ and which other agent directories mirror them.
 | project skills (this page)              | belongs to one project: its build, deploy or domain rules, or a third-party skill the whole team should use there |
 
 User-level skenv links skills from your machine: symlinks into the store
-and into your own working copies. That cannot work inside a project, because
-nobody else has your store or your working copies. Project skills are therefore
+and into your checkouts. That cannot work inside a project, because
+nobody else has your store or your checkouts. Project skills are therefore
 **real files in the repository**. skenv copies pinned skills into the
 project, checks that nobody edited the copies, and keeps the directories of
 other agents in line.
@@ -71,35 +71,37 @@ All paths are relative to the repository root and must stay inside it.
 | -------------- | --------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
 | `dir`          | string          | `".agents/skills"` | The directory that holds the project's skills: the copies skenv makes and the skills authored there. Not the root.      |
 | `mirrors`      | list of strings | `[]`               | Other agent directories that get every skill of `dir`, for example `.claude/skills`. They must not overlap `dir` or each other. |
-| `hosts`        | table of tables | `{}`               | Git servers by alias for `repo` values of this section, the same keys as [`[environment.hosts.<alias>]`](git-hosts.md#declaring-a-self-hosted-host): `[project.hosts.<alias>]`. |
 | `mirrors_mode` | string          | `"symlink"`        | `"symlink"`: `<mirror>/<name>` is a relative symlink to `<dir>/<name>`. `"copy"`: a full copy. See [Mirrors](#mirrors-symlink-or-copy). |
-| `vendor`       | list of tables  | `[]`               | Third-party skills, one `[[project.vendor]]` table each.                                                                 |
-| `from`         | list of tables  | `[]`               | Skills of a skills repository (your own, for example), one `[[project.from]]` table per repository and commit.           |
+| `git_hosts`    | table of tables | `{}`               | Git servers by alias for `repo` values of this section, the same keys as [`[user.git_hosts.<alias>]`](git-hosts.md#declaring-a-self-hosted-host): `[project.git_hosts.<alias>]`. |
+| `dependencies` | table of tables | `{}`               | Third-party skills, one `[project.dependencies.<name>]` table each, keyed by the skill name.                            |
+| `from`         | table of tables | `{}`               | Skills of a skills repository (your own, for example), one `[project.from.<id>]` table per repository and commit.       |
 
-`[[project.vendor]]`: a third-party skill pinned to a commit. The same keys
-as [`[[environment.vendor]]`](manifest.md#format); `skenv vendor add
+`[project.dependencies.<name>]`: a skill pinned to a commit. The table key
+is the skill name and the directory `<dir>/<name>`: lowercase letters,
+digits and single hyphens. The same keys as
+[`[user.dependencies.<name>]`](manifest.md#format); `skenv vendor add
 --project` writes them.
 
-| Key    | Type   | Default  | Meaning                                                                                                  |
-| ------ | ------ | -------- | -------------------------------------------------------------------------------------------------------- |
-| `name` | string | required | The skill name, and the directory `<dir>/<name>`: lowercase letters, digits and single hyphens.           |
-| `repo` | string | required | `owner/repo` on github.com, `gitlab:group/sub/repo`, `codeberg:owner/repo`, `<alias>:path` of a host in `project.hosts`, or a full git URL; see [Git hosts](git-hosts.md). |
-| `path` | string | `"."`    | The directory with `SKILL.md` inside the repository; `"."` for its root.                                 |
-| `rev`  | string | required | A full 40-character lowercase commit SHA. Branches, tags and short SHAs are rejected.                    |
+| Key         | Type   | Default  | Meaning                                                                                                  |
+| ----------- | ------ | -------- | -------------------------------------------------------------------------------------------------------- |
+| `repo`      | string | required | `owner/repo` or `github:owner/repo` on github.com, `gitlab:group/sub/repo`, `codeberg:owner/repo`, `<alias>:path` of a host in `project.git_hosts`, or a full git URL; see [Git hosts](git-hosts.md). |
+| `skill_dir` | string | `"."`    | The directory with `SKILL.md` inside the repository; `"."` for its root.                                 |
+| `commit`    | string | required | A full 40-character lowercase commit SHA. Branches, tags and short SHAs are rejected.                    |
 
-`[[project.from]]`: some skills of a skills repository, pinned to one
-commit.
+`[project.from.<id>]`: some skills of a skills repository, pinned to one
+commit. The ID is a name of your choice: lowercase letters, digits, `-`
+and `_`, starting with a letter or digit, at most 64 characters.
 
 | Key          | Type            | Default    | Meaning                                                                                              |
 | ------------ | --------------- | ---------- | ---------------------------------------------------------------------------------------------------- |
-| `repo`       | string          | required   | The same forms as `repo` of `[[project.vendor]]`.                                                    |
+| `repo`       | string          | required   | The same forms as `repo` of a dependency.                                                            |
 | `skills_dir` | string          | `"skills"` | The directory inside the repository whose subdirectories are the skills.                             |
-| `skills`     | list of strings | required   | The skills to copy, by directory name. Required and not empty: every copy is committed, so each is named. |
-| `rev`        | string          | required   | A full 40-character lowercase commit SHA; every skill of the entry is copied at it.                  |
+| `skills`     | list of strings | required   | The skills to copy, by directory name, without patterns. Required and not empty: every copy is committed, so each is named. |
+| `commit`     | string          | required   | A full 40-character lowercase commit SHA; every skill of the entry is copied at it.                  |
 
-A skill name appears once across `vendor` and `from`. Skills from your own
-repositories are copied at a pinned commit too, never linked to a working
-copy on your machine: the project must build the same for everyone.
+A skill name appears once across `dependencies` and `from`. Skills from
+your own repositories are copied at a pinned commit too, never linked to a
+checkout on your machine: the project must build the same for everyone.
 
 The whole section in TOML:
 
@@ -109,17 +111,16 @@ dir          = ".agents/skills"
 mirrors      = [".claude/skills"]
 mirrors_mode = "symlink"
 
-[[project.vendor]]
-name = "karpathy-coder"
-repo = "alirezarezvani/claude-skills"
-path = "engineering/karpathy-coder/skills/karpathy-coder"
-rev  = "<full 40-character commit SHA>"
+[project.dependencies.karpathy-coder]
+repo      = "alirezarezvani/claude-skills"
+skill_dir = "engineering/karpathy-coder/skills/karpathy-coder"
+commit    = "<full 40-character commit SHA>"
 
-[[project.from]]
+[project.from.my-skills]
 repo       = "<owner>/<skills-repo>"
 skills_dir = "skills"
 skills     = ["anti-slop-code", "commit-message"]
-rev        = "<full 40-character commit SHA>"
+commit     = "<full 40-character commit SHA>"
 ```
 
 The same in YAML (`skenv.yaml`):
@@ -129,16 +130,17 @@ project:
   dir: .agents/skills
   mirrors: [.claude/skills]
   mirrors_mode: symlink
-  vendor:
-    - name: karpathy-coder
+  dependencies:
+    karpathy-coder:
       repo: alirezarezvani/claude-skills
-      path: engineering/karpathy-coder/skills/karpathy-coder
-      rev: "<full 40-character commit SHA>"
+      skill_dir: engineering/karpathy-coder/skills/karpathy-coder
+      commit: "<full 40-character commit SHA>"
   from:
-    - repo: <owner>/<skills-repo>
+    my-skills:
+      repo: <owner>/<skills-repo>
       skills_dir: skills
       skills: [anti-slop-code, commit-message]
-      rev: "<full 40-character commit SHA>"
+      commit: "<full 40-character commit SHA>"
 ```
 
 And in JSON (`skenv.json`):
@@ -149,44 +151,42 @@ And in JSON (`skenv.json`):
     "dir": ".agents/skills",
     "mirrors": [".claude/skills"],
     "mirrors_mode": "symlink",
-    "vendor": [
-      {
-        "name": "karpathy-coder",
+    "dependencies": {
+      "karpathy-coder": {
         "repo": "alirezarezvani/claude-skills",
-        "path": "engineering/karpathy-coder/skills/karpathy-coder",
-        "rev": "<full 40-character commit SHA>"
+        "skill_dir": "engineering/karpathy-coder/skills/karpathy-coder",
+        "commit": "<full 40-character commit SHA>"
       }
-    ],
-    "from": [
-      {
+    },
+    "from": {
+      "my-skills": {
         "repo": "<owner>/<skills-repo>",
         "skills_dir": "skills",
         "skills": ["anti-slop-code", "commit-message"],
-        "rev": "<full 40-character commit SHA>"
+        "commit": "<full 40-character commit SHA>"
       }
-    ]
+    }
   }
 }
 ```
 
-A project resolves `repo` with its own `[project.hosts]` and the built-in
+A project resolves `repo` with its own `[project.git_hosts]` and the built-in
 prefixes only, never with the hosts of anyone's manifest: every clone of
 the project must resolve its entries the same way. A self-hosted server
 used by the project is declared in the project:
 
 ```toml
-[project.hosts.work]
-url  = "https://git.example.com"
-type = "gitlab"
+[project.git_hosts.work]
+base_url = "https://git.example.com"
+provider = "gitlab"
 
-[[project.vendor]]
-name = "deploy-checklist"
-repo = "work:platform/skills"
-path = "skills/deploy-checklist"
-rev  = "<full 40-character commit SHA>"
+[project.dependencies.deploy-checklist]
+repo      = "work:platform/skills"
+skill_dir = "skills/deploy-checklist"
+commit    = "<full 40-character commit SHA>"
 ```
 
-Quote `rev` in YAML: an all-digit SHA would otherwise be read as a number.
+Quote `commit` in YAML: an all-digit SHA would otherwise be read as a number.
 The [JSON Schema](editor-support.md) covers `[project]`, so editors
 complete and check these keys.
 
@@ -201,10 +201,10 @@ my-project/
 ├── .agents/skills/                    dir: real files, committed
 │   ├── deploy/                        project-own: written here, no marker
 │   │   └── SKILL.md
-│   ├── karpathy-coder/                copied from [[project.vendor]]
+│   ├── karpathy-coder/                copied from [project.dependencies.karpathy-coder]
 │   │   ├── .skenv                     marker: repo, path, rev, hash
 │   │   └── SKILL.md
-│   ├── anti-slop-code/                copied from [[project.from]]
+│   ├── anti-slop-code/                copied from [project.from.my-skills]
 │   │   ├── .skenv
 │   │   └── SKILL.md
 │   └── commit-message/
@@ -218,8 +218,10 @@ my-project/
 ```
 
 The `.skenv` marker of a copy records where it came from (the clone URL
-that `repo` resolves to) and the SHA-256 hash of its content (every file
-with its executable bit, every symlink, without the marker itself):
+that `repo` resolves to, the skill directory in the repository and the
+commit, under the keys `repo`, `path` and `rev`) and the SHA-256 hash of
+its content (every file with its executable bit, every symlink, without
+the marker itself):
 
 ```text
 # managed by skenv, do not edit
@@ -288,17 +290,18 @@ the repository works.
 
 | Command                                  | In a project                                                                                                    |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `skenv sync`                             | copies every entry into `dir` at its `rev`, removes copies whose entry is gone, updates every mirror             |
+| `skenv sync`                             | copies every entry into `dir` at its `commit`, removes copies whose entry is gone, updates every mirror             |
 | `skenv doctor`                           | compares the project with `[project]`, offline, and exits 1 on any discrepancy                                   |
-| `skenv vendor add <repo> --project`      | adds a `[[project.vendor]]` entry, then syncs the project                                                       |
-| `skenv vendor update [name...] --project` | moves entries to HEAD of their default branch (or `--rev`), then syncs; a skill of a `[[project.from]]` entry moves the whole entry |
-| `skenv vendor remove <name> --project`   | removes a `[[project.vendor]]` entry, its copy and its mirrors                                                   |
+| `skenv vendor add <repo> --project`      | adds a `[project.dependencies.<name>]` entry, then syncs the project                                            |
+| `skenv vendor update [name...] --project` | moves entries to HEAD of their default branch (or `--rev`), then syncs; a skill of a `[project.from.<id>]` entry moves the whole entry |
+| `skenv vendor remove <name> --project`   | removes a `[project.dependencies.<name>]` entry, its copy and its mirrors                                        |
 | `skenv import --project`                 | pins the skills of `skills-lock.json` (`npx skills add`) in `[project]` and cleans the lock; see [Adopting](adopting.md#project-skills-import---project) |
 
 - `sync` and `doctor` work on the project whenever they run inside one;
   `--project` makes that explicit and fails outside a project, and
   `--manifest` makes them work on your machine instead, from anywhere.
-- `vendor` commands edit the manifest unless you pass `--project`.
+- `vendor` commands edit `user.dependencies` of the manifest unless you
+  pass `--project`; with it they edit `project.dependencies`.
 - `--dry-run` prints the plan of every command and writes nothing in the
   project; `vendor add|update --dry-run` still fetch into the clone cache
   `~/.cache/skenv/repos` to resolve commits.
@@ -318,9 +321,9 @@ the repository works.
 - Neither command commits. After a change skenv prints the `git add` and
   `git commit` commands for the skenv file, `dir` and the mirrors.
 - `vendor update` shows `git log --oneline old..new` of the skill's path
-  (for a `[[project.from]]` entry, of its `skills_dir`), as it does for the
+  (for a `[project.from.<id>]` entry, of its `skills_dir`), as it does for the
   manifest.
-- A skill of a `[[project.from]]` entry is removed by editing the `skills`
+- A skill of a `[project.from.<id>]` entry is removed by editing the `skills`
   of that entry (or removing the entry) and running `skenv sync`.
 
 ## What to commit
@@ -340,7 +343,7 @@ git ls-files --others --ignored --exclude-standard -- .agents/skills .claude/ski
 ```
 
 It lists the files of `dir` and the mirrors that `.gitignore` keeps out of
-the commit, and prints nothing when none are. If a vendored skill ships files
+the commit, and prints nothing when none are. If a dependency ships files
 your `.gitignore` excludes (build output, `*.log`), add a negation such as
 `!.agents/skills/**` rather than editing the copy. Do not add the `.skenv`
 markers to `.gitignore`: `doctor` needs them. `git add` stores the mirror
@@ -357,7 +360,7 @@ rules, for example with `.agents/skills/** -text -filter`.
 | Class           | Meaning                                                                                      | Fix                                                                                           |
 | --------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `missing`       | an entry of `[project]` has no copy in `dir`                                                  | `skenv sync`                                                                                  |
-| `wrong-rev`     | the copy's marker names another repo, path or rev than the entry                             | `skenv sync`                                                                                  |
+| `wrong-rev`     | the copy's marker names another repo, skill directory or commit than the entry               | `skenv sync`                                                                                  |
 | `modified`      | the copy was edited: its content hash is not the one in its marker                            | move the change upstream or into a project-own skill, then `skenv sync --adopt` restores the copy |
 | `extra-managed` | a copy (a directory with a marker) whose entry left `[project]`                              | `skenv sync` removes it; to keep it as a project-own skill, delete its `.skenv` instead        |
 | `conflict`      | an entry's name is taken by a project-own skill                                              | rename the skill or the entry; `skenv sync --adopt` backs the skill up and copies the entry    |
@@ -443,10 +446,10 @@ git ls-remote https://github.com/<owner>/<skills-repo> HEAD
 ```
 
 ```toml
-[[project.from]]
+[project.from.my-skills]
 repo   = "<owner>/<skills-repo>"
 skills = ["anti-slop-code"]
-rev    = "<full 40-character commit SHA>"
+commit = "<full 40-character commit SHA>"
 ```
 
 ```sh
@@ -508,16 +511,16 @@ every directory an entry names.
 skenv vendor add <owner>/<repo> --path <skill-dir> --project --adopt
 ```
 
-## With `[repo]` and `[environment]`
+## With `[repository]` and `[user]`
 
 The three sections of a skenv file are independent. A project has
 `[project]`; a skills repository that is also a project (its own skills in
 `skills/`, the skills its development uses in `.agents/skills`) has
-`[repo]` and `[project]`; the repository of your manifest may have all
-three. `[project]` is allowed in public repositories, unlike
-`[environment]`.
+`[repository]` and `[project]`; the repository of your manifest may have
+all three. `[project]` is allowed in public repositories, unlike `[user]`.
 
-The user-level `skenv sync` reads only `[environment]`: it never copies the
-project skills of a repository, not even of one listed in
-`[[environment.own]]`. Project skills are synced only when skenv runs inside
-that project. From there, `skenv sync --manifest <file>` syncs your machine.
+The user-level `skenv sync` reads only `[user]`: it never copies the
+project skills of a repository, not even of one that is a checkout in
+`[user.checkouts.<id>]`. Project skills are synced only when skenv runs
+inside that project. From there, `skenv sync --manifest <file>` syncs your
+machine.

@@ -22,45 +22,50 @@ type VendorAddOptions struct {
 
 // VendorAdd pins a third-party skill in the manifest and syncs it.
 func (e *Engine) VendorAdd(o VendorAddOptions) (int, error) {
-	v, err := e.resolveVendor(o)
+	d, err := e.resolveDependency(o)
 	if err != nil {
 		return ExitFatal, err
 	}
-	if _, ok := e.m.FindVendor(v.Name); ok {
-		return ExitFatal, fmt.Errorf("vendor %q is already in the manifest; use `skenv vendor update %s`", v.Name, v.Name)
+	if _, ok := e.m.Dependencies[d.Name]; ok {
+		return ExitFatal, fmt.Errorf("dependency %q is already in the manifest; use `skenv vendor update %s`", d.Name, d.Name)
 	}
 	if err := e.editManifest(func(data []byte) ([]byte, error) {
-		return manifest.AppendVendor(data, filepath.Ext(e.manifestPath), skenvfile.Environment, v)
+		return manifest.AppendDependency(data, filepath.Ext(e.manifestPath), skenvfile.User, d)
 	}); err != nil {
 		return ExitFatal, err
 	}
-	e.changef("add vendor %s (%s@%.12s, %s) to %s", v.Name, v.Repo, v.Rev, v.Path, e.show(e.manifestPath))
-	return e.syncNames([]string{v.Name}, fmt.Sprintf("add vendor skill %s", v.Name))
+	e.changef("add dependency %s (%s@%.12s, %s) to %s", d.Name, d.Repo, d.Commit, d.SkillDir, e.show(e.manifestPath))
+	return e.syncNames([]string{d.Name}, fmt.Sprintf("add dependency %s", d.Name))
 }
 
-// resolveVendor turns the arguments of `vendor add` into an entry: the
+// resolveDependency turns the arguments of `vendor add` into an entry: the
 // commit (HEAD of the default branch unless o.Rev), the skill directory
 // (the only one in the repository unless o.Path) and the name (the last
-// element of the path unless o.Name).
-func (e *base) resolveVendor(o VendorAddOptions) (manifest.Vendor, error) {
+// element of the path unless o.Name). A relative local path in o.Repo is
+// made absolute against the working directory: the skenv file does not
+// live there.
+func (e *base) resolveDependency(o VendorAddOptions) (manifest.Dependency, error) {
 	if o.Repo == "" {
-		return manifest.Vendor{}, fmt.Errorf("usage: skenv vendor add <repo> [--path P] [--name N] [--rev SHA]")
+		return manifest.Dependency{}, fmt.Errorf("usage: skenv vendor add <repo> [--path P] [--name N] [--rev SHA]")
 	}
 	remote, err := e.hosts.Resolve(o.Repo)
 	if err != nil {
-		return manifest.Vendor{}, err
+		return manifest.Dependency{}, err
+	}
+	if isLocalPath(o.Repo) && !filepath.IsAbs(o.Repo) {
+		o.Repo = remote.URL
 	}
 	cache, err := e.ensureCache(o.Repo, "")
 	if err != nil {
-		return manifest.Vendor{}, err
+		return manifest.Dependency{}, err
 	}
 	rev, err := e.resolveRev(cache, o.Repo, o.Rev)
 	if err != nil {
-		return manifest.Vendor{}, err
+		return manifest.Dependency{}, err
 	}
 	skillPath, err := e.findSkillPath(cache, rev, o.Path)
 	if err != nil {
-		return manifest.Vendor{}, err
+		return manifest.Dependency{}, err
 	}
 	name := o.Name
 	if name == "" {
@@ -71,27 +76,33 @@ func (e *base) resolveVendor(o VendorAddOptions) (manifest.Vendor, error) {
 		name = strings.ToLower(name)
 	}
 	if err := manifest.ValidName(name); err != nil {
-		return manifest.Vendor{}, fmt.Errorf("%w; pass --name", err)
+		return manifest.Dependency{}, fmt.Errorf("%w; pass --name", err)
 	}
-	return manifest.Vendor{Name: name, Repo: o.Repo, Path: skillPath, Rev: rev}, nil
+	return manifest.Dependency{Name: name, Repo: o.Repo, SkillDir: skillPath, Commit: rev}, nil
 }
 
-// VendorUpdate moves vendored skills to a new commit and syncs them: the
-// named ones, or every vendored skill when names is empty. Each goes to
-// HEAD of its default branch; rev pins a single named skill instead.
+// isLocalPath reports whether a repo value is a local path rather than a
+// URL, an scp-like address or a short form.
+func isLocalPath(repo string) bool {
+	return strings.HasPrefix(repo, "/") || strings.HasPrefix(repo, "./") || strings.HasPrefix(repo, "../") || repo == "." || repo == ".."
+}
+
+// VendorUpdate moves dependencies to a new commit and syncs them: the
+// named ones, or every dependency when names is empty. Each goes to HEAD
+// of its default branch; rev pins a single named skill instead.
 func (e *Engine) VendorUpdate(names []string, rev string) (int, error) {
 	if len(names) == 0 {
-		for _, v := range e.m.Vendor {
-			names = append(names, v.Name)
+		for _, d := range e.m.DependencyList() {
+			names = append(names, d.Name)
 		}
 		if len(names) == 0 {
-			e.infof("no vendored skills in %s", e.show(e.manifestPath))
+			e.infof("no dependencies in %s", e.show(e.manifestPath))
 			return e.finish("vendor")
 		}
 	}
 	for _, name := range names {
-		if _, ok := e.m.FindVendor(name); !ok {
-			return ExitFatal, fmt.Errorf("vendor %q is not in the manifest %s", name, e.show(e.manifestPath))
+		if _, ok := e.m.Dependencies[name]; !ok {
+			return ExitFatal, fmt.Errorf("dependency %q is not in the manifest %s", name, e.show(e.manifestPath))
 		}
 	}
 	names = slices.Compact(slices.Sorted(slices.Values(names)))
@@ -100,7 +111,7 @@ func (e *Engine) VendorUpdate(names []string, rev string) (int, error) {
 		newRev, err := e.updateRev(name, rev)
 		switch {
 		case err != nil:
-			e.errorf("update vendor %s: %v", name, err)
+			e.errorf("update dependency %s: %v", name, err)
 		case newRev != "":
 			updated = append(updated, fmt.Sprintf("%s to %.12s", name, newRev))
 		}
@@ -109,30 +120,30 @@ func (e *Engine) VendorUpdate(names []string, rev string) (int, error) {
 	switch len(updated) {
 	case 0:
 	case 1:
-		hint = "update vendor skill " + updated[0]
+		hint = "update dependency " + updated[0]
 	default:
-		hint = "update vendor skills " + strings.Join(updated, ", ")
+		hint = "update dependencies " + strings.Join(updated, ", ")
 	}
 	return e.syncNames(names, hint)
 }
 
-// updateRev moves the vendored skill name to rev (default: HEAD of the
-// default branch), shows the log of its path and writes the new rev into
-// the manifest. It returns the new rev, or "" when the skill is already
-// there.
+// updateRev moves the dependency name to rev (default: HEAD of the
+// default branch), shows the log of its skill directory and writes the new
+// commit into the manifest. It returns the new commit, or "" when the
+// skill is already there.
 func (e *Engine) updateRev(name, rev string) (string, error) {
-	v, _ := e.m.FindVendor(name)
-	newRev, err := e.nextRev("vendor "+name, name, v.Repo, v.Path, v.Rev, rev)
+	d := e.m.Dependencies[name]
+	newRev, err := e.nextRev("dependency "+name, name, d.Repo, d.SkillDir, d.Commit, rev)
 	if err != nil || newRev == "" {
 		return "", err
 	}
-	old := v.Rev
+	old := d.Commit
 	if err := e.editManifest(func(data []byte) ([]byte, error) {
-		return manifest.SetVendorRev(data, filepath.Ext(e.manifestPath), skenvfile.Environment, name, newRev)
+		return manifest.SetDependencyCommit(data, filepath.Ext(e.manifestPath), skenvfile.User, name, newRev)
 	}); err != nil {
 		return "", err
 	}
-	e.changef("update vendor %s %.12s → %.12s in %s", name, old, newRev, e.show(e.manifestPath))
+	e.changef("update dependency %s %.12s → %.12s in %s", name, old, newRev, e.show(e.manifestPath))
 	return newRev, nil
 }
 
@@ -167,24 +178,24 @@ func (e *base) nextRev(what, name, repo, dir, old, rev string) (string, error) {
 	return newRev, nil
 }
 
-// VendorRemove drops a vendored skill from the manifest and removes its
+// VendorRemove drops a dependency from the manifest and removes its
 // managed paths.
 func (e *Engine) VendorRemove(name string) (int, error) {
-	if _, ok := e.m.FindVendor(name); !ok {
-		return ExitFatal, fmt.Errorf("vendor %q is not in the manifest %s", name, e.show(e.manifestPath))
+	if _, ok := e.m.Dependencies[name]; !ok {
+		return ExitFatal, fmt.Errorf("dependency %q is not in the manifest %s", name, e.show(e.manifestPath))
 	}
 	if err := e.editManifest(func(data []byte) ([]byte, error) {
-		return manifest.RemoveVendor(data, filepath.Ext(e.manifestPath), skenvfile.Environment, name)
+		return manifest.RemoveDependency(data, filepath.Ext(e.manifestPath), skenvfile.User, name)
 	}); err != nil {
 		return ExitFatal, err
 	}
-	e.changef("remove vendor %s from %s", name, e.show(e.manifestPath))
+	e.changef("remove dependency %s from %s", name, e.show(e.manifestPath))
 	for _, p := range e.st.Paths() {
 		if entry := e.st.Managed[p]; entry.Skill == name {
 			e.removeManaged(p, entry)
 		}
 	}
-	e.commitHint(fmt.Sprintf("remove vendor skill %s", name))
+	e.commitHint(fmt.Sprintf("remove dependency %s", name))
 	return e.finish("vendor remove")
 }
 
@@ -203,20 +214,24 @@ func (e *Engine) editManifest(edit func([]byte) ([]byte, error)) error {
 	if out, err = skenvfile.Stamp(out, filepath.Ext(e.manifestPath), false); err != nil {
 		return err
 	}
-	m, err := manifest.Parse(out, filepath.Ext(e.manifestPath))
+	m, err := manifest.ParseIn(out, filepath.Ext(e.manifestPath), filepath.Dir(e.manifestPath))
 	if err != nil {
 		return err
 	}
-	// Name clashes with own skills (M1) are only visible with the own
-	// repositories listed; check before writing so a bad edit never lands.
+	// Name clashes with the skills of checkouts (M1) are only visible with
+	// the checkouts listed; check before writing so a bad edit never lands.
 	prev := e.m
-	e.setManifest(m)
+	restore := func() { _ = e.setManifest(prev) }
+	if err := e.setManifest(m); err != nil {
+		restore()
+		return err
+	}
 	if _, err := e.skills(); err != nil {
-		e.setManifest(prev)
+		restore()
 		return err
 	}
 	if err := e.writeSkenvFile(e.manifestPath, out); err != nil {
-		e.setManifest(prev)
+		restore()
 		return fmt.Errorf("write manifest %s: %w", e.show(e.manifestPath), err)
 	}
 	return nil
@@ -238,12 +253,12 @@ func (e *Engine) syncNames(names []string, hint string) (int, error) {
 			}
 		}
 		if !found {
-			e.infof("skill %s is skipped on host %s", name, e.env.Hostname)
+			e.infof("skill %s is not installed on this machine (%s)", name, e.unselected[name])
 		}
 	}
 	for _, s := range sel {
-		if s.Vendor != nil {
-			e.syncVendor(s)
+		if s.Dependency != nil {
+			e.syncDependency(s)
 		}
 	}
 	e.linkAll(sel)

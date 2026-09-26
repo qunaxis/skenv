@@ -93,9 +93,9 @@ func (e *ProjectEngine) doctorCopy(s manifest.ProjectSkill, p string, add func(c
 			"or run `skenv sync --adopt` to back it up and copy the entry", markerName))
 		return
 	}
-	if remote, _ := e.hosts.Resolve(s.Repo); !mk.matches(remote, s.Path, s.Rev) {
+	if remote, _ := e.hosts.Resolve(s.Repo); !mk.matches(remote, s.Path, s.Commit) {
 		add(ClassWrongRev, s.Name, p, fmt.Sprintf("the copy is %s@%.12s (%s), [project] wants %s@%.12s (%s); run `skenv sync`",
-			mk.Repo, mk.Rev, mk.Path, s.Repo, s.Rev, s.Path))
+			mk.Repo, mk.Rev, mk.Path, s.Repo, s.Commit, s.Path))
 	}
 	if modified, err := e.modified(p, mk); err != nil {
 		add(ClassModified, s.Name, p, err.Error())

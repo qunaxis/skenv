@@ -1,5 +1,5 @@
 exit 0
-create ~/src/my-skills/skenv.toml with [environment], gitlab:example-group/my-skills as its first own repository
+create ~/src/my-skills/skenv.toml with [user], gitlab:example-group/my-skills as its first checkout (my-skills)
 manifest ~/src/my-skills/skenv.toml recorded in ~/.config/skenv/config.toml
 next steps:
   - skenv vendor add <repo> --path <dir>         pin a third-party skill

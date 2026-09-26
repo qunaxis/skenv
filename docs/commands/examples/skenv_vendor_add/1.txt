@@ -1,8 +1,8 @@
 exit 0
-add vendor release-notes (example-vendor/tools@27f221f8f2a4, tools/release-notes) to ~/src/skills/skenv.toml
+add dependency release-notes (example-vendor/tools@27f221f8f2a4, tools/release-notes) to ~/src/skills/skenv.toml
 vendor release-notes from example-vendor/tools@27f221f8f2a4 (tools/release-notes)
 link ~/.claude/skills/release-notes → ../../.agents/skills/release-notes
 link ~/.pi/agent/skills/release-notes → ../../../.agents/skills/release-notes
 manifest changed but not committed; to commit:
-  git -C ~/src/skills commit -m "chore(manifest): add vendor skill release-notes" -- skenv.toml
+  git -C ~/src/skills commit -m "chore(manifest): add dependency release-notes" -- skenv.toml
 vendor: 4 changes, 0 warnings, 0 errors

@@ -1,5 +1,5 @@
 exit 0
-copy .agents/skills/code-review from example-org/skills@b1e543d9c9ba (skills/code-review)
+copy .agents/skills/code-review from example-org/skills@714da1650871 (skills/code-review)
 copy .agents/skills/diagrams from example-vendor/tools@27f221f8f2a4 (tools/diagrams)
 link .claude/skills/code-review → ../../.agents/skills/code-review
 link .claude/skills/deploy → ../../.agents/skills/deploy

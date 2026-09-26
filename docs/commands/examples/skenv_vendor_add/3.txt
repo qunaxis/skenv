@@ -1,8 +1,8 @@
 exit 0
-add vendor deploy (work:platform/skills@343046eaee2f, deploy) to ~/src/skills/skenv.toml
+add dependency deploy (work:platform/skills@343046eaee2f, deploy) to ~/src/skills/skenv.toml
 vendor deploy from work:platform/skills@343046eaee2f (deploy)
 link ~/.claude/skills/deploy → ../../.agents/skills/deploy
 link ~/.pi/agent/skills/deploy → ../../../.agents/skills/deploy
 manifest changed but not committed; to commit:
-  git -C ~/src/skills commit -m "chore(manifest): add vendor skill deploy" -- skenv.toml
+  git -C ~/src/skills commit -m "chore(manifest): add dependency deploy" -- skenv.toml
 vendor: 4 changes, 0 warnings, 0 errors

@@ -13,11 +13,10 @@ remove release-notes from skills-lock.json, so that the skills CLI no longer upd
 +[project]
 +mirrors = [".claude/skills"]
 +
-+[[project.vendor]]
-+name = "release-notes"
-+repo = "example-vendor/tools"
-+path = "tools/release-notes"
-+rev  = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
++[project.dependencies.release-notes]
++repo      = "example-vendor/tools"
++skill_dir = "tools/release-notes"
++commit    = "27f221f8f2a4068ab2aa61ff09c53e9e28f80da8"
 import: 1 [project] entry (1 exact), 1 removed from skills-lock.json, 1 project-own skills, 0 differing duplicates, 0 warnings, 0 errors
 next: `skenv sync --adopt` replaces the installed copies with managed ones (the old ones go to ~/.local/state/skenv/backup)
 the project skills changed; to commit them:

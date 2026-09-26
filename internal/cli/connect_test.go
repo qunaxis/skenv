@@ -69,9 +69,9 @@ func TestUse(t *testing.T) {
 	if !strings.Contains(out, "it replaces manifest ~/src/other/skenv.toml") {
 		t.Errorf("use after another manifest:\n%s", out)
 	}
-	writeFile(t, w.path("src/harness-only/skenv.toml"), "[repo]\nharness = \"0.4.0\"\nvisibility = \"private\"\n")
+	writeFile(t, w.path("src/harness-only/skenv.toml"), "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"private\"\n")
 	if _, errOut := w.mustRun(2, "use", "~/src/harness-only"); !strings.Contains(errOut, "not a manifest") {
-		t.Errorf("use of a file without [environment]: %s", errOut)
+		t.Errorf("use of a file without [user]: %s", errOut)
 	}
 }
 
@@ -83,14 +83,14 @@ func TestOwnPathMismatchWarning(t *testing.T) {
 	w := newWorld(t)
 	w.standard("")
 	_, errOut := w.mustRun(0, "clone", "me/skills", "~/elsewhere/skills")
-	want := "warning: own me/skills has path ~/" + ownPath + ", but the manifest is in ~/elsewhere/skills: " +
+	want := "warning: checkout skills has checkout_dir ~/" + ownPath + ", but the manifest is in ~/elsewhere/skills: " +
 		"sync would keep a second working copy at ~/" + ownPath + " and never pull this one, so manifest changes from other machines would not arrive; " +
 		"clone the repository there instead: `skenv clone me/skills ~/" + ownPath + "`"
 	if !strings.Contains(errOut, want) {
 		t.Errorf("clone into another path:\n%s", errOut)
 	}
 	_, errOut = w.mustRun(0, "sync")
-	if !strings.Contains(errOut, "the manifest is not in the working copy of own me/skills (~/"+ownPath+")") ||
+	if !strings.Contains(errOut, "the manifest is not in the working copy of checkout skills (~/"+ownPath+")") ||
 		!strings.Contains(errOut, "`skenv use ~/"+ownPath+"`") {
 		t.Errorf("sync with the manifest elsewhere:\n%s", errOut)
 	}
@@ -111,7 +111,7 @@ func TestCloneToOwnPath(t *testing.T) {
 	w.standard("")
 	t.Chdir(w.home)
 	out, errOut := w.mustRun(0, "clone", "me/skills")
-	if !strings.Contains(out, "moved it to ~/"+ownPath+", the path of own me/skills in its manifest") || strings.Contains(errOut, "warning") {
+	if !strings.Contains(out, "moved it to ~/"+ownPath+", the checkout_dir of checkout skills in its manifest") || strings.Contains(errOut, "warning") {
 		t.Errorf("clone without <dir>:\n%s\n%s", out, errOut)
 	}
 	if !w.exists(ownPath+"/skenv.toml") || w.exists("skills") {
@@ -134,7 +134,7 @@ func TestList(t *testing.T) {
 	host, _ := os.Hostname()
 	w.push("me/skills", map[string]string{
 		"skenv.toml": selectManifest(rev, "exclude = [\"exp-*\"]\n",
-			"\n[[environment.own]]\nrepo = \"me/team\"\npath = \"~/src/team\"\n\n[environment.host.\""+host+"\"]\nskip = [\"beta\"]\n"),
+			"\n[user.checkouts.team]\nrepo = \"me/team\"\ncheckout_dir = \"~/src/team\"\n\n[user.machines.\""+host+"\"]\nexclude = [\"beta\"]\n"),
 		"skills/alpha/SKILL.md":   skillMD("alpha", ""),
 		"skills/beta/SKILL.md":    skillMD("beta", ""),
 		"skills/exp-one/SKILL.md": skillMD("exp-one", ""),
@@ -157,13 +157,13 @@ func TestList(t *testing.T) {
 		"gamma    editable  me/skills  ~/" + ownPath + "  not synced\n",
 		"1 not synced: run `skenv sync`\n",
 		"1 in conflict with paths skenv does not manage",
-		"not cloned: me/team (~/src/team); run `skenv sync`\n",
+		"not cloned: team: me/team (~/src/team); run `skenv sync`\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("list lacks %q:\n%s", want, out)
 		}
 	}
-	if host != "" && !strings.Contains(out, "skipped on this host") {
+	if host != "" && !strings.Contains(out, "excluded on this machine") {
 		t.Errorf("list lacks the skipped skill:\n%s", out)
 	}
 
@@ -215,7 +215,7 @@ func onlyDirective(stderr string) bool {
 // skills: sync still prunes, and list does not call it "not cloned".
 func TestOwnWithoutSkillsDir(t *testing.T) {
 	w := newWorld(t)
-	w.standard("\n[[environment.own]]\nrepo = \"me/empty\"\npath = \"~/src/empty\"\n")
+	w.standard("\n[user.checkouts.empty]\nrepo = \"me/empty\"\ncheckout_dir = \"~/src/empty\"\n")
 	w.push("me/empty", map[string]string{"README.md": "no skills yet\n"}, "feat: initial")
 	w.mustRun(0, "clone", "me/skills", "~/"+ownPath)
 	_, errOut := w.mustRun(0, "sync")
@@ -223,7 +223,7 @@ func TestOwnWithoutSkillsDir(t *testing.T) {
 		t.Errorf("sync with an own repository without skills/:\n%s", errOut)
 	}
 	out, _ := w.mustRun(0, "list")
-	if !strings.Contains(out, "no skills yet: me/empty (~/src/empty/skills)") || strings.Contains(out, "not cloned") {
+	if !strings.Contains(out, "no skills yet: empty: me/empty (~/src/empty/skills)") || strings.Contains(out, "not cloned") {
 		t.Errorf("list:\n%s", out)
 	}
 }

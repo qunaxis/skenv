@@ -1,8 +1,8 @@
 exit 0
-add vendor release-notes (example-vendor/tools@27f221f8f2a4, tools/release-notes) to [project] of ~/src/web-app/skenv.toml
+add dependency release-notes (example-vendor/tools@27f221f8f2a4, tools/release-notes) to [project] of ~/src/web-app/skenv.toml
 copy .agents/skills/release-notes from example-vendor/tools@27f221f8f2a4 (tools/release-notes)
 link .claude/skills/release-notes → ../../.agents/skills/release-notes
 the project skills changed; to commit them:
   git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
-  git -C ~/src/web-app commit -m "chore(skills): add vendor skill release-notes"
+  git -C ~/src/web-app commit -m "chore(skills): add dependency release-notes"
 vendor: 3 changes, 0 warnings, 0 errors

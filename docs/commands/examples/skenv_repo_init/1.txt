@@ -10,6 +10,6 @@ create AGENTS.md
 create .gitignore
 create .claude/settings.json
 ci github: the default, the repository has no origin; --ci overrides it
-harness 0.5.0 (public, ci github) set up in ~/src/public-skills
+harness 0.6.0 (public, ci github) set up in ~/src/public-skills
 git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active

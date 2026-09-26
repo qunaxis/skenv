@@ -37,6 +37,7 @@ func newWorld(t *testing.T) *world {
 	t.Setenv("HOME", w.home)
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("SKENV_MANIFEST", "")
+	t.Setenv("SKENV_MACHINE", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("XDG_STATE_HOME", "")
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
@@ -184,16 +185,15 @@ func (w *world) standard(extraManifest string) string {
 
 func manifestText(rev, extra string) string {
 	return `# test manifest
-[[environment.own]]
-repo = "me/skills"
-path = "~/` + ownPath + `"
+[user.checkouts.skills]
+repo         = "me/skills"
+checkout_dir = "~/` + ownPath + `"
 
 # pinned third-party skill
-[[environment.vendor]]
-name = "archify"
-repo = "ext/tools"
-path = "tools/archify"
-rev  = "` + rev + `" # keep this comment
+[user.dependencies.archify]
+repo      = "ext/tools"
+skill_dir = "tools/archify"
+commit    = "` + rev + `" # keep this comment
 ` + extra
 }
 

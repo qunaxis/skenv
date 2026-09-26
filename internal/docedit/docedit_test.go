@@ -325,3 +325,40 @@ func TestYAMLEdgeCases(t *testing.T) {
 		t.Errorf("comments:\n%q", got)
 	}
 }
+
+// Remove with a key deletes a mapping entry; the last one leaves {}.
+func TestRemoveKey(t *testing.T) {
+	for ext, c := range map[string]struct{ in, one, none string }{
+		".yaml": {
+			in:   "# top\nuser:\n  deps:\n    a:\n      repo: x/a # keep\n    b:\n      repo: x/b\n  other: 1\n",
+			one:  "# top\nuser:\n  deps:\n    b:\n      repo: x/b\n  other: 1\n",
+			none: "# top\nuser:\n  deps: {}\n  other: 1\n",
+		},
+		".json": {
+			in:   `{"user": {"deps": {"a": {"repo": "x/a"}, "b": {"repo": "x/b"}}, "other": "1"}}`,
+			one:  "{\n  \"user\": {\n    \"deps\": {\n      \"b\": {\n        \"repo\": \"x/b\"\n      }\n    },\n    \"other\": \"1\"\n  }\n}\n",
+			none: "{\n  \"user\": {\n    \"deps\": {},\n    \"other\": \"1\"\n  }\n}\n",
+		},
+	} {
+		d, err := Open([]byte(c.in), ext)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := d.Remove([]any{"user", "deps", "a"}); err != nil {
+			t.Fatalf("%s: %v", ext, err)
+		}
+		if got := string(d.Bytes()); got != c.one {
+			t.Errorf("%s:\n%s\nwant:\n%s", ext, got, c.one)
+		}
+		d, _ = Open(d.Bytes(), ext)
+		if err := d.Remove([]any{"user", "deps", "b"}); err != nil {
+			t.Fatalf("%s: %v", ext, err)
+		}
+		if got := string(d.Bytes()); got != c.none {
+			t.Errorf("%s:\n%s\nwant:\n%s", ext, got, c.none)
+		}
+		if err := d.Remove([]any{"user", "deps", "zzz"}); err == nil {
+			t.Errorf("%s: a missing key must fail", ext)
+		}
+	}
+}
