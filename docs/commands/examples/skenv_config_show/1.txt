@@ -1,0 +1,19 @@
+exit 0
+manifest  ~/src/skills/skenv.toml (tool config ~/.config/skenv/config.toml)
+machine   laptop ($SKENV_MACHINE; rules user.machines.laptop)
+home      ~ ($HOME)
+store     ~/.agents/skills (default)
+
+agents
+  claude  ~/.claude/skills    on  detected: ~/.claude exists
+  pi      ~/.pi/agent/skills  on  detected: ~/.pi/agent exists
+
+checkouts
+  skills  example-org/skills  ~/src/skills (checkout_dir ~/src/skills)  branch main (default branch of origin)  present
+
+skills
+  code-review     checkout skills  selected      include omitted: every skill
+  commit-message  checkout skills  not selected  include omitted: every skill, but excluded by exclude "commit-*"
+  diagrams        dependency       not selected  dependency example-vendor/tools at 27f221f8f2a4 (tools/diagrams); user.machines.laptop.include omitted: every skill, but excluded by user.machines.laptop.exclude "diagrams"
+
+note: dependencies are pinned to a commit; checkouts follow their branch and local edits, and agent detection, the machine name and $HOME come from this machine, so the file alone does not reproduce the skills of checkouts

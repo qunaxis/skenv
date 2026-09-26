@@ -93,11 +93,28 @@ skenv never deletes backups; remove old ones yourself.
 
 ## Checkouts that are not pulled
 
-`sync` runs `git pull --ff-only` in each checkout. A working copy
-with uncommitted changes, or a branch that has diverged from its upstream,
-is left as it is with a warning, and `sync` still exits 0. `skenv doctor`
-reports it as `dirty`, `unpushed` or `behind`. Commit, push, rebase or
-stash in that repository with git, then run `skenv sync` again.
+`sync` runs `git pull --ff-only` in a checkout only when it is clean and
+on its branch (`branch`, else the default branch of `origin`). It never
+resets, switches, stashes or clones again. A working copy with uncommitted
+changes, on another branch or a detached HEAD, or diverged from origin is
+left as it is with an `unresolved:` line, its skills stay linked as checked
+out, and `sync` still exits 0:
+
+```text
+unresolved: ~/src/my-skills has uncommitted changes: local development state, not updated (commit or stash, then rerun sync)
+sync: 0 changes, 1 unresolved, 0 warnings, 0 errors
+```
+
+`skenv doctor` reports it as `dirty`, `wrong-branch`, `unpushed` or
+`behind`. Commit, push, rebase, stash or switch back in that repository
+with git, then run `skenv sync` again.
+
+A `checkout_dir` that holds another repository, or a directory that is not
+a git working copy, is different: `sync` reports an unresolved error, does
+not link its skills, removes none of the links it had, and exits 1.
+`doctor` reports it as `wrong-origin`. Fix `checkout_dir` or `repo` in the
+manifest, or move the directory away. See
+[Checkouts and branches](manifest.md#checkouts-and-branches).
 
 ## What `--dry-run` shows
 

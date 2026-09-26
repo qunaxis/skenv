@@ -43,12 +43,13 @@ the manifest diff, then the sync. It ends with what was recorded and what
 was taken over:
 
 ```text
-sync: 8 changes, 1 warnings, 0 errors
+sync: 8 changes, 1 unresolved, 0 warnings, 0 errors
 recorded in ~/src/<skills-repo>/skenv.toml: release-notes
 taken over: release-notes
 ```
 
-A warning `~/src/<skills-repo> has uncommitted changes; not pulling` is
+The line `unresolved: ~/src/<skills-repo> has uncommitted changes: local
+development state, not updated (commit or stash, then rerun sync)` is
 expected here: the new manifest is not committed yet. Then verify:
 
 ```sh
@@ -183,7 +184,7 @@ which skills it recorded and which it took over:
 ```text
 leave ~/.agents/skills/drifted as it is: drifted was pinned without a matching commit, so it is not taken over
 ...
-sync: 12 changes, 1 warnings, 0 errors
+sync: 12 changes, 1 unresolved, 0 warnings, 0 errors
 recorded in ~/src/<skills-repo>/skenv.toml: alpha, archify, beta, drifted, lost
 taken over: alpha, archify, beta, lost
 left as installed (unmatched): drifted; decide for each:

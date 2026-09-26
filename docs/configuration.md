@@ -79,5 +79,55 @@ machine  = "work-laptop"
 
 skenv never writes `machine`; add it by hand.
 
+## `skenv config show`
+
+`skenv config show` prints the configuration as it applies on this
+machine, and why each skill is installed or not. It changes nothing and
+does not use the network. The raw configuration is the skenv file itself;
+this is the effective view:
+
+- the manifest and where its location came from (`--manifest`,
+  `$SKENV_MANIFEST` or the tool config);
+- the machine name and its source (the tool config `machine`,
+  `$SKENV_MACHINE`, the full or the short hostname) and the
+  [machine rules](manifest.md#machine-rules) that apply;
+- `$HOME`, `$CLAUDE_CONFIG_DIR` and the store;
+- each agent directory, on or off, and why (listed in `enabled`, detected,
+  not detected);
+- each checkout with its resolved directory, where that came from
+  (`checkout_dir` or the machine's `checkout_dirs`), the branch `sync` keeps
+  it on and its state;
+- each skill of the checkouts and dependencies, selected or not, and why
+  (`include`, `exclude`, machine rules).
+
+```text
+manifest  ~/src/skills/skenv.toml (tool config ~/.config/skenv/config.toml)
+machine   laptop ($SKENV_MACHINE; rules user.machines.laptop)
+home      ~ ($HOME)
+store     ~/.agents/skills (default)
+
+agents
+  claude  ~/.claude/skills    on  detected: ~/.claude exists
+  pi      ~/.pi/agent/skills  on  detected: ~/.pi/agent exists
+
+checkouts
+  skills  example-org/skills  ~/src/skills (checkout_dir ~/src/skills)  branch main (default branch of origin)  present
+
+skills
+  code-review     checkout skills  selected      include omitted: every skill
+  commit-message  checkout skills  not selected  include omitted: every skill, but excluded by exclude "commit-*"
+  diagrams        dependency       not selected  dependency example-vendor/tools at 27f221f8f2a4 (tools/diagrams); user.machines.laptop.include omitted: every skill, but excluded by user.machines.laptop.exclude "diagrams"
+
+note: dependencies are pinned to a commit; checkouts follow their branch and local edits, and agent detection, the machine name and $HOME come from this machine, so the file alone does not reproduce the skills of checkouts
+```
+
+The closing note is the limit of the declarative model: dependencies are
+pinned to a commit and reproduce exactly from the file, but checkouts
+follow their branch and your local edits, and the machine name, agent
+detection and `$HOME` come from the machine. `--json` prints the same as
+JSON (`manifest`, `machine`, `home`, `claude_config_dir`, `store`,
+`agents`, `checkouts`, `skills`, `unmanaged`, `reproducible`). Reference:
+[skenv config show](commands/skenv_config_show.md).
+
 The design is recorded in
 [ADR 0001](adr/0001-cli-and-config-framework.md).

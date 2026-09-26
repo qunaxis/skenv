@@ -223,7 +223,7 @@ func TestDirtyOwnCopyIsNotOverwritten(t *testing.T) {
 	w.push("me/skills", map[string]string{"skills/alpha/SKILL.md": skillMD("alpha", "upstream")}, "feat: upstream")
 
 	_, errOut := w.mustRun(0, "sync")
-	if !strings.Contains(errOut, "uncommitted changes; not pulling") {
+	if !strings.Contains(errOut, "unresolved: ~/"+ownPath+" has uncommitted changes: local development state, not updated") {
 		t.Errorf("expected a dirty warning, got:\n%s", errOut)
 	}
 	if readFile(t, local) != "local edit\n" {

@@ -96,8 +96,8 @@ user:
 
 TOML, YAML and JSON are read the same way; keys are lowercase and
 case-sensitive in every format. The skenv file is the desired state:
-`sync`, `link`, `doctor`, `list` and `repo apply` read it and never change
-it. skenv edits the file only in these places:
+`sync`, `link`, `doctor`, `list`, `config show` and `repo apply` read it
+and never change it. skenv edits the file only in these places:
 
 - `skenv vendor add|update|remove` change `user.dependencies`, and with
   `--project` `project.dependencies` (and the `commit` of `project.from`);
@@ -212,6 +212,7 @@ run `skenv doctor` (and `skenv repo check` in a skills repository).
 | `own.skills` | `include` | Omitted: every skill; `include = []` selects none (it used to be an error). Patterns are allowed. |
 | `own.exclude` | `exclude` | Unchanged. |
 | `own.repo`, `own.skills_dir` | `repo`, `skills_dir` | Unchanged. |
+| — | `branch` | New, optional: the branch `sync` keeps the checkout on; default the default branch of `origin`. `sync` now pulls a checkout only when it is clean and on that branch, see [Checkouts and branches](manifest.md#checkouts-and-branches). |
 | `[[environment.vendor]]` | `[user.dependencies.<name>]` | The table key is the skill name; `name` is gone. |
 | `vendor.path` | `skill_dir` | Default `"."`. |
 | `vendor.rev` | `commit` | Still a full 40-character SHA. |

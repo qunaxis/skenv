@@ -30,6 +30,10 @@ const (
 	ClassAgentMismatch = "agent-mismatch"
 	// The manifest checkout is not the working copy its checkout names.
 	ClassManifestCheckout = "manifest-checkout"
+	// A checkout_dir that is not a working copy of the declared repo.
+	ClassWrongOrigin = "wrong-origin"
+	// A checkout on another branch than the one sync keeps it on.
+	ClassWrongBranch = "wrong-branch"
 	// In a project.
 	ClassModified     = "modified"
 	ClassBrokenMirror = "broken-mirror"
@@ -154,8 +158,8 @@ func (e *Engine) doctorOwn(add func(class, skill, p, detail string), warn func(s
 			add(ClassMissing, "", dir, fmt.Sprintf("checkout %s (%s) is not cloned; run `skenv sync`", c.ID, e.showRepo(c.Repo, remote)))
 			continue
 		}
-		if !e.env.Git.OK(e.ctx, dir, "rev-parse", "--is-inside-work-tree") {
-			warn("%s is not a git working copy (checkout %s)", e.show(dir), c.ID)
+		if why := e.checkoutBlocked(c); why != "" {
+			add(ClassWrongOrigin, "", dir, gitx.Mask(why)+"; its skills are not linked: fix checkout_dir or repo of checkout "+c.ID)
 			continue
 		}
 		switch v, ok, err := harness.Version(dir); {
@@ -170,6 +174,11 @@ func (e *Engine) doctorOwn(add func(class, skill, p, detail string), warn func(s
 		}
 		if _, err := e.env.Git.Run(e.ctx, dir, "fetch", "--quiet"); err != nil {
 			warn("%s: git fetch failed, ahead/behind may be stale: %v", e.show(dir), err)
+		}
+		if target, err := e.targetBranch(dir, c); err != nil {
+			warn("%s: the default branch of origin is unknown; set branch of checkout %s", e.show(dir), c.ID)
+		} else if cur := e.currentBranch(dir); cur != target {
+			add(ClassWrongBranch, "", dir, fmt.Sprintf("on %s; sync keeps it on %s and does not update it now: switch back (git switch %s) or set branch of checkout %s", onBranch(cur), target, target, c.ID))
 		}
 		out, err := e.env.Git.Run(e.ctx, dir, "rev-list", "--left-right", "--count", "HEAD...@{upstream}")
 		if err != nil {

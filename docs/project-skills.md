@@ -19,6 +19,7 @@ and which other agent directories mirror them.
 - [CI](#ci)
 - [Examples](#examples)
 - [With `[repository]` and `[user]`](#with-repository-and-user)
+- [Project and user scope](#project-and-user-scope)
 
 ## When to use project skills
 
@@ -373,7 +374,9 @@ code 0 when the project matches `[project]`, 1 on discrepancies, 2 when it
 could not run. `--json` prints the report as JSON with `ok`, `file`,
 `dir`, `mirrors`, `mirrors_mode`, `skills`, `issues` (`class`, `skill`,
 `path`, `detail`) and `warnings`. A directory in `dir` without `SKILL.md` is
-not a skill: `doctor` warns about it, and it is not mirrored.
+not a skill: `doctor` warns about it, and it is not mirrored. A skill that
+is also installed for your user is a warning too (see
+[Project and user scope](#project-and-user-scope)).
 
 ## CI
 
@@ -524,3 +527,37 @@ project skills of a repository, not even of one that is a checkout in
 `[user.checkouts.<id>]`. Project skills are synced only when skenv runs
 inside that project. From there, `skenv sync --manifest <file>` syncs your
 machine.
+
+## Project and user scope
+
+The project scope (`[project]`) and the user scope (`[user]`, your
+manifest) manage separate things:
+
+- A project owns its `dir` and mirrors: the copies with a `.skenv` marker
+  and the mirror entries skenv placed. The user scope owns the store and
+  the agent directories, recorded in `~/.local/state/skenv/state.json`.
+  User-level `sync` never touches a project, and project `sync` never
+  touches the store or an agent directory.
+- A project's `dir` or mirror must not be, contain or lie inside a
+  user-level skills directory: the default store `~/.agents/skills`, the
+  built-in agent directories (`~/.claude/skills`, `~/.pi/agent/skills`)
+  and, when a manifest is configured, its `storage.dir`, `agents.paths` and
+  `agents.extra_dirs`. Both scopes would manage the same entries, so every
+  project command (`sync`, `doctor`, `vendor --project`,
+  `import --project`) stops with an error that names the skenv file,
+  before changing anything:
+
+  ```text
+  [project] .agents/skills is the user-level skills directory ~/.agents/skills, or overlaps it: the project and the user scope would manage the same entries; choose another dir or mirror in [project]
+  ```
+
+  The usual case is a home directory that is itself a git repository with
+  `[project]` and the default `dir`.
+- The same skill name in both scopes is allowed. skenv installs both and
+  does not rank them; the agent decides which one it uses, by its own
+  rules. `skenv doctor` in the project warns about each such name, so the
+  shadowing is visible:
+
+  ```text
+  warning: skill "review" is also installed for your user (~/.agents/skills/review); skenv keeps both, and the agent decides which one it uses
+  ```

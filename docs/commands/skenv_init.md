@@ -113,7 +113,7 @@ import: 2 manifest entries (1 exact, 1 checkout), 1 removed from the skills lock
 manifest changed but not committed; to commit:
   git -C ~/src/my-skills add -- skenv.toml
   git -C ~/src/my-skills commit -m "chore(manifest): import installed skills" -- skenv.toml
-warning: ~/src/my-skills has uncommitted changes; not pulling (commit or stash, then rerun sync)
+unresolved: ~/src/my-skills has uncommitted changes: local development state, not updated (commit or stash, then rerun sync)
 adopt ~/.agents/skills/release-notes (old content → ~/.local/state/skenv/backup/<timestamp>/.agents/skills/release-notes)
 vendor release-notes from example-vendor/tools@27f221f8f2a4 (tools/release-notes)
 link ~/.agents/skills/code-review → ~/src/my-skills/skills/code-review
@@ -122,7 +122,7 @@ link ~/.pi/agent/skills/code-review → ../../../.agents/skills/code-review
 adopt ~/.claude/skills/release-notes (old content → ~/.local/state/skenv/backup/<timestamp>/.claude/skills/release-notes)
 link ~/.claude/skills/release-notes → ../../.agents/skills/release-notes
 link ~/.pi/agent/skills/release-notes → ../../../.agents/skills/release-notes
-sync: 8 changes, 1 warnings, 0 errors
+sync: 8 changes, 1 unresolved, 0 warnings, 0 errors
 recorded in ~/src/my-skills/skenv.toml: release-notes
 taken over: release-notes
 ```

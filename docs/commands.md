@@ -41,6 +41,7 @@ commit.
 | ---- | ------- | ----- |
 | Apply the manifest to this machine | [`skenv sync`](commands/skenv_sync.md) | [Connect another machine](another-machine.md#2-preview-and-apply) |
 | See the skills and whether they are installed | [`skenv list`](commands/skenv_list.md) | [List installed skills](list-skills.md) |
+| Why a skill is installed or not on this machine | [`skenv config show`](commands/skenv_config_show.md) | [Configuration](configuration.md#skenv-config-show) |
 | Check that the machine matches the manifest | [`skenv doctor`](commands/skenv_doctor.md) | [List installed skills](list-skills.md#skenv-doctor-does-the-machine-match) |
 | Install a third-party skill, pinned to a commit (a dependency) | [`skenv vendor add`](commands/skenv_vendor_add.md) | [Add, update and remove skills](manage-skills.md) |
 | Move dependencies to newer commits | [`skenv vendor update`](commands/skenv_vendor_update.md) | [Update pinned skills](manage-skills.md#update-pinned-skills) |
@@ -94,7 +95,9 @@ See [Project skills](project-skills.md).
 
 Every command exits 0 on success, 1 when it found problems or reported
 errors (a conflict in `sync`, for example) and 2 when it could not run (a usage error, a missing argument, an unreadable file).
-Warnings do not change the exit code: `sync` exits 0 when it leaves a
-checkout with uncommitted changes unpulled, for example. `doctor`, `lint`
+Warnings do not change the exit code, and neither does local development
+state: `sync` exits 0 when it leaves a checkout with uncommitted changes or
+on another branch as it is (printed as `unresolved:`), and 1 when a
+`checkout_dir` holds another repository. `doctor`, `lint`
 and `repo check` exit 0 only when everything is in order, so use `doctor`
 to confirm that a machine matches its manifest.

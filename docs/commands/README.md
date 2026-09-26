@@ -14,6 +14,8 @@ Generated from `skenv --help`. Start with [skenv](skenv.md).
 - [skenv completion bash](skenv_completion_bash.md): Generate the autocompletion script for bash
 - [skenv completion fish](skenv_completion_fish.md): Generate the autocompletion script for fish
 - [skenv completion zsh](skenv_completion_zsh.md): Generate the autocompletion script for zsh
+- [skenv config](skenv_config.md): Show the effective configuration of this machine
+- [skenv config show](skenv_config_show.md): Show the effective configuration and why each skill is installed or not
 - [skenv doctor](skenv_doctor.md): Compare the machine with the manifest, or a project with its `[project]`
 - [skenv import](skenv_import.md): Add the skills already installed on this machine, or in a project, to the skenv file
 - [skenv init](skenv_init.md): Start a manifest in a git repository

@@ -7,6 +7,10 @@ Two commands tell you what a machine has: `skenv list` is the inventory,
 - [`skenv doctor`: does the machine match](#skenv-doctor-does-the-machine-match)
 - [`doctor` classes](#doctor-classes)
 
+To see why a skill is installed or not (the machine rules, `include`,
+`exclude`, which agents are on), run
+[`skenv config show`](configuration.md#skenv-config-show).
+
 ## `skenv list`: what the manifest has
 
 ```sh
@@ -43,6 +47,13 @@ Then one line per skill of the manifest:
   `include`/`exclude` of its checkout) or `excluded on this machine` (by
   the [machine rules](manifest.md#machine-rules)).
 
+A checkout whose directory is not a working copy of its `repo` (another
+origin, or no git) contributes no skills. `list` names it after the table:
+
+```text
+not used: team: ~/src/shared-skills is a working copy of https://github.com/example-org/other.git, not of https://github.com/example-org/shared-skills.git (repo of checkout team); fix checkout_dir or repo
+```
+
 `list` works offline, changes nothing and exits 0. It covers the manifest
 of the machine only; the skills of a project are committed files, and
 `skenv doctor --project` checks them (see [Project skills](project-skills.md)).
@@ -73,8 +84,9 @@ agent-mismatch  code-review  ~/.claude/skills/code-review  linked for some agent
 `doctor` changes no skill, link or file, but runs `git fetch` in each
 checkout (network access; it updates their remote-tracking branches) to
 report `unpushed` and `behind`. Exit code 0: in sync, 1: discrepancies, 2:
-could not run. `sync` exits 0 even when it leaves something undone with a
-warning, so `doctor` is the check that the machine matches. Inside a
+could not run. `sync` exits 0 even when it leaves a checkout as it is
+(printed as `unresolved:`), so `doctor` is the check that the machine
+matches. Inside a
 project it checks the project instead. Reference:
 [skenv doctor](commands/skenv_doctor.md).
 
@@ -91,6 +103,8 @@ project it checks the project instead. Reference:
 | `wrong-rev`                   | a dependency's copy does not match its `repo`, `skill_dir` or `commit`                             |
 | `broken-link`                 | a managed symlink dangles or points elsewhere                                                       |
 | `dirty`, `unpushed`, `behind` | a checkout has uncommitted changes, is ahead of or behind its upstream (after `git fetch`) |
+| `wrong-branch`                | a checkout is on another branch (or a detached HEAD) than the one `sync` keeps it on, so `sync` does not update it: `git switch <branch>`, or set `branch` of the checkout |
+| `wrong-origin`                | a `checkout_dir` is not a working copy of the checkout's `repo` (another origin, no origin, no git): its skills are not linked; fix `checkout_dir` or `repo` |
 
 `doctor` also warns about checkouts whose `template_version` is older than
 the templates of the installed skenv; `skenv repo upgrade` there moves

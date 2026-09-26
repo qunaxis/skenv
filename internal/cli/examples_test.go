@@ -32,6 +32,7 @@ var exampleSkips = map[string]string{
 	"skenv":                   "the subcommand pages show the output",
 	"skenv vendor":            "the subcommand pages show the output",
 	"skenv repo":              "the subcommand pages show the output",
+	"skenv config":            "the subcommand pages show the output",
 	"skenv autostart":         "the subcommand pages show the output",
 	"skenv autostart enable":  "installs a LaunchAgent or a systemd user timer on the machine that runs it",
 	"skenv autostart disable": "removes the LaunchAgent or the systemd user timer of the machine that runs it",
@@ -235,6 +236,16 @@ provider = "gitlab"
 		repo := f.publicRepo()
 		f.editLefthook(repo)
 		f.t.Chdir(repo)
+	},
+	"skenv config show/1": func(f *exampleWorld) {
+		f.initialized()
+		// A fixed machine name: the hostname of the recording machine
+		// must not reach the docs.
+		f.t.Setenv("SKENV_MACHINE", "laptop")
+		manifest := f.path("src/skills/skenv.toml")
+		text := strings.Replace(readFile(f.t, manifest), `checkout_dir = "~/src/skills"`, `checkout_dir = "~/src/skills"`+"\nexclude      = [\"commit-*\"]", 1)
+		writeFile(f.t, manifest, text+"\n[user.machines.laptop]\nexclude = [\"diagrams\"]\n")
+		f.git(f.path("src/skills"), "commit", "--quiet", "-am", "chore: exclusions")
 	},
 	"skenv repo upgrade/1": func(f *exampleWorld) { f.t.Chdir(f.olderRepo()) },
 	"skenv repo upgrade/2": func(f *exampleWorld) { f.t.Chdir(f.olderRepo()) },

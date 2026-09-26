@@ -33,6 +33,8 @@ type ProjectEngine struct {
 	hintPaths []string
 	// kept are the skills of opts.Keep that sync leaves as installed.
 	kept map[string]bool
+	// user are the directories of the user scope (userDirs).
+	user []string
 }
 
 // FindProject returns the skenv file at the root of the git repository
@@ -75,6 +77,10 @@ func OpenProject(ctx context.Context, env Env, opts Options, file string) (*Proj
 	e := &ProjectEngine{base: newBase(ctx, env, opts), root: filepath.Dir(file), file: file, p: p, removed: map[string]bool{}}
 	e.hosts, e.hostsDir = p.GitHosts, e.root
 	if err := e.checkDirs(); err != nil {
+		return nil, fmt.Errorf("%s: %w", e.show(file), err)
+	}
+	e.user = userDirs(ctx, env)
+	if err := e.checkScope(e.user); err != nil {
 		return nil, fmt.Errorf("%s: %w", e.show(file), err)
 	}
 	if !opts.ReadOnly && !opts.DryRun {
