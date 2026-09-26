@@ -122,6 +122,13 @@ func TestSyncNeverRewritesTheFile(t *testing.T) {
 	if mk := readFile(t, w.path(".agents/skills/archify/.skenv")); strings.Contains(mk, w.git(filepath.Join(w.work, "ext__tools"), "rev-parse", "HEAD")) {
 		t.Error("sync followed the branch of a pinned dependency")
 	}
+	// A successful repo apply leaves the file byte for byte.
+	w.mustRun(0, "repo", "upgrade", "--dir", w.path(ownPath), "--force")
+	upgraded := readFile(t, manifest)
+	w.mustRun(0, "repo", "apply", "--dir", w.path(ownPath))
+	if readFile(t, manifest) != upgraded {
+		t.Error("repo apply rewrote the skenv file")
+	}
 }
 
 // Removing a declared resource removes only its managed artifacts:
@@ -229,12 +236,20 @@ func TestCheckoutPolicy(t *testing.T) {
 	if !strings.Contains(docOut, "wrong-origin") {
 		t.Errorf("doctor with another origin:\n%s", docOut)
 	}
+	w.git(own, "remote", "set-url", "origin", "https://user:secret-token@github.com/ext/tools.git")
+	for _, args := range [][]string{{"doctor"}, {"doctor", "--json"}, {"sync"}, {"list"}, {"config", "show"}} {
+		_, out, errOut := w.run(args...)
+		if strings.Contains(out+errOut, "secret-token") {
+			t.Errorf("skenv %s printed the credentials of origin:\n%s%s", strings.Join(args, " "), out, errOut)
+		}
+	}
+	w.git(own, "remote", "set-url", "origin", "https://github.com/ext/tools.git")
 	listOut, _ := w.mustRun(0, "list")
 	if !strings.Contains(listOut, "not used: skills: ~/"+ownPath+" is a working copy of") {
 		t.Errorf("list with another origin:\n%s", listOut)
 	}
 	// Another spelling of the same repository (ssh instead of https) is the
-	// same origin.
+	// same origin, also on a declared host whose ssh path differs.
 	w.git(own, "remote", "set-url", "origin", "git@github.com:me/skills.git")
 	if _, errOut := w.mustRun(0, "sync"); strings.Contains(errOut, "is a working copy of") {
 		t.Errorf("an ssh origin of the same repository is not accepted:\n%s", errOut)
@@ -327,6 +342,13 @@ exclude = ["beta"]
 	if out, _ := w.mustRun(0, "config", "show", "--manifest", "~/"+ownPath); !strings.Contains(out, "(--manifest)") {
 		t.Errorf("--manifest source:\n%s", out)
 	}
+	// A selection error is shown with the rest, exit code 1.
+	manifest := w.path(ownPath + "/skenv.toml")
+	writeFile(t, manifest, strings.Replace(readFile(t, manifest), "[user.checkouts.later]", "[user.checkouts.skills2]\nrepo = \"me/skills\"\ncheckout_dir = \"~/"+ownPath+"\"\n\n[user.checkouts.later]", 1))
+	out, errOut := w.mustRun(1, "config", "show")
+	if !strings.Contains(out, "machine   laptop") || !strings.Contains(errOut, `skill "alpha" is defined twice`) {
+		t.Errorf("config show with a clash:\n%s%s", out, errOut)
+	}
 }
 
 // The user and the project scope own separate resources: a project whose
@@ -371,5 +393,20 @@ func TestScopeBoundaries(t *testing.T) {
 	assertUnchanged(t, projectBefore, w.pp(""))
 	if !w.exists(".agents/skills/archify/.skenv") {
 		t.Error("the project sync touched the user scope")
+	}
+}
+
+// The ssh form of a repository on a declared host is its origin too, even
+// when the https base carries a path the ssh form does not.
+func TestCheckoutOriginOnDeclaredHost(t *testing.T) {
+	w := newWorld(t)
+	w.mapHost("https://git.example.com/git/", "selfhosted")
+	w.push("selfhosted/team/skills", map[string]string{"skills/alpha/SKILL.md": skillMD("alpha", ""),
+		"skenv.toml": "[user.git_hosts.work]\nbase_url = \"https://git.example.com/git\"\nprovider = \"gitlab\"\n\n[user.checkouts.skills]\nrepo = \"work:team/skills\"\ncheckout_dir = \".\"\n"}, "feat: skills")
+	w.cloneSync("https://git.example.com/git/team/skills.git", "~/"+ownPath)
+	w.git(w.path(ownPath), "remote", "set-url", "origin", "git@git.example.com:team/skills.git")
+	out, _ := w.mustRun(0, "list")
+	if strings.Contains(out, "not used") || !strings.Contains(out, "alpha") {
+		t.Errorf("the ssh origin of the declared host is not accepted:\n%s", out)
 	}
 }

@@ -628,6 +628,12 @@ func (e *Engine) originMismatch(dir string, c *manifest.Checkout) string {
 	if manifest.NormalizeURL(origin) == manifest.NormalizeURL(remote.URL) {
 		return ""
 	}
+	// The ssh and https forms of a repository on a known host.
+	if so, ok := e.m.GitHosts.ShortForm(origin); ok {
+		if sr, ok := e.m.GitHosts.ShortForm(remote.URL); ok && so == sr {
+			return ""
+		}
+	}
 	a, errA := e.env.Git.Run(e.ctx, dir, "ls-remote", "--get-url", origin)
 	b, errB := e.env.Git.Run(e.ctx, dir, "ls-remote", "--get-url", remote.URL)
 	if errA == nil && errB == nil && manifest.NormalizeURL(a) == manifest.NormalizeURL(b) {

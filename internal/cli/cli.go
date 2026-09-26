@@ -1096,7 +1096,13 @@ skenv config show`,
 			if err != nil {
 				return engine.ExitFatal, err
 			}
-			return engine.ExitOK, e.PrintEffective(r, asJSON)
+			if err := e.PrintEffective(r, asJSON); err != nil {
+				return engine.ExitFatal, err
+			}
+			if len(r.Problems) > 0 {
+				return engine.ExitProblems, nil
+			}
+			return engine.ExitOK, nil
 		}),
 	}
 	manifestFlag(show.Flags(), &o)

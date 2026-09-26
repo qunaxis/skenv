@@ -31,6 +31,9 @@ type Effective struct {
 	Unmanaged       []string         `json:"unmanaged"`
 	// Reproducible says what the file alone pins down.
 	Reproducible string `json:"reproducible"`
+	// Problems are the errors of the selection (an include name that is
+	// not a skill, a name defined twice): nothing is selected then.
+	Problems []string `json:"problems"`
 }
 
 // Sourced is a value and where it comes from.
@@ -113,6 +116,7 @@ func (e *Engine) Explain(manifestSource string) (*Effective, error) {
 		Checkouts:       []EffectiveRepo{},
 		Skills:          []EffectiveSkill{},
 		Unmanaged:       append([]string{}, e.m.Unmanaged...),
+		Problems:        []string{},
 		Reproducible: "dependencies are pinned to a commit; checkouts follow their branch and local edits, " +
 			"and agent detection, the machine name and $HOME come from this machine, so the file alone does not " +
 			"reproduce the skills of checkouts",
@@ -160,7 +164,7 @@ func (e *Engine) Explain(manifestSource string) (*Effective, error) {
 	}
 	skills, err := e.skills()
 	if err != nil {
-		return nil, err
+		r.Problems = append(r.Problems, gitx.Mask(err.Error()))
 	}
 	installed := map[string]bool{}
 	for _, s := range skills {
@@ -307,5 +311,8 @@ func (e *Engine) PrintEffective(r *Effective, asJSON bool) error {
 		}
 	}
 	fmt.Fprintf(out, "\nnote: %s\n", r.Reproducible)
+	for _, p := range r.Problems {
+		fmt.Fprintf(e.env.Stderr, "error: %s; sync and doctor stop on it, and no skill is selected until it is fixed\n", p)
+	}
 	return nil
 }

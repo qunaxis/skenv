@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/agents"
+	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/manifest"
 )
 
@@ -25,8 +27,15 @@ func userDirs(ctx context.Context, env Env) []string {
 	for _, a := range agents.Table(env.Home, env.Getenv) {
 		dirs = append(dirs, a.Skills)
 	}
-	if mp, err := ResolveManifest(ctx, env, ""); err == nil {
-		if m, err := manifest.Load(mp); err == nil {
+	mp, err := ResolveManifest(ctx, env, "")
+	if err != nil && !errors.Is(err, ErrNoManifest) {
+		fmt.Fprintf(env.Stderr, "warning: the manifest is not read (%v); the project is checked against the default user directories only\n", gitx.Mask(err.Error()))
+	}
+	if err == nil {
+		m, err := manifest.Load(mp)
+		if err != nil {
+			fmt.Fprintf(env.Stderr, "warning: %s; the project is checked against the default user directories only\n", gitx.Mask(err.Error()))
+		} else {
 			if m.Storage.Dir != "" {
 				dirs = append(dirs, m.Path(env.Home, m.Storage.Dir))
 			}

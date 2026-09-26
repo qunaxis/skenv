@@ -159,7 +159,7 @@ func (e *Engine) doctorOwn(add func(class, skill, p, detail string), warn func(s
 			continue
 		}
 		if why := e.checkoutBlocked(c); why != "" {
-			add(ClassWrongOrigin, "", dir, why+"; its skills are not linked: fix checkout_dir or repo of checkout "+c.ID)
+			add(ClassWrongOrigin, "", dir, gitx.Mask(why)+"; its skills are not linked: fix checkout_dir or repo of checkout "+c.ID)
 			continue
 		}
 		switch v, ok, err := harness.Version(dir); {
