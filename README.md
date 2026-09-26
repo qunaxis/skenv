@@ -38,15 +38,15 @@ directory. Copying them by hand between Claude Code, Codex and pi, on a
 laptop, a desktop and a server, drifts within a week.
 
 `skenv` keeps the agent skills on a machine in sync with a declarative
-manifest (the `[environment]` section of `skenv.toml`) that lives in a git
+manifest (the `[user]` section of `skenv.toml`) that lives in a git
 repository you own. Run
 `skenv sync` on any machine and it ends up with the same skills, linked
 into every agent that is installed there.
 
-- **Own skills** live in git repositories you work in; skenv clones them and
-  fast-forwards clean working copies.
-- **Vendored skills** from other people's repositories are pinned to a full
-  commit SHA and copied into the store.
+- **Checkouts** are git repositories you work in, kept as editable working
+  copies; skenv clones them and fast-forwards clean ones.
+- **Dependencies** are skills from other people's repositories, pinned to a
+  full commit SHA and copied into the store.
 - Everything is linked into each agent's skills directory.
 
 Its design is guided by these mantras:
@@ -60,7 +60,7 @@ Its design is guided by these mantras:
   up first.
 - **Look before you leap.** `skenv doctor` and `--dry-run` leave your skills,
   links and skenv file alone and tell you what `sync` would do. They may
-  still use the network: `doctor` runs `git fetch` in own repositories, and
+  still use the network: `doctor` runs `git fetch` in checkouts, and
   a `--dry-run` that resolves commits fetches into the clone cache.
 - **Only `git` at runtime.** Managing and syncing skills needs nothing but
   `git`: no daemon, no service, no registry. skenv uses your normal git
@@ -75,8 +75,8 @@ Its design is guided by these mantras:
 
 ## Features
 
-- Sync own skills (git working copies) and vendored skills (pinned copies)
-  from one manifest into Claude Code, Codex and pi.
+- Sync skills of checkouts (git working copies) and dependencies (pinned
+  copies) from one manifest into Claude Code, Codex and pi.
 - `skenv init` starts a manifest, `skenv init --import` takes over the
   skills already installed, and `skenv clone <repo>` (or `skenv use .` in a
   checkout) connects another machine; none of them syncs until you run
@@ -95,9 +95,9 @@ Its design is guided by these mantras:
 - JSON Schemas for the skenv file and the tool config: files skenv writes
   name their schema, so editors complete and check them
   ([editor support](docs/editor-support.md)).
-- A selection of skills per own repository (`skills`, `exclude`), per-host
-  skips, custom agent directories, and ignore patterns for skills owned by
-  other tools.
+- A selection of skills per checkout (`include`, `exclude`), machine rules,
+  a choice of agents and extra directories, and `unmanaged` patterns for
+  skills owned by other tools.
 - `skenv autostart` runs `sync` at login and hourly via launchd or systemd.
 - `skenv new` scaffolds a skill and lints it; `skenv lint` checks skills
   against the Agent Skills rules and, with `--publish`, runs a publication
@@ -190,22 +190,23 @@ skenv --help
 is set up yet: continue with [Getting started](docs/getting-started.md).
 
 > [!WARNING]
-> **Upgrading from v0.3.0 or earlier:** `env.toml` and the old
-> `skenv.toml` are no longer read. First move them into one `skenv.toml`
-> with `[repo]` and `[environment]` sections, as described in
-> [moving from `env.toml`](docs/skenv-file.md#moving-from-envtoml-and-the-old-skenvtoml).
-> skenv also has no built-in default manifest location: record your
-> checkout once with `skenv use <checkout>`; the clone is not touched,
-> only its skenv file is recorded.
+> **Upgrading from v0.5 or earlier:** skenv 0.6 renamed the sections and
+> keys of the skenv file (`[user]`, `[repository]`, `[project]`) and does
+> not read the old ones. Rewrite the file by hand as described in
+> [moving to the 0.6 format](docs/skenv-file.md#moving-to-the-0-6-format);
+> the error message lists every key to rename. skenv has no built-in
+> default manifest location: record your checkout once with
+> `skenv use <checkout>`; the clone is not touched, only its skenv file is
+> recorded.
 <!-- #endregion install -->
 
 ## Getting started
 
 <!-- #region getting-started -->
-skenv needs a **manifest**: the `[environment]` section of `skenv.toml` in
-a git repository you own, usually a private skills repository. It lists
-your own skills (git repositories you edit, kept as working copies) and
-third-party skills (copies pinned to a commit). Start from the situation
+skenv needs a **manifest**: the `[user]` section of `skenv.toml` in a git
+repository you own, usually a private skills repository. It lists
+checkouts (git repositories you edit, kept as working copies) and
+dependencies (third-party skills pinned to a commit). Start from the situation
 that fits; each guide shows the expected output.
 
 **Starting from scratch**: no manifest yet, no installed skills to keep.
@@ -213,7 +214,7 @@ See [Create your first environment](docs/first-environment.md).
 
 ```sh
 cd ~/src/<skills-repo>                               # a git repository you own
-skenv init                                           # adds [environment] to skenv.toml
+skenv init                                           # adds [user] to skenv.toml
 skenv vendor add <owner>/<repo> --path <skill-dir>   # pin and install a skill
 skenv sync                                           # link the skills of the manifest
 skenv list                                           # every skill: installed
@@ -284,7 +285,7 @@ The same pages, with search, are published at
 - [List installed skills](docs/list-skills.md): `skenv list`,
   `skenv doctor` and its classes.
 - [Add, update and remove skills](docs/manage-skills.md): `skenv vendor`
-  and own repositories.
+  and checkouts.
 - [Create a skill](docs/create-skill.md): `skenv new`, `skenv link`.
 - [Resolve conflicts and restore backups](docs/conflicts.md): `--adopt`,
   backups, `--dry-run` limits.
@@ -294,15 +295,16 @@ The same pages, with search, are published at
 
 - [Command reference](docs/commands/README.md): one page per command with
   every flag, generated from the command definitions by `make docs`.
-- [Manifest format](docs/manifest.md): `[environment]`, where it is found,
-  the layout on disk, and the mapping to `skills-lock.json`.
-- [The skenv file](docs/skenv-file.md): `skenv.toml` with its `[repo]`,
-  `[environment]` and `[project]` sections, formats, and moving from
-  `env.toml`.
+- [Manifest format](docs/manifest.md): `[user]`, where it is found,
+  selection, machine rules, agents and storage, and the mapping to
+  `skills-lock.json`.
+- [The skenv file](docs/skenv-file.md): `skenv.toml` with its `[repository]`,
+  `[user]` and `[project]` sections, formats, and moving to the 0.6
+  format.
 - [Machine configuration](docs/configuration.md): the tool config and
   precedence of flags, environment and file.
 - [Git hosts and authentication](docs/git-hosts.md): `repo` forms for
-  GitHub, GitLab, Codeberg and self-hosted servers, host aliases, ssh and
+  GitHub, GitLab, Codeberg and self-hosted servers, host aliases, https or ssh, and
   authentication.
 - [Project skills](docs/project-skills.md): `[project]`, skills committed
   with a project, mirrors, `doctor` in CI.
@@ -314,7 +316,7 @@ The same pages, with search, are published at
 - [Validation and publication](docs/lint.md): `skenv lint`, its rules and
   the publication check.
 - [Repository checks and CI](docs/harness.md): the optional harness of
-  `skenv repo init|apply|check`: hooks, the GitHub Actions and GitLab CI
+  `skenv repo init|apply|upgrade|check`: hooks, the GitHub Actions and GitLab CI
   pipelines, runners and prerequisites.
 - [Claude Code hook](docs/claude-code-hook.md): how skills are linted while
   an agent edits them.
@@ -335,7 +337,7 @@ Done:
 - **v0.1** — `env.toml`, `sync`, `link`, `init`, `doctor`, `vendor
   add|bump|remove`, `autostart`.
 - **v0.2** — `skenv lint` (L1–L6), the skills-repository harness
-  (`skenv repo`), `layout.ignore`.
+  (`skenv repo`), ignore patterns for other tools' skills.
 - **v0.3** — the publication check (`lint --publish`), the Claude Code hook,
   `skenv new`, harness 0.3.0.
 

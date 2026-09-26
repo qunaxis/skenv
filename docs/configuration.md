@@ -1,8 +1,8 @@
 # Configuration
 
 skenv's own configuration belongs to the machine, not to a repository. It is
-separate from [the skenv file](skenv-file.md) (`skenv.toml` with `[repo]` and
-`[environment]`), which lives in a repository.
+separate from [the skenv file](skenv-file.md) (`skenv.toml` with
+`[repository]`, `[user]` and `[project]`), which lives in a repository.
 
 ## Precedence
 
@@ -52,16 +52,32 @@ code 2), raised before anything is cloned or written.
 
 ## Keys
 
-| Key        | Flag         | Environment      | Default |
-| ---------- | ------------ | ---------------- | ------- |
-| `manifest` | `--manifest` | `SKENV_MANIFEST` | none    |
+| Key        | Flag         | Environment      | Default           |
+| ---------- | ------------ | ---------------- | ----------------- |
+| `manifest` | `--manifest` | `SKENV_MANIFEST` | none              |
+| `machine`  | none         | `SKENV_MACHINE`  | from the hostname |
 
 `manifest` names the skenv file or the directory that holds it. There is no
 default location: when none of them is set, commands that need the manifest
 stop with an error that suggests `skenv init`, `skenv clone <repo>`,
 `skenv use <path>` or `--manifest`; inside a repository whose skenv file
-has `[environment]`, it suggests `skenv use .`.
+has `[user]`, it suggests `skenv use .`.
 See [where the manifest is found](manifest.md#where-the-manifest-is-found).
+
+`machine` is the name of this machine for the
+[machine rules](manifest.md#machine-rules) of the manifest. When set, the
+manifest must have a `[user.machines.<name>]` entry for it (it may be
+empty), or commands stop with an error that lists the names it has.
+Without it, skenv uses the rules of the full hostname if the manifest has
+them, else those of the short hostname. Set it when the hostname changes
+(some laptops rename themselves on each network) or is shared:
+
+```toml
+manifest = "~/src/my-skills/skenv.toml"
+machine  = "work-laptop"
+```
+
+skenv never writes `machine`; add it by hand.
 
 The design is recorded in
 [ADR 0001](adr/0001-cli-and-config-framework.md).

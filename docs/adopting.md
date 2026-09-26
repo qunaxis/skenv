@@ -29,13 +29,14 @@ skenv list
 ```
 
 `skenv init --import` does what `skenv init` does
-(adds `[environment]` to the skenv file of the repository or creates
+(adds `[user]` to the skenv file of the repository or creates
 `skenv.toml`, and records it as your manifest), imports the installed skills
 into it, and runs `skenv sync --adopt` as `skenv import --sync` does: the
 skills pinned without a matching commit stay as installed (see
 [Unmatched skills](#unmatched-skills-and---sync)). The repository itself
-becomes an own repository, written from its `origin` as with `skenv init`
-(see [Git hosts](git-hosts.md#starting-a-manifest-with-skenv-init)).
+becomes a checkout, `[user.checkouts.<repo-name>]` with `checkout_dir =
+"."`, written from its `origin` as with `skenv init` (see
+[Git hosts](git-hosts.md#starting-a-manifest-with-skenv-init)).
 
 The output is the import report (see [Reading the report](#reading-the-report)),
 the manifest diff, then the sync. It ends with what was recorded and what
@@ -87,8 +88,8 @@ skenv doctor
 
 `skenv import --sync` runs step 3 right after step 2, for every skill it
 imported except the unmatched ones. Run step 3 yourself and it replaces
-those too: that is the decision. A skenv file that has no `[environment]`
-yet gets one first, as `skenv init` adds it (and a public `[repo]` is
+those too: that is the decision. A skenv file that has no `[user]` yet
+gets one first, as `skenv init` adds it (and a public `[repository]` is
 refused, as there). Without any manifest, `skenv import` stops and points
 at `skenv init --import`.
 
@@ -99,9 +100,11 @@ earlier `import` has nothing unmatched to hold back, and its
 
 ## What `import` changes
 
-- **The manifest**: new `[[environment.own]]` and `[[environment.vendor]]`
-  entries at the end of `[environment]`, in the format of the file, with
-  its comments and order kept. The diff is printed; the change is not
+- **The manifest**: new `[user.checkouts.<id>]` and
+  `[user.dependencies.<name>]` entries at the end of `[user]`, in the
+  format of the file, with its comments and order kept. The ID of a
+  checkout is derived from the repository name (`<skills-repo>`, then
+  `<skills-repo>-2` if it is taken). The diff is printed; the change is not
   committed, and `import` prints the commit command.
 - **The lock of the `skills` CLI: ownership moves to skenv.** Every skill
   that is in the manifest now is removed from
@@ -134,19 +137,19 @@ becomes managed: 4 entries in ~/src/<skills-repo>/skenv.toml
     lost from <owner>/<repo> (skills/lost) at 6616c70c36e4: skillFolderHash 000000000000 is not in the history of the default branch
   unmatched: no commit matched, pinned to the tip of the branch; the installed copy may differ
     drifted from <owner>/<repo> (skills/drifted) at 5d0e1f2a3b4c: skillFolderHash 111111111111 is not in the history of the default branch, and no commit has the files of the installed copy; HEAD of the default branch
-  own: repositories kept as git working copies
-    <owner>/<skills-repo> at ~/src/<skills-repo> (skills alpha, beta)
+  checkout: repositories kept as git working copies
+    <team-skills>: <owner>/<team-skills> at ~/src/<team-skills> (include alpha, beta)
 not imported: 2
-  ~/.claude/skills/handmade: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into an own repository, or add "handmade" to layout.ignore
+  ~/.claude/skills/handmade: not in ~/.agents/.skill-lock.json and not a link into a git working copy; move it into a checkout, or add "handmade" to user.unmanaged
   removed, in ~/.agents/.skill-lock.json: not installed in ~/.agents/skills or an agent directory; it stays in the lock
 remove archify, drifted, lost from ~/.agents/.skill-lock.json, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to ~/.local/state/skenv/backup/<timestamp>/.agents/.skill-lock.json)
 --- ~/src/<skills-repo>/skenv.toml
 +++ ~/src/<skills-repo>/skenv.toml
 ...
-import: 4 manifest entries (1 exact, 1 same files, 1 unmatched, 1 own), 3 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
+import: 4 manifest entries (1 exact, 1 same files, 1 unmatched, 1 checkout), 3 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
 ```
 
-- **`exact`**: the vendored skill will be what the `skills` CLI installed
+- **`exact`**: the dependency will be what the `skills` CLI installed
   (local edits of the copy aside: they are not in the hash).
 - **`same files`**: no commit has the hash, but one has the same files as
   the copy on disk. Usually right; pin another commit with
@@ -154,14 +157,17 @@ import: 4 manifest entries (1 exact, 1 same files, 1 unmatched, 1 own), 3 remove
 - **`unmatched`**: nothing matched, so the entry is pinned to HEAD, which
   may differ from what you have. See
   [Unmatched skills](#unmatched-skills-and---sync).
-- **`own`**: an own repository, from links into its working copy (or the
-  repository of the manifest, with `init --import`).
+- **`checkout`**: a repository kept as an editable working copy, from
+  links into it (or the repository of the manifest, with `init --import`,
+  as `checkout_dir = "."`). `include` lists the linked skills when only
+  some of its skills are linked.
 - **`not imported`**: with the reason and a hint. Typical ones: a
-  directory installed by hand (move it into an own repository, or add its
-  name to `layout.ignore` to leave it alone), a skill of the lock that was
-  not installed from a git repository, a link under another name than its
-  directory, an own skill that `skills` or `exclude` of its entry does not
-  select, or a lock entry that is not installed (it stays in the lock).
+  directory installed by hand (move it into a checkout, or add its name
+  to `user.unmanaged` to leave it alone), a skill of the lock that was not
+  installed from a git repository, a link under another name than its
+  directory, a skill of an existing checkout that its `include` or
+  `exclude` does not select, or a lock entry that is not installed (it
+  stays in the lock).
   A skill that cannot be fetched is an `error:` there and exits 1; the
   rest is imported.
 
@@ -171,7 +177,7 @@ An unmatched skill is recorded in the manifest (and leaves the lock) like
 any other, but `import --sync` and `init --import` do not take it over:
 its installed copy and links stay as they are, and `doctor` reports them
 as a conflict until you decide. The exact and same-files skills and the
-own repositories are taken over as usual. After the sync the report says
+checkouts are taken over as usual. After the sync the report says
 which skills it recorded and which it took over:
 
 ```text
@@ -185,7 +191,7 @@ left as installed (unmatched): drifted; decide for each:
 ```
 
 Compare the installed copy with the skill at the pinned commit first (the
-`rev` of its entry, in a clone or the repository's web view), then:
+`commit` of its entry, in a clone or the repository's web view), then:
 
 - **Keep the pinned commit**: `skenv sync --adopt` backs up the installed
   copy and replaces it. To pin another commit first:
@@ -193,8 +199,8 @@ Compare the installed copy with the skill at the pinned commit first (the
 - **Keep your copy, unmanaged**: `skenv vendor remove <name>` drops the
   entry; the copy stays where it is and `doctor` reports it as unmanaged.
   Import already removed it from the lock of the skills CLI, so neither
-  tool updates it now: move it into an own repository to manage it with
-  skenv, add its name to `layout.ignore`, or give it back to the skills CLI
+  tool updates it now: move it into a checkout to manage it with skenv,
+  add its name to `user.unmanaged`, or give it back to the skills CLI
   by restoring its entry from the backup of the lock in
   `~/.local/state/skenv/backup/<timestamp>/`.
 
@@ -203,48 +209,48 @@ Compare the installed copy with the skill at the pinned commit first (the
 ## What `import` reads
 
 `import` looks at every entry of the store (`~/.agents/skills`, or
-`layout.store`) and of the agent directories (`~/.claude/skills`,
-`~/.pi/agent/skills`, or `layout.targets`), once per name:
+`user.storage.dir`) and of the agent directories (`~/.claude/skills`,
+`~/.pi/agent/skills`, or what `[user.agents]` selects), once per name:
 
 | Found                                            | Becomes                                                   |
 | ------------------------------------------------ | --------------------------------------------------------- |
-| a skill of the lock of the `skills` CLI          | `[[environment.vendor]]`                                  |
-| a link into a git working copy with an `origin`  | `[[environment.own]]`, with `skills = [...]` if partial   |
+| a skill of the lock of the `skills` CLI          | `[user.dependencies.<name>]`                              |
+| a link into a git working copy with an `origin`  | `[user.checkouts.<id>]`, with `include = [...]` if partial |
 | anything else                                    | reported as `unmanaged`, not imported                     |
 
 Skipped without a word: `~/.claude/skills/synced` (Claude's), links into
 `~/.claude/plugins` (skills of Claude Code plugins), names matching
-`layout.ignore`, and skills that are in the manifest already.
+`user.unmanaged`, and skills that are in the manifest already.
 
 **The lock of the `skills` CLI** is `~/.agents/.skill-lock.json` (or
 `$XDG_STATE_HOME/skills/.skill-lock.json`), version 3, as written by
 `npx skills add -g` (checked against skills 1.7.0). It pins no commit; each
-entry, keyed by the skill name, maps to a vendor entry like this:
+entry, keyed by the skill name, maps to a dependency like this:
 
 | Lock field        | Meaning                                                        | skenv                                             |
 | ----------------- | -------------------------------------------------------------- | ------------------------------------------------- |
-| entry key         | skill name                                                     | `name`                                            |
+| entry key         | skill name                                                     | the table key, `[user.dependencies.<name>]`       |
 | `source`          | `owner/repo` for GitHub, the URL for other hosts               | `repo` (GitHub)                                   |
 | `sourceType`      | `github`, `git`, `gitlab`, `local`, …                          | only git sources are imported                     |
 | `sourceUrl`       | clone URL                                                      | `repo` (other git hosts): the short form on GitLab, Codeberg or a host declared in the manifest (`gitlab:group/repo`, `<alias>:path`), the URL otherwise |
 | `ref`             | branch, tag or commit, only when installed as `owner/repo#ref` | where the commit is searched                      |
-| `skillPath`       | `…/SKILL.md` inside the repository                             | `path`: its directory, `.` for the root           |
-| `skillFolderHash` | GitHub: git tree id of the skill directory at install or update time; other hosts: a sha256 of its files |  finds `rev`, see below                            |
+| `skillPath`       | `…/SKILL.md` inside the repository                             | `skill_dir`: its directory, `.` for the root      |
+| `skillFolderHash` | GitHub: git tree id of the skill directory at install or update time; other hosts: a sha256 of its files | finds `commit`, see below                         |
 | `installedAt`, `updatedAt` | when the skill was installed, last updated            | where the search starts                           |
 
 The inverse mapping, from a manifest to the project lock
 `skills-lock.json`, is in [Manifest](manifest.md#mapping-to-skills-lockjson).
 
 **Links into a working copy**: a symlink whose target is a skill directory
-(with `SKILL.md`) inside a git working copy becomes an own repository:
-`repo` from its `origin` (the short form on GitHub, GitLab, Codeberg or a
-host declared in the manifest, see [Git hosts](git-hosts.md); the URL
-otherwise),
-`path` the working copy, `skills_dir` the directory that holds the skill.
-When only some skills of that directory are linked, the entry lists them
-in `skills` (see
-[Selecting skills](manifest.md#selecting-skills-of-an-own-repository)), so
-`sync` does not start linking the others.
+(with `SKILL.md`) inside a git working copy becomes a checkout, keyed by
+an ID derived from the repository name: `repo` from its `origin` (the
+short form on GitHub, GitLab, Codeberg or a host declared in the manifest,
+see [Git hosts](git-hosts.md); the URL otherwise), `checkout_dir` the
+working copy (`~/...` in your home, `"."` for the repository of the
+manifest), `skills_dir` the directory that holds the skill. When only some
+skills of that directory are linked, the entry lists them in `include`
+(see [Selecting skills](manifest.md#selecting-skills)), so `sync` does not
+start linking the others.
 
 ## How the commit of a skill is found
 
@@ -301,19 +307,19 @@ your machine's manifest (`--manifest` is refused with `--project`).
   new section keeps the default `dir` (`.agents/skills`, where the
   `skills` CLI installs) and lists the agent directories that exist,
   `.claude/skills` and `.pi/skills`, as `mirrors`. Each lock entry becomes
-  a `[[project.vendor]]` at the end of `[project]`, in the file's format,
-  with its comments kept; the diff is printed.
+  a `[project.dependencies.<name>]` at the end of `[project]`, in the
+  file's format, with its comments kept; the diff is printed.
 - **`skills-lock.json`**, version 1 (skills 1.7.0). Per skill:
 
   | Lock field     | Meaning                                                   | skenv                                          |
   | -------------- | --------------------------------------------------------- | ---------------------------------------------- |
-  | entry key      | skill name                                                | `name`                                         |
+  | entry key      | skill name                                                | the table key, `[project.dependencies.<name>]` |
   | `source`       | `owner/repo` for GitHub, the URL for other hosts          | `repo` (GitHub)                                |
   | `sourceType`   | `github`, `git`, `gitlab`, `local`, `node_modules`, …     | only git sources are imported; the others stay in the lock |
-  | `sourceUrl`    | clone URL (git and GitLab sources)                        | `repo`: the short form on GitLab, Codeberg or a host of `project.hosts`, the URL otherwise |
+  | `sourceUrl`    | clone URL (git and GitLab sources)                        | `repo`: the short form on GitLab, Codeberg or a host of `project.git_hosts`, the URL otherwise |
   | `ref`          | branch or tag, when installed as `owner/repo#ref`         | where the commit is searched                   |
-  | `skillPath`    | `…/SKILL.md` inside the repository                        | `path`: its directory, `.` for the root        |
-  | `computedHash` | sha256 of the skill's files at install time              | finds `rev`, see below                         |
+  | `skillPath`    | `…/SKILL.md` inside the repository                        | `skill_dir`: its directory, `.` for the root   |
+  | `computedHash` | sha256 of the skill's files at install time              | finds `commit`, see below                      |
 
   There are no dates: every commit that touched the skill directory is a
   candidate, newest first.

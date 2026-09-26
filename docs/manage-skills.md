@@ -8,7 +8,7 @@ after you commit **and push** it and they run `skenv sync`.
 - [Add a third-party skill](#add-a-third-party-skill)
 - [Update pinned skills](#update-pinned-skills)
 - [Remove a skill](#remove-a-skill)
-- [Add a repository of your own skills](#add-a-repository-of-your-own-skills)
+- [Add a checkout of your own skills](#add-a-checkout-of-your-own-skills)
 - [Skills of a project](#skills-of-a-project)
 
 Each command takes `--dry-run`; it writes nothing, but resolving a commit
@@ -22,24 +22,25 @@ skenv vendor add <owner>/<repo> --path <skill-dir>
 skenv vendor add <owner>/<repo> --path <skill-dir> --name <name> --rev <sha>
 ```
 
-A third-party skill is **pinned**: skenv records a full commit SHA and
-installs a copy of the skill at that commit. Nothing changes until you
+A third-party skill is a **dependency**, pinned: skenv records it as
+`[user.dependencies.<name>]` with a full commit SHA and installs a copy of
+the skill at that commit. Nothing changes until you
 update it.
 
 - `<owner>/<repo>` is on GitHub; `gitlab:group/sub/repo`,
-  `codeberg:owner/repo`, an alias from `[environment.hosts]` or a full URL
+  `codeberg:owner/repo`, `github:owner/repo`, an alias from `[user.git_hosts]` or a full URL
   work too (see [Git hosts](git-hosts.md)).
-- `--path` is the directory of the skill inside that repository. Leave it
-  out when the repository has exactly one `SKILL.md`.
-- `--name` defaults to the last element of `--path`, lowercased (the
-  repository name for `.`).
-- `--rev` defaults to HEAD of the default branch.
+- `--path` is the directory of the skill inside that repository, written
+  as `skill_dir`. Leave it out when the repository has exactly one `SKILL.md`.
+- `--name`, the table key, defaults to the last element of `--path`,
+  lowercased (the repository name for `.`).
+- `--rev` sets `commit`; it defaults to HEAD of the default branch.
 
 The skill is installed right away; check it with `skenv list`, then commit
 and push the manifest:
 
 ```sh
-git -C ~/src/<skills-repo> commit -m "chore(manifest): add vendor skill <name>" -- skenv.toml
+git -C ~/src/<skills-repo> commit -m "chore(manifest): add dependency <name>" -- skenv.toml
 git -C ~/src/<skills-repo> push
 ```
 
@@ -48,18 +49,18 @@ Reference: [skenv vendor add](commands/skenv_vendor_add.md).
 ## Update pinned skills
 
 ```sh
-skenv vendor update                     # every pinned skill
+skenv vendor update                     # every dependency
 skenv vendor update <name>...           # only these
 skenv vendor update <name> --rev <sha>  # one skill, to a given commit
 ```
 
 Each skill moves to HEAD of its default branch (or `--rev`) and is synced;
-for each one skenv shows `git log --oneline old..new -- <path>`, so you see
+for each one skenv shows `git log --oneline old..new -- <skill_dir>`, so you see
 what changed. `sync` alone never updates a pinned skill: applying the
 manifest and upgrading are separate steps. Alias: `upgrade`. Reference:
 [skenv vendor update](commands/skenv_vendor_update.md).
 
-Own skills need no update command: `skenv sync` pulls their repositories
+Checkouts need no update command: `skenv sync` pulls them
 (`git pull --ff-only`) on every run.
 
 ## Remove a skill
@@ -69,34 +70,34 @@ skenv vendor remove <name>
 ```
 
 Removes the entry from the manifest, and the store copy and links skenv
-created for it. Shell completion offers the pinned names. Reference:
+created for it. Shell completion offers the dependency names. Reference:
 [skenv vendor remove](commands/skenv_vendor_remove.md).
 
-A skill of an own repository is removed by deleting it from the repository
-(and pushing), or by leaving it out of that entry's selection (`skills` or
-`exclude`, see
-[Selecting skills](manifest.md#selecting-skills-of-an-own-repository));
-the next `skenv sync` removes its links.
+A skill of a checkout is removed by deleting it from the repository (and
+pushing), or by leaving it out of the checkout's selection (`include` or
+`exclude`, see [Selecting skills](manifest.md#selecting-skills)); the next
+`skenv sync` removes its links. The skill stays in the working copy.
 
-## Add a repository of your own skills
+## Add a checkout of your own skills
 
-An own repository is a git repository with skills in `skills/<name>/`
-(or `skills_dir`) that you edit. There is no command for it: add an entry
-to the manifest by hand, then sync:
+A checkout is a git repository with skills in `skills/<name>/` (or
+`skills_dir`) that you edit, kept as a working copy. There is no command
+for it: add a table to the manifest by hand, keyed by an ID of your
+choice, then sync:
 
 ```toml
-[[environment.own]]
-repo = "<owner>/<team-skills>"
-path = "~/src/<team-skills>"
-# skills = ["review", "deploy"]   # only these (default: all)
+[user.checkouts.team-skills]
+repo         = "<owner>/<team-skills>"
+checkout_dir = "~/src/<team-skills>"
+# include = ["review", "deploy"]   # only these (default: all)
 ```
 
 ```sh
-skenv sync        # clones it to path and links its skills
+skenv sync        # clones it to checkout_dir and links its skills
 skenv list        # its skills are "editable"
 ```
 
-The format, selection and per-host skips are in
+The format, selection and machine rules are in
 [Manifest format](manifest.md).
 
 ## Skills of a project
