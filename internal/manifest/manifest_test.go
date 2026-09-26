@@ -89,7 +89,7 @@ func TestEnabledUnsetVsEmpty(t *testing.T) {
 		}
 		// include = [] selects nothing: no error, no fallback to all.
 		c := m.Checkouts["a"]
-		if got, err := c.Select([]string{"x", "y"}); err != nil || len(got) != 0 {
+		if got, err := c.Select([]string{"x", "y"}, "~/x/skills"); err != nil || len(got) != 0 {
 			t.Errorf("%s: include = [] selected %v, %v", ext, got, err)
 		}
 		if m.Machines["m"].Selects("x") {
@@ -227,8 +227,8 @@ func TestReorderingInvariance(t *testing.T) {
 	m2, _ := Parse([]byte(checkout("include = [\"a\", \"b*\"]\nexclude = [\"ba\", \"bz\"]\n")), ".toml")
 	c1, c2 := m1.Checkouts["a"], m2.Checkouts["a"]
 	found := []string{"a", "ba", "bb", "bz", "c"}
-	s1, _ := c1.Select(found)
-	s2, _ := c2.Select(found)
+	s1, _ := c1.Select(found, "~/x/skills")
+	s2, _ := c2.Select(found, "~/x/skills")
 	if strings.Join(s1, ",") != strings.Join(s2, ",") || strings.Join(s1, ",") != "a,bb" {
 		t.Errorf("list order changes the selection: %v vs %v", s1, s2)
 	}
@@ -323,6 +323,10 @@ func TestUnmanaged(t *testing.T) {
 			t.Errorf("IsUnmanaged(%q) = %v", name, got)
 		}
 	}
+	// Other tools' entries need not be skill names.
+	if _, err := Parse([]byte("[user]\nunmanaged = [\"My_Tool\", \".hidden*\"]\n"), ".toml"); err != nil {
+		t.Errorf("unmanaged entry names: %v", err)
+	}
 	for _, bad := range []string{`unmanaged = ["[x"]`, `unmanaged = ["a/b"]`, `unmanaged = [""]`} {
 		if _, err := Parse([]byte("[user]\n"+bad+"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "user.unmanaged") {
 			t.Errorf("%s: err = %v", bad, err)
@@ -358,7 +362,7 @@ func TestCheckoutSelect(t *testing.T) {
 				t.Fatal(err)
 			}
 			co := m.Checkouts["a"]
-			got, err := co.Select(found)
+			got, err := co.Select(found, "~/x/skills")
 			res := strings.Join(got, " ")
 			if err != nil {
 				res = "error: " + err.Error()

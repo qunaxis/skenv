@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -111,6 +112,11 @@ func (h Hosts) ResolveIn(base, repo string) (Remote, error) {
 			return Remote{}, fmt.Errorf("repo %q: %w", s, err)
 		}
 		return r, nil
+	}
+	if s == "~" || strings.HasPrefix(s, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			s = filepath.Join(home, strings.TrimPrefix(s[1:], "/"))
+		}
 	}
 	if isLocal(s) && !filepath.IsAbs(s) {
 		if base != "" {

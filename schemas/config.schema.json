@@ -14,7 +14,7 @@
       "type": "string"
     },
     "machine": {
-      "description": "The name of this machine for user.machines.<name> of the manifest, which must then have that entry. Default: the full hostname if the manifest has rules for it, else the short hostname. Overridden by the flag --machine and the environment variable SKENV_MACHINE; precedence: flag, environment variable, this file, default.",
+      "description": "The name of this machine for user.machines.<name> of the manifest, which must then have that entry. Default: the full hostname if the manifest has rules for it, else the short hostname. Overridden by the environment variable SKENV_MACHINE; precedence: environment variable, this file, default.",
       "type": "string"
     }
   },

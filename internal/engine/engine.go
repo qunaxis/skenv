@@ -383,7 +383,7 @@ func (e *Engine) skills() ([]Skill, error) {
 		// include and exclude select from the repository; M1 is checked on
 		// the selection, before the machine rules, so the manifest is valid
 		// or not the same way on every machine.
-		sel, err := c.Select(found)
+		sel, err := c.Select(found, e.show(dir))
 		if err != nil {
 			return nil, fmt.Errorf("manifest %s: %w", e.show(e.manifestPath), err)
 		}

@@ -294,7 +294,6 @@ func (g *gen) skenv() *Schema {
 	runner := func(s *Schema, key string) {
 		p := s.Properties.get(key)
 		p.Default = harness.DefaultRunner
-		p.MinItems = 1
 		p.Items.Pattern = `^[A-Za-z0-9._:/-]+$`
 		p.Items.PatternErrorMessage = "A runner label: letters, digits and . _ : / -"
 	}
@@ -365,8 +364,13 @@ const schemaKey = "$schema"
 func (g *gen) config() *Schema {
 	s := g.object(reflect.TypeFor[config.Config]())
 	for _, p := range s.Properties {
-		p.Schema.Description += fmt.Sprintf(" Overridden by the flag --%s and the environment variable %s; "+
-			"precedence: flag, environment variable, this file, default.", p.Name, config.EnvVar(p.Name))
+		if p.Name == "manifest" {
+			p.Schema.Description += fmt.Sprintf(" Overridden by the flag --%s and the environment variable %s; "+
+				"precedence: flag, environment variable, this file, default.", p.Name, config.EnvVar(p.Name))
+			continue
+		}
+		p.Schema.Description += fmt.Sprintf(" Overridden by the environment variable %s; "+
+			"precedence: environment variable, this file, default.", config.EnvVar(p.Name))
 	}
 	s.Properties = append(Props{{schemaKey, &Schema{Type: "string", Description: "The URL of this schema, for editors. skenv ignores it."}}}, s.Properties...)
 	s.Title = "skenv tool config"

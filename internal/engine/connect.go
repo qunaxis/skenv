@@ -202,6 +202,7 @@ func ownElsewhere(ctx context.Context, env Env, m *manifest.Manifest, dir string
 	}
 	mc, err := machineOf(env, m)
 	if err != nil {
+		fmt.Fprintf(env.Stderr, "warning: %s; checkout_dir overrides of the machine are not applied\n", err)
 		mc = machine{}
 	}
 	pathOf := checkoutPathOf(env, m, mc)

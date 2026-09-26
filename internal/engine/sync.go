@@ -283,7 +283,9 @@ func (e *Engine) syncDependency(s Skill) {
 	d := s.Dependency
 	dst := e.storePath(s.Name)
 	remote, _ := e.m.Remote(d.Repo) // Validate resolved it already
-	if e.st.Is(dst) {
+	// Only a copy skenv made there counts: after a change of storage.dir a
+	// link of an agent directory may stand where the store now is.
+	if e.owned(dst) && e.st.Managed[dst].Kind == state.VendorDir {
 		if mk, err := readMarker(dst); err == nil && mk.matches(remote, d.SkillDir, d.Commit) {
 			e.manage(dst, state.Entry{Kind: state.VendorDir, Skill: s.Name})
 			return

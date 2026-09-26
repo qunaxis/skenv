@@ -208,7 +208,7 @@ team = "~/work/shared-skills"     # checkout ID = where it is on this machine
 
 The machine name is, first match wins:
 
-1. `machine` in the [tool config](configuration.md), or `$SKENV_MACHINE`.
+1. `$SKENV_MACHINE`, else `machine` in the [tool config](configuration.md).
    The manifest must then have a `[user.machines.<name>]` entry (it may be
    empty); otherwise commands stop with an error that lists the names the
    manifest has.

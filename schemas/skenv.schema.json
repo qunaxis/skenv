@@ -113,7 +113,6 @@
             "pattern": "^[A-Za-z0-9._:/-]+$",
             "patternErrorMessage": "A runner label: letters, digits and . _ : / -"
           },
-          "minItems": 1,
           "default": [
             "self-hosted",
             "linux",
@@ -135,7 +134,6 @@
             "pattern": "^[A-Za-z0-9._:/-]+$",
             "patternErrorMessage": "A runner label: letters, digits and . _ : / -"
           },
-          "minItems": 1,
           "default": [
             "self-hosted",
             "linux",
@@ -177,7 +175,7 @@
           }
         },
         "machines": {
-          "description": "Holds rules for one machine each, keyed by the machine name: the tool config `machine`, else $SKENV_MACHINE, else the full hostname, else the short one (never both).",
+          "description": "Holds rules for one machine each, keyed by the machine name: $SKENV_MACHINE, else the tool config `machine`, else the full hostname, else the short one (never both).",
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/machine"

@@ -45,7 +45,7 @@ type Manifest struct {
 	// across checkouts and dependencies.
 	Dependencies map[string]Dependency `toml:"dependencies" yaml:"dependencies" json:"dependencies"`
 	// Machines holds rules for one machine each, keyed by the machine name:
-	// the tool config `machine`, else $SKENV_MACHINE, else the full
+	// $SKENV_MACHINE, else the tool config `machine`, else the full
 	// hostname, else the short one (never both).
 	Machines map[string]Machine `toml:"machines" yaml:"machines" json:"machines"`
 	// Agents chooses the agent directories that get a link per skill.
@@ -268,7 +268,7 @@ func ParseIn(data []byte, ext, dir string) (*Manifest, error) {
 // checkouts are listed.
 func (m *Manifest) Validate() error {
 	var errs []error
-	errs = append(errs, checkPatterns("user.unmanaged", m.Unmanaged)...)
+	errs = append(errs, checkGlobs("user.unmanaged", m.Unmanaged)...)
 	errs = append(errs, m.GitHosts.validate()...)
 	for _, c := range m.CheckoutList() {
 		where := "user.checkouts." + c.ID
@@ -354,6 +354,18 @@ func checkSelection(where string, include, exclude []string) []error {
 	return errs
 }
 
+// checkGlobs validates glob patterns over entry names: any name, since
+// they match paths of other tools too.
+func checkGlobs(where string, pats []string) []error {
+	var errs []error
+	for _, pat := range pats {
+		if _, err := path.Match(pat, ""); err != nil || pat == "" || strings.Contains(pat, "/") {
+			errs = append(errs, fmt.Errorf("%s: %q must be a glob over entry names (no \"/\")", where, pat))
+		}
+	}
+	return errs
+}
+
 // checkPatterns validates skill names and glob patterns over names.
 func checkPatterns(where string, pats []string) []error {
 	var errs []error
@@ -394,7 +406,7 @@ func (m *Manifest) IsUnmanaged(name string) bool { return matchAny(m.Unmanaged, 
 // Select returns the names in found (the skills of the repository) that c
 // installs: include (all when omitted), minus exclude. A literal name in
 // include that is not in found is an error.
-func (c *Checkout) Select(found []string) ([]string, error) {
+func (c *Checkout) Select(found []string, dir string) ([]string, error) {
 	var missing []string
 	for _, n := range c.Include {
 		if !IsPattern(n) && !slices.Contains(found, n) {
@@ -402,8 +414,8 @@ func (c *Checkout) Select(found []string) ([]string, error) {
 		}
 	}
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("user.checkouts.%s: include lists %s, not found in %s/%s (a directory with SKILL.md)",
-			c.ID, quoteAll(missing), c.CheckoutDir, c.SkillsDir)
+		return nil, fmt.Errorf("user.checkouts.%s: include lists %s, not found in %s (a directory with SKILL.md)",
+			c.ID, quoteAll(missing), dir)
 	}
 	var out []string
 	for _, n := range found {

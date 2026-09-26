@@ -106,6 +106,20 @@ func TestStorageMove(t *testing.T) {
 		t.Error("~/.agents/skills is not linked as an extra directory")
 	}
 	w.mustRun(1, "doctor") // the manifest edit is uncommitted: dirty
+
+	// The store moved onto an agent directory: the links there are
+	// replaced by the copies, and a second sync finds nothing to do.
+	writeFile(t, manifest, strings.Replace(readFile(t, manifest), `dir = "~/.local/share/skenv/skills"`, `dir = "~/.claude/skills"`, 1))
+	w.mustRun(0, "sync", "--quiet")
+	if !w.exists(".claude/skills/archify/.skenv") {
+		t.Error("the dependency is not copied into the new store")
+	}
+	if _, errOut := w.mustRun(0, "sync"); strings.Contains(errOut, "conflict") || strings.Contains(errOut, "error") {
+		t.Errorf("second sync after moving the store onto an agent directory:\n%s", errOut)
+	}
+	if !w.exists(".claude/skills/archify/.skenv") || w.readlink(".agents/skills/archify") != "../../.claude/skills/archify" {
+		t.Error("the store and its links do not survive a second sync")
+	}
 }
 
 // Machine rules: an explicit machine ($SKENV_MACHINE or the tool config)
