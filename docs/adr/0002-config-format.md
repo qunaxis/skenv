@@ -220,8 +220,9 @@ Keys not in the table:
    writes it. The tool config records the manifest as an absolute path
    (unchanged). This fixes today's behavior, where a relative `own.path`
    depends on the working directory of the command.
-2. **Machine rules.** The machine name is the tool config `machine`, else
-   `$SKENV_MACHINE`, else the hostname: the rules of
+2. **Machine rules.** The machine name is `$SKENV_MACHINE`, else the tool
+   config `machine` (the usual precedence: environment over config file),
+   else the hostname: the rules of
    `machines."<full hostname>"` when present, otherwise those of
    `machines."<short hostname>"`. Rules of the two are never merged. An
    explicitly configured name with no `machines.<name>` entry is an error
@@ -387,15 +388,17 @@ Project support exists, so the rules are concrete:
 
 ## Errors for the old format
 
-Parsing stops at the first old key with a message that names its
-replacement, for example:
+Parsing stops on any old key with one error that lists every old key in
+the file with its replacement, so one pass fixes the file, for example:
 
 ```text
-skenv.toml: [environment] was renamed to [user] in skenv 0.6: see https://qunaxis.github.io/skenv/skenv-file#moving-to-the-0-6-format
-skenv.toml: user.own: renamed to user.checkouts.<id> (a table per checkout, keyed by an ID) …
+skenv.toml: this skenv file uses keys of skenv before 0.6; rename them (https://qunaxis.github.io/skenv/skenv-file#moving-to-the-0-6-format):
+  [environment] → [user]
+  environment.own → user.checkouts.<id>, one table per checkout keyed by an ID ([user.checkouts.<id>])
+  environment.own.path → checkout_dir
 ```
 
-Every row of the mapping above has such a message, including `skills`
+Every row of the mapping above has such a line, including `skills`
 (→ `include`), `host`/`hosts` (→ `machines`/`git_hosts`) and the two
 `path`s (→ `checkout_dir`, `skill_dir`). `docs/skenv-file.md` gets a manual
 migration table with examples in TOML, YAML and JSON.
