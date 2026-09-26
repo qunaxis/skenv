@@ -49,6 +49,9 @@ type ListReport struct {
 	NotCloned []string `json:"not_cloned"`
 	// NoSkills are checkouts whose working copy has no skill yet.
 	NoSkills []string `json:"no_skills"`
+	// Blocked are checkouts whose directory is not a working copy of
+	// their repo: their skills are not used.
+	Blocked []string `json:"blocked"`
 }
 
 // List prints every skill of the manifest with its source and whether it
@@ -59,7 +62,7 @@ func (e *Engine) List(asJSON bool) (int, error) {
 	if err != nil {
 		return ExitFatal, err
 	}
-	r := &ListReport{Manifest: e.show(e.manifestPath), Store: e.show(e.store), Targets: []string{}, Skills: []ListEntry{}, NotCloned: []string{}, NoSkills: []string{}}
+	r := &ListReport{Manifest: e.show(e.manifestPath), Store: e.show(e.store), Targets: []string{}, Skills: []ListEntry{}, NotCloned: []string{}, NoSkills: []string{}, Blocked: []string{}}
 	for _, t := range e.targets {
 		r.Targets = append(r.Targets, e.show(t))
 	}
@@ -69,6 +72,10 @@ func (e *Engine) List(asJSON bool) (int, error) {
 	// The skills of the manifest that are not installed here: e.unselected
 	// holds them once skills() ran.
 	for _, c := range e.m.CheckoutList() {
+		if why := e.checkoutBlocked(c); why != "" {
+			r.Blocked = append(r.Blocked, fmt.Sprintf("%s: %s %s", c.ID, e.show(e.checkoutPath(c)), gitx.Mask(why)))
+			continue
+		}
 		found, err := e.checkoutSkills(c)
 		if err != nil {
 			r.NotCloned = append(r.NotCloned, fmt.Sprintf("%s: %s (%s)", c.ID, gitx.Mask(c.Repo), e.show(e.checkoutPath(c))))
@@ -167,6 +174,9 @@ func (e *Engine) printList(r *ListReport) error {
 	}
 	for _, repo := range r.NotCloned {
 		fmt.Fprintf(out, "not cloned: %s; run `skenv sync`\n", repo)
+	}
+	for _, b := range r.Blocked {
+		fmt.Fprintf(out, "not used: %s; fix checkout_dir or repo\n", b)
 	}
 	return nil
 }

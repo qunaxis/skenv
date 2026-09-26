@@ -83,6 +83,12 @@ type Checkout struct {
 	// SkillsDir is the directory inside the repository whose
 	// subdirectories with a SKILL.md are the skills. Default: "skills".
 	SkillsDir string `toml:"skills_dir" yaml:"skills_dir" json:"skills_dir"`
+	// Branch is the branch sync keeps the working copy on: it is cloned
+	// with it and fast-forwarded from origin while the working copy is
+	// clean and on it. Default: the default branch of the remote. Sync
+	// never switches branches: a working copy on another branch is local
+	// development state, linked as it is and not updated.
+	Branch string `toml:"branch" yaml:"branch" json:"branch"`
 	// Include lists skill names and glob patterns over names (no "/") of
 	// the skills to install. Omitted: every skill, including ones added
 	// later; [] selects none. A name without a pattern that is not a skill
@@ -163,10 +169,15 @@ var (
 	idRe  = regexp.MustCompile(IDPattern)
 
 	bareKeyRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	branchRe  = regexp.MustCompile(BranchPattern)
 )
 
 // RevPattern is a full lowercase commit SHA (M2).
 const RevPattern = `^[0-9a-f]{40}$`
+
+// BranchPattern is the rule for checkouts.<id>.branch: a git branch name
+// without "..", "@{", a leading "-" or "/" and a trailing "/" or ".lock".
+const BranchPattern = `^[A-Za-z0-9_][A-Za-z0-9._/-]*$`
 
 // IDPattern is the rule for the ID of a checkout or a [project.from]
 // entry.
@@ -285,6 +296,10 @@ func (m *Manifest) Validate() error {
 		}
 		if !cleanRel(c.SkillsDir) {
 			errs = append(errs, fmt.Errorf("%s: skills_dir %q must be a relative path inside the repository", where, c.SkillsDir))
+		}
+		if c.Branch != "" && (!branchRe.MatchString(c.Branch) || strings.Contains(c.Branch, "..") || strings.Contains(c.Branch, "//") ||
+			strings.HasSuffix(c.Branch, "/") || strings.HasSuffix(c.Branch, ".lock") || strings.HasSuffix(c.Branch, ".")) {
+			errs = append(errs, fmt.Errorf("%s: branch %q is not a branch name", where, c.Branch))
 		}
 		errs = append(errs, checkSelection(where, c.Include, c.Exclude)...)
 	}

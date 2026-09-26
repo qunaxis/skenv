@@ -143,8 +143,12 @@ func (e *Engine) Link() (int, error) {
 	return e.finish("link")
 }
 
-// syncCheckouts clones missing checkouts and fast-forwards clean ones.
-// Dirty or diverged working copies are left alone with a warning.
+// syncCheckouts clones missing checkouts and fast-forwards the others
+// that are clean and on their branch (docs/adr/0002-config-format.md, gap
+// 2). Nothing is reset, switched, stashed or cloned again: a working copy
+// that is not the declared repository is an unresolved error, one on
+// another branch, with uncommitted changes or diverged is local
+// development state, reported as unresolved and left as it is.
 func (e *Engine) syncCheckouts() {
 	for _, c := range e.m.CheckoutList() {
 		dir := e.checkoutPath(c)
@@ -159,20 +163,33 @@ func (e *Engine) syncCheckouts() {
 				e.errorf("clone %s: %v", c.Repo, err)
 				continue
 			}
-			if _, err := e.env.Git.Run(e.ctx, "", "clone", "--quiet", remote.URL, dir); err != nil {
+			args := []string{"clone", "--quiet"}
+			if c.Branch != "" {
+				args = append(args, "--branch", c.Branch)
+			}
+			if _, err := e.env.Git.Run(e.ctx, "", append(args, remote.URL, dir)...); err != nil {
 				e.errorf("clone %s: %v (%s)", c.Repo, err, remote.AccessHint())
 			}
 			continue
 		}
-		if !e.env.Git.OK(e.ctx, dir, "rev-parse", "--is-inside-work-tree") {
-			e.warnf("%s exists but is not a git working copy; leaving it alone (checkout %s)", e.show(dir), c.ID)
+		if why := e.checkoutBlocked(c); why != "" {
+			e.unresolvedf(true, "%s %s; it is left as it is and its skills are not linked (fix checkout_dir or repo of checkout %s)", e.show(dir), why, c.ID)
+			continue
+		}
+		target, err := e.targetBranch(dir, c)
+		if err != nil {
+			e.unresolvedf(false, "%s: the default branch of origin is unknown (offline?): not updated; set branch of checkout %s", e.show(dir), c.ID)
+			continue
+		}
+		if cur := e.currentBranch(dir); cur != target {
+			e.unresolvedf(false, "%s is on %s, not %s: local development state, not updated; its skills are linked as checked out", e.show(dir), onBranch(cur), target)
 			continue
 		}
 		if out, err := e.env.Git.Run(e.ctx, dir, "status", "--porcelain"); err != nil {
 			e.warnf("%s: %v", e.show(dir), err)
 			continue
 		} else if out != "" {
-			e.warnf("%s has uncommitted changes; not pulling (commit or stash, then rerun sync)", e.show(dir))
+			e.unresolvedf(false, "%s has uncommitted changes: local development state, not updated (commit or stash, then rerun sync)", e.show(dir))
 			continue
 		}
 		before, _ := e.env.Git.Run(e.ctx, dir, "rev-parse", "HEAD")
@@ -182,8 +199,8 @@ func (e *Engine) syncCheckouts() {
 			e.infof("would pull --ff-only %s (not pulled by --dry-run: the plan uses its current commit)", e.show(dir))
 			continue
 		}
-		if _, err := e.env.Git.Run(e.ctx, dir, "pull", "--ff-only", "--quiet"); err != nil {
-			e.warnf("%s: not updated, pull --ff-only failed (diverged from upstream or offline?): %v", e.show(dir), err)
+		if _, err := e.env.Git.Run(e.ctx, dir, "pull", "--ff-only", "--quiet", "origin", target); err != nil {
+			e.unresolvedf(false, "%s: not updated, it has diverged from origin/%s (or origin is unreachable): %v", e.show(dir), target, err)
 			continue
 		}
 		if after, _ := e.env.Git.Run(e.ctx, dir, "rev-parse", "HEAD"); after != before {

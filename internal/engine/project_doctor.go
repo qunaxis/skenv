@@ -55,6 +55,7 @@ func (e *ProjectEngine) Doctor(asJSON bool) (int, error) {
 	if w := e.ignoredWarning(); w != "" {
 		r.Warnings = append(r.Warnings, w)
 	}
+	r.Warnings = append(r.Warnings, e.shadowed(e.user)...)
 	names := e.skillNames()
 	r.Skills = len(names)
 	for _, m := range e.p.Mirrors {

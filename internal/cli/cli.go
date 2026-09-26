@@ -130,7 +130,7 @@ skenv doctor`,
 	addTo(root, groupStart, initCmd(a), cloneCmd(a), useCmd(a), importCmd(a))
 	addTo(root, groupEveryday, syncCmd(a, "sync"), listCmd(a), doctorCmd(a), vendorCmd(a), syncCmd(a, "link"))
 	addTo(root, groupAuthor, newCmd(a), lintCmd(a), repoCmd(a))
-	addTo(root, groupMachine, autostartCmd(a), schemaCmd(a), &cobra.Command{
+	addTo(root, groupMachine, configCmd(a), autostartCmd(a), schemaCmd(a), &cobra.Command{
 		Use:     "version",
 		Short:   "Print the skenv version",
 		Example: "skenv version",
@@ -673,11 +673,17 @@ every skill of dir to each mirror. It changes a skill authored in dir only
 with --adopt, after a backup.
 --manifest syncs the machine from there; --project requires a project.
 
-Exit code 0 even with warnings: a checkout with uncommitted changes or a
-diverged branch is left as it is, with a warning, and the rest is synced.
-` + "`skenv doctor`" + ` exits 0 only when the machine matches the manifest. With
---dry-run nothing is pulled, so the plan uses the checkouts (and a manifest
-inside one) as they are now.
+A checkout is fast-forwarded from origin only when it is clean and on its
+branch (branch in the manifest, else the default branch of origin). sync
+never resets, switches, stashes or re-clones: a checkout on another branch
+or a detached HEAD, with uncommitted changes or diverged from origin is
+local development state, printed as "unresolved:" and linked as it is;
+exit code 0. A checkout_dir that is not a working copy of its repo (another
+origin, no git) is an unresolved error: its skills are not linked, links it
+had are kept, nothing in it changes, exit code 1. The summary counts the
+unresolved. ` + "`skenv doctor`" + ` exits 0 only when the machine matches the
+manifest. With --dry-run nothing is pulled, so the plan uses the checkouts
+(and a manifest inside one) as they are now.
 
 - Reads: the manifest, the checkouts, the store (user.storage.dir, default
   ~/.agents/skills), the agent directories and the state file
@@ -762,7 +768,9 @@ but runs ` + "`git fetch`" + ` in each checkout (network access; it updates thei
 remote-tracking branches) to report unpushed and behind.
 Classes: missing, extra-managed, unmanaged, wrong-rev, broken-link, conflict,
 dirty, unpushed, behind, agent-mismatch, manifest-checkout (the manifest is
-not in the working copy its checkout names, so sync never pulls it).
+not in the working copy its checkout names, so sync never pulls it),
+wrong-origin (a checkout_dir that is not a working copy of its repo) and
+wrong-branch (a checkout not on the branch sync keeps it on).
 
 In a project (a git repository whose skenv file has [project]), doctor
 compares the project with its [project] section instead, offline, so it can
@@ -1042,6 +1050,60 @@ func pinnedNames(ctx context.Context, env engine.Env, project bool, manifestFlag
 		names = append(names, d.Name)
 	}
 	return names, nil
+}
+
+func configCmd(a *app) *cobra.Command {
+	o := engine.Options{ReadOnly: true}
+	var asJSON bool
+	show := &cobra.Command{
+		Use:   "show",
+		Short: "Show the effective configuration and why each skill is installed or not",
+		Long: `Show the configuration as it applies on this machine: the manifest and where
+its location came from (--manifest, $SKENV_MANIFEST or the tool config),
+the machine name and its source (the tool config "machine",
+$SKENV_MACHINE, the full or the short hostname) with the machine rules
+that apply, $HOME and $CLAUDE_CONFIG_DIR, the store, each agent directory
+with why it is on or off (listed, detected, not detected), each checkout
+with its resolved directory, the branch sync keeps it on and its state,
+and each skill of the checkouts and dependencies with why it is installed
+or not (include, exclude, machine rules). The raw configuration is the
+skenv file itself.
+
+The file alone does not reproduce everything: dependencies are pinned to
+a commit, but checkouts follow their branch and local edits, and agent
+detection, the machine name and $HOME come from the machine. The output
+ends with that note.
+
+- Reads: the tool config, the manifest, the checkouts (local git commands)
+  and the agent directories.
+- Changes: nothing.
+- Network: none.
+- Next: "skenv list" for what is installed, "skenv doctor" to check.`,
+		Example: `# Why is a skill installed on this machine, or not?
+skenv config show`,
+		Args: nArgs(0),
+		RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
+			_, source, err := engine.ManifestSource(ctx, env, o.Manifest)
+			if err != nil {
+				return engine.ExitFatal, err
+			}
+			e, err := engine.Open(ctx, env, o)
+			if err != nil {
+				return engine.ExitFatal, err
+			}
+			defer e.Close()
+			r, err := e.Explain(source)
+			if err != nil {
+				return engine.ExitFatal, err
+			}
+			return engine.ExitOK, e.PrintEffective(r, asJSON)
+		}),
+	}
+	manifestFlag(show.Flags(), &o)
+	show.Flags().BoolVar(&asJSON, "json", false, "print the configuration as JSON")
+	c := group("config", "Show the effective configuration of this machine", show)
+	c.Example = "skenv config show\nskenv config show --json"
+	return c
 }
 
 func schemaCmd(a *app) *cobra.Command {

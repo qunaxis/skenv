@@ -121,7 +121,11 @@ func TestOwnSelection(t *testing.T) {
 	writeFile(t, w.path(ownPath+"/skenv.toml"), selectManifest(rev, "exclude = [\"exp-*\", \"gamma\"]\n",
 		"\n[user.machines.\""+host+"\"]\nexclude = [\"alpha\"]\n"))
 	out, _ = w.mustRun(1, "doctor")
-	if !strings.Contains(out, "excluded on this machine (user.machines."+strconv.Quote(host)+")") {
+	key := host
+	if strings.ContainsAny(host, ".") {
+		key = strconv.Quote(host)
+	}
+	if !strings.Contains(out, "excluded on this machine (user.machines."+key+")") {
 		t.Errorf("doctor must explain the skipped skill:\n%s", out)
 	}
 	w.git(w.path(ownPath), "checkout", "--quiet", "--", "skenv.toml")

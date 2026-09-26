@@ -294,6 +294,8 @@ func TestSchemaAndParserAgree(t *testing.T) {
 		{"null machine", ".json", `{"user": {"machines": {"mac": null}}}`, false, "want object"},
 		{"number in runs_on", ".yaml", "repository: {template_version: 0.4.0, visibility: private, ci: {github: {runs_on: [1]}}}\n", false, "want string"},
 		{"unquoted numeric commit", ".yaml", "user:\n  dependencies:\n    a: {repo: a/b, commit: " + strings.Repeat("1", 40) + "}\n", false, "want string"},
+		{"checkout branch", ".toml", checkoutEntry + "branch = \"release/1.x\"\n", true, ""},
+		{"checkout branch option", ".toml", checkoutEntry + "branch = \"-x\"\n", false, "does not match pattern"},
 		{"checkout selection", ".toml", checkoutEntry + "include = [\"alpha\", \"beta-*\"]\nexclude = [\"exp-*\"]\n", true, ""},
 		{"empty include", ".toml", checkoutEntry + "include = []\n", true, ""},
 		{"duplicate include", ".toml", checkoutEntry + "include = [\"a\", \"a\"]\n", false, "items at 0 and 1 are equal"},

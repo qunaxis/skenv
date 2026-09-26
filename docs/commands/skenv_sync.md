@@ -21,11 +21,17 @@ every skill of dir to each mirror. It changes a skill authored in dir only
 with `--adopt`, after a backup.
 `--manifest` syncs the machine from there; `--project` requires a project.
 
-Exit code 0 even with warnings: a checkout with uncommitted changes or a
-diverged branch is left as it is, with a warning, and the rest is synced.
-`skenv doctor` exits 0 only when the machine matches the manifest. With
-`--dry-run` nothing is pulled, so the plan uses the checkouts (and a manifest
-inside one) as they are now.
+A checkout is fast-forwarded from origin only when it is clean and on its
+branch (branch in the manifest, else the default branch of origin). sync
+never resets, switches, stashes or re-clones: a checkout on another branch
+or a detached HEAD, with uncommitted changes or diverged from origin is
+local development state, printed as "unresolved:" and linked as it is;
+exit code 0. A checkout_dir that is not a working copy of its repo (another
+origin, no git) is an unresolved error: its skills are not linked, links it
+had are kept, nothing in it changes, exit code 1. The summary counts the
+unresolved. `skenv doctor` exits 0 only when the machine matches the
+manifest. With `--dry-run` nothing is pulled, so the plan uses the checkouts
+(and a manifest inside one) as they are now.
 
 - Reads: the manifest, the checkouts, the store (`user.storage.dir`, default
   `~/.agents/skills`), the agent directories and the state file

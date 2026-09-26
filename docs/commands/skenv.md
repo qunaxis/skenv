@@ -62,6 +62,7 @@ $ skenv doctor
 * [skenv autostart](skenv_autostart.md)	 - Run `skenv sync --quiet` at login and every hour
 * [skenv clone](skenv_clone.md)	 - Clone a manifest repository and use its manifest on this machine
 * [skenv completion](skenv_completion.md)	 - Generate the autocompletion script for bash, zsh or fish
+* [skenv config](skenv_config.md)	 - Show the effective configuration of this machine
 * [skenv doctor](skenv_doctor.md)	 - Compare the machine with the manifest, or a project with its `[project]`
 * [skenv import](skenv_import.md)	 - Add the skills already installed on this machine, or in a project, to the skenv file
 * [skenv init](skenv_init.md)	 - Start a manifest in a git repository

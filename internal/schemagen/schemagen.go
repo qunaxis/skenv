@@ -228,6 +228,10 @@ func (g *gen) skenv() *Schema {
 	machineDirs.AdditionalProperties = &Schema{Type: "string", MinLength: 1}
 	machineDirs.PropertyNames = idNames
 
+	branch := checkout.Properties.get("branch")
+	branch.Pattern = manifest.BranchPattern
+	branch.PatternErrorMessage = "A git branch name."
+	branch.Examples = []any{"main"}
 	checkout.Required = []string{"repo", "checkout_dir"}
 	checkout.Properties.get("repo").MinLength = 1
 	checkout.Properties.get("checkout_dir").MinLength = 1

@@ -73,6 +73,10 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 	if err := e.checkDirs(); err != nil {
 		return ExitFatal, fmt.Errorf("%s: %w", e.show(file), err)
 	}
+	e.user = userDirs(ctx, env)
+	if err := e.checkScope(e.user); err != nil {
+		return ExitFatal, fmt.Errorf("%s: %w", e.show(file), err)
+	}
 	if !dryRun {
 		if err := e.lock(); err != nil {
 			return ExitFatal, err

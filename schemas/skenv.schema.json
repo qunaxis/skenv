@@ -241,6 +241,15 @@
           "default": "skills",
           "patternErrorMessage": "A relative path inside the repository (\".\" for its root), without \"..\", empty segments or a trailing \"/\"."
         },
+        "branch": {
+          "description": "The branch sync keeps the working copy on: it is cloned with it and fast-forwarded from origin while the working copy is clean and on it. Default: the default branch of the remote. Sync never switches branches: a working copy on another branch is local development state, linked as it is and not updated.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9._/-]*$",
+          "examples": [
+            "main"
+          ],
+          "patternErrorMessage": "A git branch name."
+        },
         "include": {
           "description": "Lists skill names and glob patterns over names (no \"/\") of the skills to install. Omitted: every skill, including ones added later; [] selects none. A name without a pattern that is not a skill of the repository is an error.",
           "type": "array",

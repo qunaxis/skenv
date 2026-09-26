@@ -17,9 +17,9 @@ remove release-notes from ~/.agents/.skill-lock.json, so that the skills CLI no 
 import: 1 manifest entry (1 unmatched), 1 removed from the skills lock, 1 unmanaged, 0 warnings, 0 errors
 manifest changed but not committed; to commit:
   git -C ~/src/skills commit -m "chore(manifest): import installed skills" -- skenv.toml
-warning: ~/src/skills has uncommitted changes; not pulling (commit or stash, then rerun sync)
+unresolved: ~/src/skills has uncommitted changes: local development state, not updated (commit or stash, then rerun sync)
 leave ~/.agents/skills/release-notes as it is: release-notes was pinned without a matching commit, so it is not taken over
-sync: 0 changes, 1 warnings, 0 errors
+sync: 0 changes, 1 unresolved, 0 warnings, 0 errors
 recorded in ~/src/skills/skenv.toml: release-notes
 taken over: none
 left as installed (unmatched): release-notes; decide for each:

@@ -11,6 +11,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -80,6 +81,9 @@ type base struct {
 	changes  int
 	warnings int
 	errs     int
+	// unresolved counts what a command could not bring into the desired
+	// state and left as it is (a checkout on another branch, say).
+	unresolved int
 }
 
 func newBase(ctx context.Context, env Env, opts Options) base {
@@ -125,9 +129,14 @@ type Engine struct {
 	rules       manifest.Machine
 	hasRules    bool
 
-	// checkoutUnavailable is set when a checkout could not be listed;
-	// pruning is skipped then so its links are not mistaken for stale ones.
+	// checkoutUnavailable is set when a checkout could not be listed or is
+	// blocked; pruning is skipped then so its links are not mistaken for
+	// stale ones.
 	checkoutUnavailable bool
+	// blocked caches, by checkout ID, why a working copy is not the
+	// declared repository ("" when it is, or is missing). Reset by
+	// setManifest.
+	blocked map[string]string
 	// unselected says why a skill that exists is not installed here: not
 	// selected by include/exclude of its checkout, or by the rules of this
 	// machine. Set by skills.
@@ -222,6 +231,7 @@ func (e *Engine) setManifest(m *manifest.Manifest) error {
 	e.m = m
 	e.hosts = m.GitHosts
 	e.hostsDir = m.Dir
+	e.blocked = map[string]string{}
 	e.store = e.layout.DefaultStore()
 	if m.Storage.Dir != "" {
 		e.store = m.Path(e.env.Home, m.Storage.Dir)
@@ -365,7 +375,15 @@ func (e *Engine) checkoutSkills(c *manifest.Checkout) ([]string, error) {
 }
 
 // machineRule names the rules of this machine in messages.
-func (e *Engine) machineRule() string { return fmt.Sprintf("user.machines.%q", e.machine) }
+func (e *Engine) machineRule() string {
+	if bareKey.MatchString(e.machine) {
+		return "user.machines." + e.machine
+	}
+	return fmt.Sprintf("user.machines.%q", e.machine)
+}
+
+// bareKey is a key TOML writes without quotes.
+var bareKey = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 // skills lists every skill of the manifest that this machine installs.
 // Checkouts that are not cloned yet contribute no skills.
@@ -375,6 +393,12 @@ func (e *Engine) skills() ([]Skill, error) {
 	e.unselected = map[string]string{}
 	for _, c := range e.m.CheckoutList() {
 		dir := e.checkoutSkillsDir(c)
+		if e.checkoutBlocked(c) != "" {
+			// Not the declared repository: none of its skills, and no
+			// pruning of the links it had.
+			e.checkoutUnavailable = true
+			continue
+		}
 		found, err := e.checkoutSkills(c)
 		if err != nil {
 			e.checkoutUnavailable = true
@@ -517,18 +541,33 @@ func (e *Engine) finish(cmd string) (int, error) {
 	return e.summary(cmd), nil
 }
 
+// unresolvedf reports what the command leaves as it is, not in the
+// desired state: an error when the declared state cannot be reached
+// (exit code 1), a warning for local development state.
+func (e *base) unresolvedf(isErr bool, format string, args ...any) {
+	e.unresolved++
+	if isErr {
+		e.errs++
+	}
+	fmt.Fprintf(e.env.Stderr, "unresolved: %s\n", gitx.Mask(fmt.Sprintf(format, args...)))
+}
+
 // summary prints the one-line result of cmd and returns its exit code.
 func (e *base) summary(cmd string) int {
 	if !e.opts.Quiet {
 		switch {
-		case e.changes == 0 && e.warnings == 0 && e.errs == 0:
+		case e.changes == 0 && e.warnings == 0 && e.errs == 0 && e.unresolved == 0:
 			fmt.Fprintf(e.env.Stdout, "%s: up to date\n", cmd)
 		default:
 			verb := "changes"
 			if e.opts.DryRun {
 				verb = "planned changes"
 			}
-			fmt.Fprintf(e.env.Stdout, "%s: %d %s, %d warnings, %d errors\n", cmd, e.changes, verb, e.warnings, e.errs)
+			unresolved := ""
+			if e.unresolved > 0 {
+				unresolved = fmt.Sprintf(", %d unresolved", e.unresolved)
+			}
+			fmt.Fprintf(e.env.Stdout, "%s: %d %s%s, %d warnings, %d errors\n", cmd, e.changes, verb, unresolved, e.warnings, e.errs)
 		}
 	}
 	if e.errs > 0 {
@@ -553,4 +592,87 @@ func (e *Engine) CheckoutDirs() []CheckoutDir {
 		out = append(out, CheckoutDir{ID: c.ID, Repo: c.Repo, Path: e.checkoutPath(c), SkillsDir: c.SkillsDir, Checkout: *c})
 	}
 	return out
+}
+
+// checkoutBlocked says why the working copy of c is not the repository the
+// manifest declares, "" when it is or is not there yet: a directory that
+// is not a git working copy, one without an origin, or one whose origin is
+// another repository. Its skills are then not used, and nothing in it is
+// changed.
+func (e *Engine) checkoutBlocked(c *manifest.Checkout) string {
+	if why, ok := e.blocked[c.ID]; ok {
+		return why
+	}
+	why := ""
+	dir := e.checkoutPath(c)
+	if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+		why = e.originMismatch(dir, c)
+	}
+	e.blocked[c.ID] = why
+	return why
+}
+
+// originMismatch compares the origin of the working copy at dir with the
+// repo of c: the same after NormalizeURL, as written or after
+// url.<base>.insteadOf (git ls-remote --get-url, which does not touch the
+// network).
+func (e *Engine) originMismatch(dir string, c *manifest.Checkout) string {
+	if !e.env.Git.OK(e.ctx, dir, "rev-parse", "--is-inside-work-tree") {
+		return "exists but is not a git working copy"
+	}
+	origin, err := e.env.Git.Run(e.ctx, dir, "config", "--get", "remote.origin.url")
+	remote, _ := e.m.Remote(c.Repo) // Validate resolved it already
+	if err != nil || strings.TrimSpace(origin) == "" {
+		return fmt.Sprintf("has no origin remote, and the manifest names %s", remote.URL)
+	}
+	if manifest.NormalizeURL(origin) == manifest.NormalizeURL(remote.URL) {
+		return ""
+	}
+	a, errA := e.env.Git.Run(e.ctx, dir, "ls-remote", "--get-url", origin)
+	b, errB := e.env.Git.Run(e.ctx, dir, "ls-remote", "--get-url", remote.URL)
+	if errA == nil && errB == nil && manifest.NormalizeURL(a) == manifest.NormalizeURL(b) {
+		return ""
+	}
+	return fmt.Sprintf("is a working copy of %s, not of %s (repo of checkout %s)", origin, remote.URL, c.ID)
+}
+
+// targetBranch is the branch sync keeps the working copy at dir on: the
+// branch of c, else the default branch of origin (origin/HEAD, else asked
+// from the remote).
+func (e *Engine) targetBranch(dir string, c *manifest.Checkout) (string, error) {
+	if c.Branch != "" {
+		return c.Branch, nil
+	}
+	if ref, err := e.env.Git.Run(e.ctx, dir, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil && strings.HasPrefix(ref, "origin/") {
+		return strings.TrimPrefix(ref, "origin/"), nil
+	}
+	out, err := e.env.Git.Run(e.ctx, dir, "ls-remote", "--symref", "origin", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if ref, ok := strings.CutPrefix(line, "ref: refs/heads/"); ok {
+			if name, _, ok := strings.Cut(ref, "\t"); ok {
+				return name, nil
+			}
+		}
+	}
+	return "", errors.New("origin has no default branch")
+}
+
+// currentBranch is the branch checked out at dir, "" for a detached HEAD.
+func (e *Engine) currentBranch(dir string) string {
+	cur, err := e.env.Git.Run(e.ctx, dir, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return cur
+}
+
+// onBranch describes the branch of a working copy for a message.
+func onBranch(cur string) string {
+	if cur == "" {
+		return "a detached HEAD"
+	}
+	return "branch " + cur
 }

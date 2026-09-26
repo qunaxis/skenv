@@ -93,6 +93,9 @@ func AppendCheckout(data []byte, ext string, c Checkout) ([]byte, error) {
 		if c.SkillsDir != "" && c.SkillsDir != DefaultSkillsDir {
 			item = append(item, docedit.Field{Key: "skills_dir", Value: c.SkillsDir})
 		}
+		if c.Branch != "" {
+			item = append(item, docedit.Field{Key: "branch", Value: c.Branch})
+		}
 		if c.Include != nil {
 			item = append(item, docedit.Field{Key: "include", Value: c.Include})
 		}
@@ -109,6 +112,9 @@ func checkoutTable(c Checkout) string {
 	fmt.Fprintf(&b, "[user.checkouts.%s]\nrepo         = %s\ncheckout_dir = %s\n", c.ID, quote(c.Repo), quote(c.CheckoutDir))
 	if c.SkillsDir != "" && c.SkillsDir != DefaultSkillsDir {
 		fmt.Fprintf(&b, "skills_dir   = %s\n", quote(c.SkillsDir))
+	}
+	if c.Branch != "" {
+		fmt.Fprintf(&b, "branch       = %s\n", quote(c.Branch))
 	}
 	if c.Include != nil {
 		q := make([]string, len(c.Include))
