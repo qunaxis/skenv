@@ -101,9 +101,13 @@ of that name, installed by hand or with `npx skills`.
   To bring them into the manifest, see
   [Adopt existing skills](adopting.md#step-by-step).
 
-`sync` ends with `sync: N changes, N warnings, N errors`. It exits 0 even
-when it leaves something undone with a warning (a checkout with
-uncommitted changes is not pulled, for example), so check the result.
+`sync` ends with `sync: N changes, N warnings, N errors`, with
+`N unresolved` after the changes when it left a checkout as it is. A
+checkout with uncommitted changes, on another branch or diverged is local
+development state: `sync` prints an `unresolved:` line, links its skills as
+checked out and still exits 0, so check the result. A `checkout_dir` that
+holds another repository is an error (exit 1), and its skills are not
+linked (see [Checkouts and branches](manifest.md#checkouts-and-branches)).
 
 ## 3. Verify
 
@@ -156,9 +160,11 @@ current directory by itself; `skenv use` is the only switch.
 - A change made on one machine (`skenv vendor add`, a new skill, an edit of
   the manifest) reaches the others after you **commit and push** it there,
   and they run `skenv sync` (or autostart runs it within the hour).
-- `skenv sync` pulls checkouts with `--ff-only`. A working copy with
-  uncommitted changes or a diverged branch is left alone with a warning;
-  `skenv doctor` reports it as `dirty`, `unpushed` or `behind`, and a
+- `skenv sync` fast-forwards a checkout from `origin` only when it is
+  clean and on its branch (`branch`, else the default branch of
+  `origin`). A working copy with uncommitted changes, on another branch or
+  diverged is left alone and printed as `unresolved:`; `skenv doctor`
+  reports it as `dirty`, `wrong-branch`, `unpushed` or `behind`, and a
   manifest outside the working copy that `sync` pulls as
   `manifest-checkout`.
 - `skenv sync --dry-run` does not pull, so it cannot show changes pushed

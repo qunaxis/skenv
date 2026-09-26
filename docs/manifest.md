@@ -10,11 +10,16 @@ are [project skills](project-skills.md) instead.
 - [Format](#format)
 - [Rules](#rules)
 - [Git hosts](git-hosts.md): GitLab, Codeberg and self-hosted servers
+- [Checkouts and branches](#checkouts-and-branches)
 - [Selecting skills](#selecting-skills)
 - [Machine rules](#machine-rules)
 - [Agents and storage](#agents-and-storage)
 - [How vendoring works](#how-vendoring-works)
 - [Mapping to `skills-lock.json`](#mapping-to-skills-lockjson)
+
+To see how the manifest applies on this machine (which machine rules,
+agents and checkout directories are in effect, and why each skill is
+installed or not), run [`skenv config show`](configuration.md#skenv-config-show).
 
 ## Where the manifest is found
 
@@ -49,6 +54,7 @@ skills_dir   = "skills"          # optional, default "skills"
 [user.checkouts.team]            # a shared repository: only some of its skills
 repo         = "work:platform/shared-skills" # on the git host declared as "work"
 checkout_dir = "~/src/shared-skills"
+branch       = "main"            # optional, default: the default branch of origin
 include      = ["alpha", "beta"] # optional, default: every skill
 exclude      = ["experimental-*"] # optional, applied after include
 
@@ -70,6 +76,17 @@ dir = "~/.agents/skills"         # optional, this is the default
 [user.machines."my-laptop"]      # optional, rules for one machine
 exclude = ["bpmn-process-modeler"]
 ```
+
+The keys of a checkout:
+
+| Key            | Default                        | Meaning |
+| -------------- | ------------------------------ | ------- |
+| `repo`         | required                       | The repository: `owner/repo`, a prefixed short form, an alias of `git_hosts` or a git URL. |
+| `checkout_dir` | required                       | Where the working copy lives. |
+| `skills_dir`   | `"skills"`                     | The directory in the repository whose subdirectories with a `SKILL.md` are the skills. |
+| `branch`       | the default branch of `origin` | The branch `sync` clones and keeps the working copy on; see [Checkouts and branches](#checkouts-and-branches). |
+| `include`      | every skill                    | Skill names and patterns to install; see [Selecting skills](#selecting-skills). |
+| `exclude`      | none                           | Skill names and patterns not to install. |
 
 Checkout IDs (`my-skills`, `team`) are names of your choice: 1 to 64
 lowercase letters, digits, `-` and `_`, starting with a letter or a digit.
@@ -121,6 +138,52 @@ and a `repo` that is a local path.
   above (see [formats and editing](skenv-file.md#formats-and-editing)).
 - A dependency is copied as is, symlinks included; vendor only
   repositories you trust.
+
+## Checkouts and branches
+
+A checkout is an editable working copy: `sync` keeps it on a branch, but
+never takes your local work away. For each checkout it:
+
+- clones the repository into `checkout_dir` when nothing is there, with
+  `--branch` when `branch` is set;
+- fast-forwards it from `origin/<branch>` (`git pull --ff-only`) only when
+  the working copy is clean and on that branch. The branch is `branch`, or
+  without it the default branch of `origin` (`origin/HEAD`, else asked
+  from the remote);
+- never resets, switches branches, stashes or clones again.
+
+Whatever it cannot bring to the declared state is printed as an
+`unresolved:` line, and the summary counts it
+(`sync: 2 changes, 1 unresolved, 0 warnings, 0 errors`):
+
+| The working copy | Its skills | Exit code |
+| ---------------- | ---------- | --------- |
+| on another branch, or a detached HEAD | linked as checked out, not updated | 0 |
+| has uncommitted changes | linked as checked out, not updated | 0 |
+| has diverged from `origin/<branch>` (or origin is unreachable) | linked as checked out, not updated | 0 |
+| the default branch of `origin` is unknown (offline, no `branch`) | linked as checked out, not updated | 0 |
+| is not a working copy of `repo`: another origin, no origin, or no git at all | **not linked**, and no link is pruned in that run | 1 |
+
+The first four are local development state: editing skills in a checkout
+is its purpose, so `sync` leaves them to you, for example:
+
+```text
+unresolved: ~/src/my-skills has uncommitted changes: local development state, not updated (commit or stash, then rerun sync)
+```
+
+The last one is an error: the directory is not what the manifest
+declares. The origin matches when it is the same repository as `repo`,
+written the same or after git's `url.<base>.insteadOf` rewrites. `sync`
+changes nothing in it and keeps the links it made earlier, so they are not
+mistaken for stale ones. Fix `checkout_dir` or `repo` (or the machine's
+`checkout_dirs`), then run `sync` again.
+
+A branch set in the manifest never makes `sync` switch: switching is your
+action (`git switch <branch>`). `skenv doctor` reports a checkout on
+another branch as `wrong-branch` and a directory of another repository as
+`wrong-origin`; `skenv list` names the latter as `not used`. Only
+dependencies are reproducible from the file alone: checkouts follow their
+branch and your local edits.
 
 ## Selecting skills
 

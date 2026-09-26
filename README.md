@@ -44,7 +44,8 @@ repository you own. Run
 into every agent that is installed there.
 
 - **Checkouts** are git repositories you work in, kept as editable working
-  copies; skenv clones them and fast-forwards clean ones.
+  copies; skenv clones them and fast-forwards them while they are clean and
+  on their branch, and never resets, switches or stashes your work.
 - **Dependencies** are skills from other people's repositories, pinned to a
   full commit SHA and copied into the store.
 - Everything is linked into each agent's skills directory.
@@ -84,8 +85,9 @@ Its design is guided by these mantras:
 - `skenv list` shows every skill of the manifest, editable or pinned, its
   source and version, and whether it is installed on this machine.
 - `skenv doctor` compares the machine with the manifest and classifies every
-  discrepancy (missing, conflict, wrong-rev, dirty, unpushed, …), as text or
-  JSON.
+  discrepancy (missing, conflict, wrong-rev, wrong-branch, dirty, unpushed,
+  …), as text or JSON; `skenv config show` explains why each skill is
+  installed or not on this machine.
 - `skenv vendor add|update|remove` edit the manifest in place, keeping its
   comments and order, in TOML, YAML or JSON.
 - Project skills: a `[project]` section pins skills into a project

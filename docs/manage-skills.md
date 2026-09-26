@@ -60,8 +60,9 @@ what changed. `sync` alone never updates a pinned skill: applying the
 manifest and upgrading are separate steps. Alias: `upgrade`. Reference:
 [skenv vendor update](commands/skenv_vendor_update.md).
 
-Checkouts need no update command: `skenv sync` pulls them
-(`git pull --ff-only`) on every run.
+Checkouts need no update command: `skenv sync` fast-forwards them
+(`git pull --ff-only`) on every run while they are clean and on their
+branch (see [Checkouts and branches](manifest.md#checkouts-and-branches)).
 
 ## Remove a skill
 
