@@ -9,6 +9,52 @@ import (
 // MigrationURL is the manual migration from the format before skenv 0.6.
 const MigrationURL = "https://qunaxis.github.io/skenv/skenv-file#moving-to-the-0-6-format"
 
+// legacyRepoTable and legacyEnvironmentTable are the table names before
+// skenv 0.6 ([repo], now [repository]; [environment], now [user]).
+const (
+	legacyRepoTable        = "repo"
+	legacyEnvironmentTable = "environment"
+)
+
+// legacyTopLevelKeys sat at the top of the skenv file before [repository]
+// existed. legacyRepositoryKeys are the old field names of [repo] (and, by
+// mistake, of the [repository] that replaces it). legacyLayoutKeys are the
+// old fields of [environment.layout].
+var (
+	legacyTopLevelKeys   = []string{"harness", "visibility", "runner"}
+	legacyRepositoryKeys = []string{"harness", "runner"}
+	legacyLayoutKeys     = []string{"store", "targets", "ignore"}
+)
+
+// LegacyKeys returns the dotted table and key paths of the skenv file
+// format before 0.6, built from the same names legacyError checks for
+// (legacyTopLevelKeys, legacyRepositoryKeys, legacyLayoutKeys,
+// legacyUserFields, legacyProjectFields): a rename of any of those is the
+// only place TestNoRetiredTerms needs to follow. It omits generic
+// per-entry keys (path, name, rev, url, type, skip, ...) and the old
+// field names re-checked under the still-current [repository] table
+// (repository.harness, repository.runner): both would read as ordinary
+// English words in prose and make the scan noisy rather than useful.
+func LegacyKeys() []string {
+	keys := append([]string{}, legacyTopLevelKeys...)
+	keys = append(keys, legacyRepoTable)
+	for _, k := range legacyRepositoryKeys {
+		keys = append(keys, legacyRepoTable+"."+k)
+	}
+	keys = append(keys, legacyEnvironmentTable, legacyEnvironmentTable+".layout")
+	for _, k := range legacyLayoutKeys {
+		keys = append(keys, legacyEnvironmentTable+".layout."+k)
+	}
+	for _, f := range legacyUserFields {
+		keys = append(keys, legacyEnvironmentTable+"."+f.key)
+	}
+	for _, f := range legacyProjectFields {
+		keys = append(keys, "project."+f.key)
+	}
+	keys = append(keys, "project.from")
+	return keys
+}
+
 // legacyError reports the keys of the format before skenv 0.6 in raw, the
 // whole document, each with the key that replaces it. skenv does not read
 // the old format: the error lists every rename at once, so that one pass
@@ -33,19 +79,19 @@ func (l *legacy) add(old, repl string) {
 }
 
 func (l *legacy) check(raw map[string]any) {
-	for _, k := range []string{"harness", "visibility", "runner"} {
+	for _, k := range legacyTopLevelKeys {
 		if _, ok := raw[k]; ok {
 			l.add(k+" (top level)", "under [repository]: "+repositoryKey(k))
 		}
 	}
-	if repo, ok := raw["repo"]; ok {
-		l.add("[repo]", "[repository]")
-		l.repository("repo", repo)
+	if repo, ok := raw[legacyRepoTable]; ok {
+		l.add("["+legacyRepoTable+"]", "[repository]")
+		l.repository(legacyRepoTable, repo)
 	}
 	l.repository(Repository, raw[Repository])
-	if env, ok := raw["environment"]; ok {
-		l.add("[environment]", "[user]")
-		l.user("environment", env)
+	if env, ok := raw[legacyEnvironmentTable]; ok {
+		l.add("["+legacyEnvironmentTable+"]", "[user]")
+		l.user(legacyEnvironmentTable, env)
 	}
 	l.user(User, raw[User])
 	l.project(raw[Project])
@@ -64,7 +110,7 @@ func repositoryKey(k string) string {
 
 func (l *legacy) repository(name string, v any) {
 	m, _ := v.(map[string]any)
-	for _, k := range []string{"harness", "runner"} {
+	for _, k := range legacyRepositoryKeys {
 		if _, ok := m[k]; ok {
 			l.add(name+"."+k, "repository."+repositoryKey(k))
 		}
@@ -74,6 +120,33 @@ func (l *legacy) repository(name string, v any) {
 	}
 }
 
+// legacyField is a retired table of [environment] (old [user]) or
+// [project], beyond .layout and .from: the old key, the replacement text
+// of the migration error, and the old per-entry keys of its items (an
+// empty whereSuffix means items sit directly under name+"."+key, an
+// "<alias>"/"<name>" one names the per-entry key in the message).
+type legacyField struct {
+	key, replace, whereSuffix string
+	items                     map[string]string
+}
+
+// legacyUserFields are the retired tables of [environment] beyond
+// .layout. legacyProjectFields are the retired tables of [project]
+// beyond .from ([[project.from]], handled separately in project() since
+// its retired form is the array syntax, not the table name).
+var (
+	legacyUserFields = []legacyField{
+		{"own", "user.checkouts.<id>, one table per checkout keyed by an ID ([user.checkouts.<id>])", "", checkoutKeys},
+		{"vendor", "user.dependencies.<name>, one table per skill keyed by its name ([user.dependencies.<name>])", "", dependencyKeys},
+		{"hosts", "user.git_hosts", ".<alias>", gitHostKeys},
+		{"host", "user.machines", ".<name>", machineKeys},
+	}
+	legacyProjectFields = []legacyField{
+		{"vendor", "project.dependencies.<name>, one table per skill keyed by its name ([project.dependencies.<name>])", "", dependencyKeys},
+		{"hosts", "project.git_hosts", ".<alias>", gitHostKeys},
+	}
+)
+
 func (l *legacy) user(name string, v any) {
 	m, _ := v.(map[string]any)
 	if m == nil {
@@ -82,7 +155,7 @@ func (l *legacy) user(name string, v any) {
 	if layout, ok := m["layout"]; ok {
 		lm, _ := layout.(map[string]any)
 		moved := map[string]string{"store": "user.storage.dir", "targets": "user.agents (enabled, paths, extra_dirs)", "ignore": "user.unmanaged"}
-		for _, k := range []string{"store", "targets", "ignore"} {
+		for _, k := range legacyLayoutKeys {
 			if _, ok := lm[k]; ok {
 				l.add(name+".layout."+k, moved[k])
 			}
@@ -91,21 +164,11 @@ func (l *legacy) user(name string, v any) {
 			l.add(name+".layout", "user.storage, user.agents and user.unmanaged")
 		}
 	}
-	if own, ok := m["own"]; ok {
-		l.add(name+".own", "user.checkouts.<id>, one table per checkout keyed by an ID ([user.checkouts.<id>])")
-		l.items(own, name+".own", checkoutKeys)
-	}
-	if vendor, ok := m["vendor"]; ok {
-		l.add(name+".vendor", "user.dependencies.<name>, one table per skill keyed by its name ([user.dependencies.<name>])")
-		l.items(vendor, name+".vendor", dependencyKeys)
-	}
-	if hosts, ok := m["hosts"]; ok {
-		l.add(name+".hosts", "user.git_hosts")
-		l.items(hosts, name+".hosts.<alias>", gitHostKeys)
-	}
-	if host, ok := m["host"]; ok {
-		l.add(name+".host", "user.machines")
-		l.items(host, name+".host.<name>", machineKeys)
+	for _, f := range legacyUserFields {
+		if val, ok := m[f.key]; ok {
+			l.add(name+"."+f.key, f.replace)
+			l.items(val, name+"."+f.key+f.whereSuffix, f.items)
+		}
 	}
 	l.items(m["checkouts"], "user.checkouts.<id>", checkoutKeys)
 	l.items(m["dependencies"], "user.dependencies.<name>", dependencyKeys)
@@ -118,13 +181,11 @@ func (l *legacy) project(v any) {
 	if m == nil {
 		return
 	}
-	if vendor, ok := m["vendor"]; ok {
-		l.add("project.vendor", "project.dependencies.<name>, one table per skill keyed by its name ([project.dependencies.<name>])")
-		l.items(vendor, "project.vendor", dependencyKeys)
-	}
-	if hosts, ok := m["hosts"]; ok {
-		l.add("project.hosts", "project.git_hosts")
-		l.items(hosts, "project.hosts.<alias>", gitHostKeys)
+	for _, f := range legacyProjectFields {
+		if val, ok := m[f.key]; ok {
+			l.add("project."+f.key, f.replace)
+			l.items(val, "project."+f.key+f.whereSuffix, f.items)
+		}
 	}
 	switch from := m["from"].(type) {
 	case []map[string]any, []any:

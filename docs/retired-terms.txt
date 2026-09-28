@@ -1,0 +1,6 @@
+# Prose terms retired from skenv docs, AGENTS.md and skills/skenv/, one per
+# line. TestNoRetiredTerms in internal/skenvfile matches each case-
+# insensitively as a whole word, everywhere except inside a
+# <!-- docs-check: legacy --> ... <!-- /docs-check --> block. Retired
+# skenv-file keys go in internal/skenvfile/legacy.go (LegacyKeys), not here:
+# this file is for concepts, not TOML keys.

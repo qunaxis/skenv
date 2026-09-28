@@ -196,6 +196,8 @@ repository, and lives in `~/.config/skenv/config.{toml,yaml,yml,json}`.
 
 ## Moving to the 0.6 format
 
+<!-- docs-check: legacy -->
+
 skenv 0.6 renamed the sections and most keys of the skenv file. It does
 not read the old format, and there is no migrate command: a file with an
 old key stops every command with an error that lists each old key found
@@ -312,6 +314,8 @@ After rewriting the file:
    `template_version` to the templates of the installed skenv and
    regenerate the managed files; `skenv repo check` then passes.
 2. Run `skenv sync --dry-run`, then `skenv sync`, and `skenv doctor`.
+
+<!-- /docs-check -->
 
 skenv does not read `env.toml` either, the manifest file before skenv
 0.4: move its tables into `[user]` of `skenv.toml` with the same table,
