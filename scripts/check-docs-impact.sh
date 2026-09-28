@@ -31,17 +31,19 @@ docs_paths=(
 	"skills/skenv/"
 )
 
-# Get all changed files between BASE and HEAD
-if ! changed=$(git diff --name-only "$base..$head" 2>/dev/null); then
-	printf 'check-docs-impact: cannot diff %s..%s\n' "$base" "$head" >&2
+# Get all changed files between BASE and HEAD.
+# Use three-dot syntax to compare against the merge base: files changed
+# in the PR only, not commits that landed on base after the branch was cut.
+if ! changed=$(git diff --name-only "$base...$head" 2>/dev/null); then
+	printf 'check-docs-impact: cannot diff %s...%s\n' "$base" "$head" >&2
 	exit 1
 fi
 
 # Filter user-facing changes (exclude test files)
 user_facing_changed=()
 while IFS= read -r file; do
-	# Skip test files and testdata
-	if [[ "$file" == *"_test.go" ]] || [[ "$file" == "testdata/"* ]]; then
+	# Skip test files and testdata (including nested testdata/ directories)
+	if [[ "$file" == *"_test.go" ]] || [[ "$file" == "testdata/"* ]] || [[ "$file" == */testdata/* ]]; then
 		continue
 	fi
 	# Check if file matches any user-facing path
@@ -74,9 +76,12 @@ if [ "$docs_changed" = true ]; then
 fi
 
 # Check for "Docs: none — <reason>" or "Docs: none - <reason>" with reason of 10+ chars
-if [[ "$pr_body" =~ ^Docs:[[:space:]]*none[[:space:]]*(—|-)[[:space:]](.{10,}) ]]; then
-	exit 0
-fi
+while IFS= read -r line; do
+	line=${line%$'\r'}
+	if [[ "$line" =~ ^Docs:[[:space:]]*none[[:space:]]*(—|-)[[:space:]]+(.{10,})$ ]]; then
+		exit 0
+	fi
+done <<< "$pr_body"
 
 # Check for docs:none label
 if [[ ",$pr_labels," == *",docs:none,"* ]]; then

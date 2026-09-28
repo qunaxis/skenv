@@ -131,6 +131,21 @@ func TestDocsImpact(t *testing.T) {
 			},
 			wantFail: false,
 		},
+		{
+			name: "user-facing with Docs: none after Closes #N",
+			changes: map[string]bool{
+				"internal/cli/cli.go": true,
+			},
+			prBody:   "Closes #83\n\nDocs: none — internal refactor only",
+			wantFail: false,
+		},
+		{
+			name: "testdata in subdirectory excluded",
+			changes: map[string]bool{
+				"internal/cli/testdata/fixture.txt": true,
+			},
+			wantFail: false,
+		},
 	}
 
 	for _, c := range cases {

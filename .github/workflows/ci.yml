@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -12,7 +11,7 @@ permissions:
 jobs:
   docs_impact:
     name: docs impact
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || github.event.action == 'edited' || github.event.action == 'labeled' || github.event.action == 'unlabeled')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
