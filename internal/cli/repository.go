@@ -60,7 +60,7 @@ func runLint(ctx context.Context, env skills.Env, stdin io.Reader, pos []string,
 		if len(pos) > 0 || staged || publish {
 			return 0, errors.New("lint: --hook takes the file from the hook event on stdin; it does not combine with paths, --staged or --publish")
 		}
-		return lintHook(env, stdin)
+		return lintHook(ctx, env, stdin)
 	}
 	skillDirs, err := lintSkillDirs(ctx, pos, staged)
 	if err != nil {
@@ -143,7 +143,7 @@ func lintReport(ctx context.Context, env skills.Env, skillDirs, pos []string, pu
 		}
 	}
 	for _, s := range skillDirs {
-		report(lint.Skill(s))
+		report(lint.Skill(ctx, s))
 		if publish {
 			report(lint.Publish(s))
 		}
@@ -159,7 +159,7 @@ func lintReport(ctx context.Context, env skills.Env, skillDirs, pos []string, pu
 	if err != nil {
 		return 0, fmt.Errorf("--publish scans the repository and its history: %w", err)
 	}
-	findings, leaks, err := lint.PublishScan(root, deny)
+	findings, leaks, err := lint.PublishScan(ctx, root, deny)
 	if err != nil {
 		return 0, err
 	}
@@ -176,7 +176,7 @@ func lintReport(ctx context.Context, env skills.Env, skillDirs, pos []string, pu
 // them to stderr with exit code 2, which Claude Code feeds back to the agent.
 // Files outside skills and malformed events are ignored (exit 0) so the
 // hook never gets in the way of unrelated edits.
-func lintHook(env skills.Env, stdin io.Reader) (int, error) {
+func lintHook(ctx context.Context, env skills.Env, stdin io.Reader) (int, error) {
 	var event struct {
 		ToolName  string `json:"tool_name"`
 		ToolInput struct {
@@ -190,7 +190,7 @@ func lintHook(env skills.Env, stdin io.Reader) (int, error) {
 	if !ok {
 		return skills.ExitOK, nil
 	}
-	findings := lint.Skill(skill)
+	findings := lint.Skill(ctx, skill)
 	if len(findings) == 0 {
 		return skills.ExitOK, nil
 	}

@@ -127,7 +127,7 @@ func runNew(ctx context.Context, env skills.Env, o skills.Options, name, visibil
 		}
 	}
 	fmt.Fprintf(env.Stdout, "created %s (SKILL.md, references/notes.md)\n", paths.Collapse(env.Home, skill))
-	if findings := lint.Skill(skill); len(findings) > 0 {
+	if findings := lint.Skill(ctx, skill); len(findings) > 0 {
 		for _, f := range findings {
 			fmt.Fprintln(env.Stderr, f)
 		}
