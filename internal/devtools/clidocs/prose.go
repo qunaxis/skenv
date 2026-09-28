@@ -82,7 +82,10 @@ func proseFilesIn(root, start string) ([]string, error) {
 		}
 		return nil
 	})
-	return files, err
+	if err != nil {
+		return nil, fmt.Errorf("prose root %s (proseRoots): %w", start, err)
+	}
+	return files, nil
 }
 
 // fenceOpenRe matches a fenced code block's opening delimiter and captures

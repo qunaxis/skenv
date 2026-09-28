@@ -342,8 +342,9 @@ func (e *UserScope) foreignEntries(fn func(name, p string)) {
 }
 
 // installed resolves the entry p named name, false when the import skips
-// it: a Claude Code plugin's, not selected on this machine, or a name
-// seen already.
+// it: a broken link or one not selected on this machine (both recorded as
+// unmanaged), a Claude Code plugin's, a name seen already, or one that
+// cannot be read.
 func (e *UserScope) installed(r *imported, seen map[string]found, name, p, plugins string) (found, bool) {
 	resolved, err := filepath.EvalSymlinks(p)
 	if err != nil {

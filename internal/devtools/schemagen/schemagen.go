@@ -157,8 +157,9 @@ type gen struct {
 	docs map[string]string // "pkg.Type" and "pkg.Type.Field" → doc comment
 }
 
-// The skenv file is built one function per $def, each at most 40
-// statements (funlen): a new key goes into the function of its table.
+// skenv is the schema of the skenv file, built one function per $def,
+// each at most 40 statements (funlen): a new key goes into the function
+// of its table.
 func (g *gen) skenv() *Schema {
 	ci, github, gitlab := g.ciDefs()
 	return &Schema{
