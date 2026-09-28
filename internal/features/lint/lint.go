@@ -78,12 +78,15 @@ func Skill(ctx context.Context, dir string) []Finding {
 type fileSet map[string]bool
 
 func gitFiles(ctx context.Context, dir string) fileSet {
-	out, err := gitx.Git{}.Run(ctx, dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ".")
+	// -z output is NUL-terminated, not whitespace-trimmed: gitx.Git.Run
+	// would TrimSpace the whole blob and corrupt a name that starts with
+	// space, tab or newline, so this reads the raw bytes instead.
+	out, err := gitx.Git{}.Output(ctx, dir, nil, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ".")
 	if err != nil {
 		return nil
 	}
 	set := fileSet{}
-	for f := range strings.SplitSeq(out, "\x00") {
+	for f := range strings.SplitSeq(string(out), "\x00") {
 		if f != "" {
 			set[f] = true
 		}

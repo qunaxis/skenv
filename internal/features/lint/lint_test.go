@@ -230,3 +230,22 @@ func TestGitFilesSkillInSubdirectory(t *testing.T) {
 		t.Fatalf("gitFiles = %v", files)
 	}
 }
+
+// gitFiles must not trim the raw `git ls-files -z` output: a leading space,
+// tab or newline in the first (sorted) file name is part of the name, not
+// incidental whitespace around it.
+func TestGitFilesLeadingWhitespaceInName(t *testing.T) {
+	dir := skill(t, map[string]string{" leading.txt": "x"})
+	root := filepath.Dir(dir)
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "t@example.invalid"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Skipf("git: %v %s", err, out)
+		}
+	}
+	files := gitFiles(context.Background(), dir)
+	if !files.has(" leading.txt") {
+		t.Fatalf("gitFiles = %v, want \" leading.txt\" (with its leading space) present", files)
+	}
+}
