@@ -86,13 +86,13 @@ func TestAddProject(t *testing.T) {
 		want          string
 	}{
 		{name: "new toml", ext: ".toml", mirrors: []string{".claude/skills"},
-			want: projectLead + "[project]\nmirrors = [\".claude/skills\"]\n"},
+			want: projectLead + "[project]\ndir = \".agents/skills\"\nmirrors = [\".claude/skills\"]\n"},
 		{name: "toml with [user]", ext: ".toml", in: "# mine\n[user]\n",
-			want: "# mine\n[user]\n\n" + projectLead + "[project]\n"},
+			want: "# mine\n[user]\n\n" + projectLead + "[project]\ndir = \".agents/skills\"\n"},
 		{name: "yaml with repository", ext: ".yaml", in: "# keep me\nrepository:\n  visibility: public\n", mirrors: []string{".claude/skills"},
-			want: "# keep me\nrepository:\n  visibility: public\n" + projectLead + "project:\n  mirrors: [.claude/skills]\n"},
+			want: "# keep me\nrepository:\n  visibility: public\n" + projectLead + "project:\n  dir: .agents/skills\n  mirrors: [.claude/skills]\n"},
 		{name: "json", ext: ".json", in: `{"repository": {"visibility": "public"}}`,
-			want: "{\n  \"repository\": {\n    \"visibility\": \"public\"\n  },\n  \"project\": {}\n}\n"},
+			want: "{\n  \"repository\": {\n    \"visibility\": \"public\"\n  },\n  \"project\": {\n    \"dir\": \".agents/skills\"\n  }\n}\n"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			out, err := AddProject([]byte(c.in), c.ext, c.mirrors)

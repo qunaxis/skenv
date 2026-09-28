@@ -59,6 +59,7 @@ func (le lockEntry) hash() (value, field string) {
 // skillsLock is a lock file of the `skills` CLI as read.
 type skillsLock struct {
 	path    string
+	exists  bool // the file was there when read
 	version int
 	mode    fs.FileMode
 	top     map[string]json.RawMessage
@@ -106,6 +107,7 @@ func readSkillsLock(p string, version int) (*skillsLock, error) {
 	if err != nil {
 		return nil, err
 	}
+	l.exists = true
 	if fi, err := os.Stat(p); err == nil {
 		l.mode = fi.Mode().Perm()
 	}
