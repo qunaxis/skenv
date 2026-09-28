@@ -1,0 +1,254 @@
+package clidocs
+
+import (
+	"fmt"
+	"io/fs"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+
+	"github.com/spf13/cobra"
+)
+
+// proseIgnoreDirective opts a single following line, or the fenced block it
+// opens, out of TestProseCommandsExist: for a deliberate example of wrong
+// usage that must not be "fixed".
+const proseIgnoreDirective = "<!-- docs-check: ignore-next -->"
+
+// proseExcludedDirs and proseExcludedFiles, relative to the repository
+// root, are never scanned: generated output (docs/commands, which mirrors
+// --help, not prose) or content this check does not own.
+var (
+	proseExcludedDirs  = []string{"docs/commands", "docs/adr"}
+	proseExcludedFiles = []string{"CHANGELOG.md"}
+)
+
+// proseCandidate is one "skenv ..." invocation found in Markdown, ready to
+// resolve against the command tree.
+type proseCandidate struct {
+	file string
+	line int
+	text string // "$ " stripped; otherwise exactly as written
+}
+
+func proseFindingMessage(c proseCandidate, problem string) string {
+	return fmt.Sprintf("%s:%d: %s: %s", c.file, c.line, c.text, problem)
+}
+
+// proseFiles lists the Markdown files under root that TestProseCommandsExist
+// scans, sorted for a stable report.
+func proseFiles(root string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			if rel == ".git" || slicesContain(proseExcludedDirs, rel) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(p) != ".md" || slicesContain(proseExcludedFiles, rel) {
+			return nil
+		}
+		files = append(files, rel)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+func slicesContain(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// fenceOpenRe matches a fenced code block's opening delimiter and captures
+// its info string (the language tag, or "" when there is none).
+var fenceOpenRe = regexp.MustCompile("^`{3,}\\s*([A-Za-z0-9_-]*)\\s*$")
+
+// fenceCloseRe matches the closing delimiter of a fenced code block.
+var fenceCloseRe = regexp.MustCompile("^`{3,}$")
+
+// inlineCodeRe matches inline code spans (single backticks; skenv prose
+// never nests backticks inside an inline span).
+var inlineCodeRe = regexp.MustCompile("`([^`]+)`")
+
+// proseRelevantFence is a fenced block's candidates rule: shell examples
+// (sh, bash, console) or an untagged block, never any other language.
+func proseRelevantFence(info string) bool {
+	switch info {
+	case "", "sh", "bash", "console":
+		return true
+	default:
+		return false
+	}
+}
+
+// scanProse extracts skenv invocations from one Markdown file's source:
+// lines of a relevant fenced code block, and inline code spans that start
+// with "skenv ". It returns the candidates in file order and the number of
+// docs-check: ignore-next directives it honoured.
+func scanProse(file string, src []byte) (cands []proseCandidate, ignored int) {
+	lines := strings.Split(string(src), "\n")
+	inFence := false
+	fenceRelevant := false
+	fenceSkip := false
+	ignoreNext := false
+	for i, raw := range lines {
+		lineNum := i + 1
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == proseIgnoreDirective {
+			ignoreNext = true
+			continue
+		}
+		if inFence {
+			if fenceCloseRe.MatchString(trimmed) {
+				inFence, fenceSkip, ignoreNext = false, false, false
+				continue
+			}
+			if fenceRelevant && !fenceSkip && !ignoreNext {
+				if text, ok := proseInvocation(raw); ok {
+					cands = append(cands, proseCandidate{file: file, line: lineNum, text: text})
+				}
+			}
+			if ignoreNext {
+				ignored++
+			}
+			ignoreNext = false
+			continue
+		}
+		if m := fenceOpenRe.FindStringSubmatch(trimmed); m != nil {
+			inFence = true
+			fenceRelevant = proseRelevantFence(m[1])
+			fenceSkip = ignoreNext
+			if ignoreNext {
+				ignored++
+			}
+			ignoreNext = false
+			continue
+		}
+		if ignoreNext {
+			ignored++
+			ignoreNext = false
+			continue
+		}
+		for _, m := range inlineCodeRe.FindAllStringSubmatch(raw, -1) {
+			if text, ok := proseInvocation(m[1]); ok {
+				cands = append(cands, proseCandidate{file: file, line: lineNum, text: text})
+			}
+		}
+	}
+	return cands, ignored
+}
+
+// proseInvocation recognises a candidate line or inline span as a skenv
+// invocation, stripping a leading shell prompt.
+func proseInvocation(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "$ ")
+	if s == "skenv" || strings.HasPrefix(s, "skenv ") {
+		return s, true
+	}
+	return "", false
+}
+
+// proseResolve resolves a "skenv ..." invocation against root: it consumes
+// tokens while they name a subcommand of the current command, stopping at
+// a placeholder, an argument or the end of the line, then checks every
+// flag-shaped token against the resolved command's flags. It returns the
+// problems found, nil when the invocation is fine.
+func proseResolve(root *cobra.Command, text string) []string {
+	tokens := strings.Fields(text)
+	if len(tokens) <= 1 {
+		return nil // bare "skenv" (or empty, which is not a candidate)
+	}
+	tokens = tokens[1:]
+	if i := proseCommentIndex(tokens); i >= 0 {
+		tokens = tokens[:i]
+	}
+	cur := root
+	for _, tok := range tokens {
+		if strings.HasPrefix(tok, "-") {
+			continue // flags do not affect subcommand resolution
+		}
+		if proseIsPlaceholder(tok) || len(cur.Commands()) == 0 {
+			break // an argument: cur is the resolved command
+		}
+		sub := proseFindSubcommand(cur, tok)
+		if sub == nil {
+			return []string{fmt.Sprintf("unknown command %q", tok)}
+		}
+		cur = sub
+	}
+	var problems []string
+	for _, tok := range tokens {
+		if !strings.HasPrefix(tok, "-") {
+			continue
+		}
+		if !proseHasFlag(cur, tok) {
+			problems = append(problems, fmt.Sprintf("unknown flag %q", tok))
+		}
+	}
+	return problems
+}
+
+// proseCommentIndex is the index of the first shell-comment token ("#..."),
+// so a trailing "# explanation" never feeds the resolver.
+func proseCommentIndex(tokens []string) int {
+	for i, tok := range tokens {
+		if strings.HasPrefix(tok, "#") {
+			return i
+		}
+	}
+	return -1
+}
+
+// proseIsPlaceholder reports whether tok is documentation notation for an
+// argument, such as <repo>, [name...] or ..., rather than a real word.
+func proseIsPlaceholder(tok string) bool {
+	return strings.ContainsAny(tok, "<>…[]")
+}
+
+func proseFindSubcommand(cur *cobra.Command, name string) *cobra.Command {
+	for _, s := range cur.Commands() {
+		if s.Name() == name || s.HasAlias(name) {
+			return s
+		}
+	}
+	return nil
+}
+
+// proseHasFlag reports whether tok (a token starting with "-", "--flag" or
+// "--flag=value" already split) names a local, inherited or persistent
+// flag of cur, or is -h/--help, which every command accepts.
+func proseHasFlag(cur *cobra.Command, tok string) bool {
+	name, _, _ := strings.Cut(tok, "=")
+	if name == "-h" || name == "--help" {
+		return true
+	}
+	switch {
+	case strings.HasPrefix(name, "--"):
+		n := strings.TrimPrefix(name, "--")
+		return cur.LocalFlags().Lookup(n) != nil || cur.InheritedFlags().Lookup(n) != nil
+	case strings.HasPrefix(name, "-") && len(name) == 2:
+		n := strings.TrimPrefix(name, "-")
+		return cur.LocalFlags().ShorthandLookup(n) != nil || cur.InheritedFlags().ShorthandLookup(n) != nil
+	default:
+		return false
+	}
+}
