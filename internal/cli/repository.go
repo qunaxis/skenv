@@ -229,6 +229,7 @@ func repoCmd(a *app) *cobra.Command {
 			"# A private repository on GitHub, with jobs on the GitHub-hosted runners\n"+
 			"skenv repo init --visibility private --runner ubuntu-latest")
 	initC.Flags().StringVar(&visibility, "visibility", "", "private or public, the declared publication policy (required)")
+	_ = initC.MarkFlagRequired("visibility")
 	_ = initC.RegisterFlagCompletionFunc("visibility", cobra.FixedCompletions([]string{"private", "public"}, cobra.ShellCompDirectiveNoFileComp))
 	initC.Flags().StringSliceVar(&runner, "runner", nil, "private repositories: runs-on labels (GitHub) or runner tags (GitLab) of the CI jobs, comma-separated or repeated (default self-hosted,linux,docker)")
 	initC.Flags().StringVar(&ci, "ci", "", "CI system: github or gitlab (default: detected from the host of origin, else github)")
@@ -268,9 +269,6 @@ func runRepo(ctx context.Context, env skills.Env, sub, dir, visibility, ci, form
 	}
 	switch sub {
 	case "init":
-		if visibility == "" {
-			return 0, errors.New("repo init: --visibility private|public is required")
-		}
 		if err := docedit.ValidFormat(format); err != nil {
 			return 0, fmt.Errorf("repo init: %w", err)
 		}
