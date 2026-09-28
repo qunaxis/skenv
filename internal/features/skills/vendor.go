@@ -27,12 +27,11 @@ func (e *UserScope) VendorAdd(o VendorAddOptions) (int, error) {
 	if _, ok := e.manifest.Dependencies[d.Name]; ok {
 		return ExitFatal, fmt.Errorf("dependency %q is already in the manifest; use `skenv vendor update %s`", d.Name, d.Name)
 	}
-	if err := e.editManifest(func(data []byte) ([]byte, error) {
+	if err := e.changeManifest(func(data []byte) ([]byte, error) {
 		return skenvfile.AppendDependency(data, filepath.Ext(e.manifestPath), skenvfile.SectionUser, d)
-	}); err != nil {
+	}, "add dependency %s (%s@%.12s, %s) to %s", d.Name, d.Repo, d.Commit, d.SkillDir, e.displayPath(e.manifestPath)); err != nil {
 		return ExitFatal, err
 	}
-	e.changef("add dependency %s (%s@%.12s, %s) to %s", d.Name, d.Repo, d.Commit, d.SkillDir, e.displayPath(e.manifestPath))
 	return e.syncNames([]string{d.Name}, fmt.Sprintf("add dependency %s", d.Name))
 }
 
@@ -182,12 +181,11 @@ func (e *UserScope) VendorRemove(name string) (int, error) {
 	if _, ok := e.manifest.Dependencies[name]; !ok {
 		return ExitFatal, fmt.Errorf("dependency %q is not in the manifest %s", name, e.displayPath(e.manifestPath))
 	}
-	if err := e.editManifest(func(data []byte) ([]byte, error) {
+	if err := e.changeManifest(func(data []byte) ([]byte, error) {
 		return skenvfile.RemoveDependency(data, filepath.Ext(e.manifestPath), skenvfile.SectionUser, name)
-	}); err != nil {
+	}, "remove dependency %s from %s", name, e.displayPath(e.manifestPath)); err != nil {
 		return ExitFatal, err
 	}
-	e.changef("remove dependency %s from %s", name, e.displayPath(e.manifestPath))
 	for _, p := range e.state.Paths() {
 		if entry := e.state.Managed[p]; entry.Skill == name {
 			e.removeManaged(p, entry)
@@ -195,6 +193,16 @@ func (e *UserScope) VendorRemove(name string) (int, error) {
 	}
 	e.commitHint(fmt.Sprintf("remove dependency %s", name))
 	return e.finish("vendor remove")
+}
+
+// changeManifest is editManifest, then the change reported as format
+// says.
+func (e *UserScope) changeManifest(edit func([]byte) ([]byte, error), format string, args ...any) error {
+	if err := e.editManifest(edit); err != nil {
+		return err
+	}
+	e.changef(format, args...)
+	return nil
 }
 
 // editManifest applies edit to the manifest text, validates the result,

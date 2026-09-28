@@ -26,12 +26,11 @@ func (e *ProjectScope) VendorAdd(o VendorAddOptions) (int, error) {
 				"or --adopt to back it up and replace it", e.rel(dst), v.Repo)
 		}
 	}
-	if err := e.edit(func(data []byte, ext string) ([]byte, error) {
+	if err := e.change(func(data []byte, ext string) ([]byte, error) {
 		return skenvfile.AppendDependency(data, ext, skenvfile.SectionProject, v)
-	}); err != nil {
+	}, "add dependency %s (%s@%.12s, %s) to [project] of %s", v.Name, v.Repo, v.Commit, v.SkillDir, e.displayPath(e.file)); err != nil {
 		return ExitFatal, err
 	}
-	e.changef("add dependency %s (%s@%.12s, %s) to [project] of %s", v.Name, v.Repo, v.Commit, v.SkillDir, e.displayPath(e.file))
 	return e.syncAfterEdit("add dependency " + v.Name)
 }
 
@@ -121,13 +120,21 @@ func (e *ProjectScope) VendorRemove(name string) (int, error) {
 		return ExitFatal, fmt.Errorf("project skill %q comes from project.from.%s (%s); remove it from the skills of that entry "+
 			"(or the entry) in %s, then run `skenv sync`", name, s.From.ID, s.Repo, e.displayPath(e.file))
 	}
-	if err := e.edit(func(data []byte, ext string) ([]byte, error) {
+	if err := e.change(func(data []byte, ext string) ([]byte, error) {
 		return skenvfile.RemoveDependency(data, ext, skenvfile.SectionProject, name)
-	}); err != nil {
+	}, "remove dependency %s from [project] of %s", name, e.displayPath(e.file)); err != nil {
 		return ExitFatal, err
 	}
-	e.changef("remove dependency %s from [project] of %s", name, e.displayPath(e.file))
 	return e.syncAfterEdit("remove dependency " + name)
+}
+
+// change is edit, then the change reported as format says.
+func (e *ProjectScope) change(fn func(data []byte, ext string) ([]byte, error), format string, args ...any) error {
+	if err := e.edit(fn); err != nil {
+		return err
+	}
+	e.changef(format, args...)
+	return nil
 }
 
 // edit applies fn to the skenv file, validates the result, writes it

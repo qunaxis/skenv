@@ -387,20 +387,26 @@ func (e *ProjectScope) syncMirrors() {
 				e.syncMirror(mdir, name)
 			}
 		}
-		entries, _ := os.ReadDir(mdir)
-		for _, de := range entries {
-			name := de.Name()
-			p := filepath.Join(mdir, name)
-			if in[name] || strings.HasPrefix(name, ".") || !e.isMirrorEntry(p, name) {
-				continue
-			}
-			e.changef("remove %s (no skill %s in %s)", e.rel(p), name, e.project.Dir)
-			if e.opts.DryRun {
-				continue
-			}
-			if err := os.RemoveAll(p); err != nil {
-				e.errorf("remove %s: %v", e.rel(p), err)
-			}
+		e.pruneMirror(mdir, in)
+	}
+}
+
+// pruneMirror removes the entries skenv placed in the mirror mdir for
+// skills that are not in dir any more.
+func (e *ProjectScope) pruneMirror(mdir string, in map[string]bool) {
+	entries, _ := os.ReadDir(mdir)
+	for _, de := range entries {
+		name := de.Name()
+		p := filepath.Join(mdir, name)
+		if in[name] || strings.HasPrefix(name, ".") || !e.isMirrorEntry(p, name) {
+			continue
+		}
+		e.changef("remove %s (no skill %s in %s)", e.rel(p), name, e.project.Dir)
+		if e.opts.DryRun {
+			continue
+		}
+		if err := os.RemoveAll(p); err != nil {
+			e.errorf("remove %s: %v", e.rel(p), err)
 		}
 	}
 }

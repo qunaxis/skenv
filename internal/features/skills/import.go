@@ -34,28 +34,9 @@ func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) 
 	if err != nil {
 		return ExitFatal, err
 	}
-	data, err := os.ReadFile(mp)
+	data, start, fresh, m, err := openManifestFile(mp)
 	if err != nil {
-		return ExitFatal, fmt.Errorf("read manifest %s: %w", mp, err)
-	}
-	ext := filepath.Ext(mp)
-	doc, err := skenvfile.Parse(data, ext)
-	if err != nil {
-		return ExitFatal, fmt.Errorf("manifest %s: %w", mp, err)
-	}
-	start, fresh := data, !doc.Has(skenvfile.SectionUser)
-	if fresh {
-		// `skenv init` semantics: the same skeleton and the same refusal.
-		if err := refusePublic(data, ext, mp); err != nil {
-			return ExitFatal, err
-		}
-		if start, err = skenvfile.AddUser(data, ext, nil); err != nil {
-			return ExitFatal, fmt.Errorf("manifest %s: %w", mp, err)
-		}
-	}
-	m, err := skenvfile.ParseManifestIn(start, ext, filepath.Dir(mp))
-	if err != nil {
-		return ExitFatal, fmt.Errorf("manifest %s: %w", mp, err)
+		return ExitFatal, err
 	}
 	e, err := open(ctx, env, opts, mp, m)
 	if err != nil {
@@ -75,6 +56,34 @@ func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) 
 	}
 	e.Close()
 	return syncAdopt(ctx, env, mp, r)
+}
+
+// openManifestFile reads and parses the manifest mp: data is its text on
+// disk, start that text with [user] added when it has none (fresh), and
+// m the manifest start describes.
+func openManifestFile(mp string) (data, start []byte, fresh bool, m *skenvfile.Manifest, err error) {
+	if data, err = os.ReadFile(mp); err != nil {
+		return nil, nil, false, nil, fmt.Errorf("read manifest %s: %w", mp, err)
+	}
+	ext := filepath.Ext(mp)
+	doc, err := skenvfile.Parse(data, ext)
+	if err != nil {
+		return nil, nil, false, nil, fmt.Errorf("manifest %s: %w", mp, err)
+	}
+	start, fresh = data, !doc.Has(skenvfile.SectionUser)
+	if fresh {
+		// `skenv init` semantics: the same skeleton and the same refusal.
+		if err := refusePublic(data, ext, mp); err != nil {
+			return nil, nil, false, nil, err
+		}
+		if start, err = skenvfile.AddUser(data, ext, nil); err != nil {
+			return nil, nil, false, nil, fmt.Errorf("manifest %s: %w", mp, err)
+		}
+	}
+	if m, err = skenvfile.ParseManifestIn(start, ext, filepath.Dir(mp)); err != nil {
+		return nil, nil, false, nil, fmt.Errorf("manifest %s: %w", mp, err)
+	}
+	return data, start, fresh, m, nil
 }
 
 // writeImported writes the text of the import r to the skenv file, and
