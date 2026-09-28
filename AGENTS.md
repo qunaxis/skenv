@@ -16,7 +16,8 @@ it would stop Claude Code from loading this file.
   `internal/harness` (`[repository]`, `repo init|apply|upgrade|check`, templates in
   `internal/harness/templates/`), `internal/lint` (L1-L6; `publish.go`: P1 publication check,
   stop-list phrases are never printed), `internal/manifest` (`[user]` and `[project]`
-  parsing and in-place editing), `internal/paths` (file location resolution), `internal/release`
+  parsing and in-place editing), `internal/mdscan` (fenced-code-block scanner for doc
+  example tests), `internal/paths` (file location resolution), `internal/release`
   (tests for `cliff.toml` and the commit check), `internal/schemagen` (JSON Schema generation),
   `internal/skenvfile` (the skenv file: `[repository]`, `[user]` and `[project]`,
   TOML/YAML/JSON; `legacy.go`: errors for the keys before 0.6), `internal/skillname` (skill name validation),

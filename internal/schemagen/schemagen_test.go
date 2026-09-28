@@ -19,6 +19,7 @@ import (
 	"github.com/qunaxis/skenv/internal/config"
 	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/mdscan"
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -150,8 +151,6 @@ type example struct {
 	where, ext, text string
 }
 
-var fenceRe = regexp.MustCompile("(?ms)^```(toml|yaml|json)\n(.*?)^```")
-
 // examples returns the skenv files and tool configs among the code blocks
 // of the docs and the golden files of the tests.
 func examples(t *testing.T) (skenv, cfg []example) {
@@ -164,8 +163,11 @@ func examples(t *testing.T) (skenv, cfg []example) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, m := range fenceRe.FindAllStringSubmatch(string(data), -1) {
-			all = append(all, example{filepath.Base(p), "." + m[1], m[2]})
+		for _, b := range mdscan.Blocks(filepath.Base(p), string(data), "toml", "yaml", "json") {
+			if b.Skip {
+				continue
+			}
+			all = append(all, example{b.File, "." + b.Lang, b.Text})
 		}
 	}
 	golden, _ := filepath.Glob(filepath.Join(root, "internal", "*", "testdata", "*"))
