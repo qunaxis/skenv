@@ -205,8 +205,8 @@ func (g *gen) skenv() *Schema {
 
 	storage.Properties.get("dir").Examples = []any{"~/.agents/skills", "~/.local/share/skenv/skills"}
 	// Codex is the agent people expect here; it reads the store instead.
-	agentHint := "Codex is not a link destination: it reads the store (user.storage.dir, default ~/.agents/skills) directly. " +
-		"Add other directories to user.agents.extra_dirs."
+	agentHint := "Add other directories to user.agents.extra_dirs; Codex needs no entry: " +
+		"it reads the store (user.storage.dir, default ~/.agents/skills) directly."
 	enabled := agentsDef.Properties.get("enabled")
 	enabled.UniqueItems = true
 	enabled.Items.Enum = agents.Names

@@ -127,7 +127,7 @@ func TestParseManifestErrors(t *testing.T) {
 		"exclude empty":            {checkout("exclude = [\"\"]\n"), "glob over names"},
 		"machine unknown checkout": {checkout("[user.machines.m.checkout_dirs]\nb = \"~/y\"\n"), `checkout_dirs: "b" is not a checkout ID (known: a)`},
 		"machine bad exclude":      {"[user.machines.m]\nexclude = [\"a/b\"]\n", "[user.machines.m] exclude[0]"},
-		"codex is not an agent":    {"[user.agents]\nenabled = [\"codex\"]\n", "Codex is not a link destination"},
+		"codex is not an agent":    {"[user.agents]\nenabled = [\"codex\"]\n", "Codex needs no entry"},
 		"unknown agent":            {"[user.agents]\nenabled = [\"cursor\"]\n", `[user.agents] enabled[0]: must be one of "claude", "pi"`},
 		"unknown agent path":       {"[user.agents.paths]\ncursor = \"~/c\"\n", `[user.agents.paths] cursor: must be one of "claude", "pi"`},
 		"agent twice":              {"[user.agents]\nenabled = [\"pi\", \"pi\"]\n", `lists "pi" twice`},

@@ -55,9 +55,9 @@ func TestSchemaRules(t *testing.T) {
 		{"absolute skill_dir", ".toml", dep("x", full+"skill_dir = \"/etc\"\n"), "[user.dependencies.x] skill_dir: invalid value. A relative path"},
 		{"machine include twice", ".toml", "[user.machines.m]\ninclude = [\"a\", \"a\"]\n", `[user.machines.m] include: lists "a" twice`},
 		{"empty checkout_dirs entry", ".toml", checkout + "[user.machines.m.checkout_dirs]\na = \"\"\n", "[user.machines.m.checkout_dirs] a: must not be empty"},
-		{"unknown agent", ".toml", "[user.agents]\nenabled = [\"codex\"]\n", `[user.agents] enabled[0]: must be one of "claude", "pi". Codex`},
+		{"unknown agent", ".toml", "[user.agents]\nenabled = [\"codex\"]\n", `[user.agents] enabled[0]: must be one of "claude", "pi". Add other directories to user.agents.extra_dirs; Codex needs no entry`},
 		{"agent twice", ".toml", "[user.agents]\nenabled = [\"pi\", \"pi\"]\n", `[user.agents] enabled: lists "pi" twice`},
-		{"agent path of an unknown agent", ".toml", "[user.agents.paths]\ncodex = \"~/x\"\n", `[user.agents.paths] codex: must be one of "claude", "pi". Codex`},
+		{"agent path of an unknown agent", ".toml", "[user.agents.paths]\ncodex = \"~/x\"\n", `[user.agents.paths] codex: must be one of "claude", "pi". Add other directories`},
 		{"empty agent path", ".toml", "[user.agents.paths]\npi = \"\"\n", "[user.agents.paths] pi: must not be empty"},
 		{"empty extra dir", ".toml", "[user.agents]\nextra_dirs = [\"\"]\n", "[user.agents] extra_dirs[0]: must not be empty"},
 

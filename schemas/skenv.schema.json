@@ -356,7 +356,7 @@
               "claude",
               "pi"
             ],
-            "errorMessage": "Codex is not a link destination: it reads the store (user.storage.dir, default ~/.agents/skills) directly. Add other directories to user.agents.extra_dirs."
+            "errorMessage": "Add other directories to user.agents.extra_dirs; Codex needs no entry: it reads the store (user.storage.dir, default ~/.agents/skills) directly."
           },
           "uniqueItems": true
         },
@@ -372,7 +372,7 @@
               "claude",
               "pi"
             ],
-            "errorMessage": "Codex is not a link destination: it reads the store (user.storage.dir, default ~/.agents/skills) directly. Add other directories to user.agents.extra_dirs."
+            "errorMessage": "Add other directories to user.agents.extra_dirs; Codex needs no entry: it reads the store (user.storage.dir, default ~/.agents/skills) directly."
           }
         },
         "extra_dirs": {

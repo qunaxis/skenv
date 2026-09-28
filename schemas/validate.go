@@ -210,7 +210,8 @@ func (f *formatter) notMessage(e *jsonschema.ValidationError) string {
 
 // known lists the keys the object schema at url allows.
 func (f *formatter) known(url string) []string {
-	props, _ := f.subschema(url).(map[string]any)["properties"].(map[string]any)
+	obj, _ := f.subschema(url).(map[string]any)
+	props, _ := obj["properties"].(map[string]any)
 	keys := make([]string, 0, len(props))
 	for k := range props {
 		keys = append(keys, k)

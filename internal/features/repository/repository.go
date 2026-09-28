@@ -232,7 +232,8 @@ type Drift struct {
 // Check compares the managed files and blocks in root with the templates.
 // Also reported: a template_version other than skenvfile.LatestTemplates (the files are then not
 // compared), CLAUDE.md in the root or .claude/ (it disables AGENTS.md in
-// Claude Code's default mode) and [environment] in a public repository.
+// Claude Code's default mode). An invalid skenv file, such as a public
+// repository with [user], is an error of LoadRepository.
 func Check(root string) ([]Drift, error) {
 	c, err := skenvfile.LoadRepository(root)
 	if err != nil {
