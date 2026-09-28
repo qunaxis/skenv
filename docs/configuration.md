@@ -29,7 +29,7 @@ they create `config.toml` with a schema directive for editors (see
 [Editor support](editor-support.md)):
 
 ```toml
-#:schema https://qunaxis.github.io/skenv/schemas/v0.4.0/config.schema.json
+#:schema https://qunaxis.github.io/skenv/schemas/v0.6.0/config.schema.json
 # skenv configuration, written by `skenv init`, `clone` or `use`
 manifest = "~/src/my-skills/skenv.toml"
 ```

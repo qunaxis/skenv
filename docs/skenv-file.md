@@ -183,9 +183,7 @@ Editors then complete keys, describe them on hover and mark mistakes. See
 ## Where skenv looks
 
 - The manifest: `--manifest`, then `$SKENV_MANIFEST`, then `manifest` in the
-  tool config `~/.config/skenv/config.toml` (written by `skenv init`,
-  `skenv clone` or `skenv use`). Each
-  names the skenv file or the directory that holds it.
+  tool config. See [Precedence](configuration.md#precedence) for the full order.
 - The harness: the skenv file at the root of the repository (`--dir`,
   default: the current repository).
 - Project skills: the skenv file at the root of the git repository of the

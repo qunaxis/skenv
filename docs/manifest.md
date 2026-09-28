@@ -27,12 +27,11 @@ Found via `--manifest`, then `$SKENV_MANIFEST`, then `manifest` in the skenv
 config file (written by `skenv init`, `skenv clone` or `skenv use`). Each
 names the skenv file or the directory that holds it. The config file is
 `~/.config/skenv/config.toml`, or `config.yaml`, `config.yml` or `config.json`
-if you prefer; only one of them may exist. Every setting follows the same
-order: flag, `SKENV_<KEY>` environment variable, config file, default. There is no default
-location: when none of them is set, commands that need the manifest stop
-with an error that suggests `skenv init`, `skenv clone <repo>`,
-`skenv use <path>` or `--manifest` (`skenv use .` inside a repository that
-holds a manifest).
+if you prefer; only one of them may exist. See [Precedence](configuration.md#precedence)
+for how settings are resolved. There is no default location: when none of them
+is set, commands that need the manifest stop with an error that suggests
+`skenv init`, `skenv clone <repo>`, `skenv use <path>` or `--manifest`
+(`skenv use .` inside a repository that holds a manifest).
 
 ## Format
 
