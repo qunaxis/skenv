@@ -282,7 +282,7 @@ func TestInitNextToUser(t *testing.T) {
 }
 
 // A repository whose desired template_version is older is reported by
-// check and moved to Latest by Update (what `repo upgrade` does).
+// check and moved to skenvfile.LatestTemplates by Update (what `repo upgrade` does).
 func TestOlderHarness(t *testing.T) {
 	root := t.TempDir()
 	if _, _, err := Init(root, "private", "", "", nil, false, false); err != nil {

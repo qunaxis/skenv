@@ -231,7 +231,7 @@ type Drift struct {
 }
 
 // Check compares the managed files and blocks in root with the templates.
-// Also reported: a harness older than Latest (the files are then not
+// Also reported: a template_version other than skenvfile.LatestTemplates (the files are then not
 // compared), CLAUDE.md in the root or .claude/ (it disables AGENTS.md in
 // Claude Code's default mode) and [environment] in a public repository.
 func Check(root string) ([]Drift, error) {
