@@ -105,12 +105,14 @@ func directiveVersion(directiveURL string) string {
 // skenv skill is valid for the current release: for the real parser and
 // for the schema it names. Every #:schema URL among them must also pin the
 // same release: release.sh runs `go test ./...` before it writes the new
-// CHANGELOG.md entry and pushes straight to main (AGENTS.md: only a
-// docs-impact PR touches docs), so comparing against "the newest release
-// in CHANGELOG.md" would fail on main after every release, until that
-// follow-up PR lands — pure churn, not a real finding. Pinned-but-mutually
-// -inconsistent URLs is the actual bug shape (docs/configuration.md and
-// docs/editor-support.md disagreeing), and needs no release-time state.
+// CHANGELOG.md entry and pushes straight to main (.devloop/process.md:
+// nobody but `make release` touches CHANGELOG.md by hand, and a release
+// commit touches nothing else), so comparing against "the newest release
+// in CHANGELOG.md" would fail on main after every release, until a
+// separate follow-up PR bumps the doc pins — pure churn, not a real
+// finding. Pinned-but-mutually-inconsistent URLs is the actual bug shape
+// (docs/configuration.md and docs/editor-support.md disagreeing), and
+// needs no release-time state.
 func TestDocExamplesValid(t *testing.T) {
 	skenvSchema, cfgSchema := compile(t, schemas.Skenv), compile(t, schemas.Config)
 

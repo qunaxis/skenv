@@ -164,6 +164,9 @@ func examples(t *testing.T) (skenv, cfg []example) {
 			t.Fatal(err)
 		}
 		for _, b := range mdscan.Blocks(filepath.Base(p), string(data), "toml", "yaml", "json") {
+			if b.Skip {
+				continue
+			}
 			all = append(all, example{b.File, "." + b.Lang, b.Text})
 		}
 	}
