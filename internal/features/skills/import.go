@@ -300,6 +300,22 @@ func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *skenv
 func (e *UserScope) scanInstalled(r *imported, inManifest map[string]bool) (list []found, seen map[string]found) {
 	seen = map[string]found{}
 	plugins := e.claudePlugins()
+	e.foreignEntries(func(name, p string) {
+		if inManifest[name] {
+			return
+		}
+		if f, ok := e.installed(r, seen, name, p, plugins); ok {
+			seen[name] = f
+			list = append(list, f)
+		}
+	})
+	return list, seen
+}
+
+// foreignEntries calls fn with each entry of the store and the agent
+// directories, in that order, except hidden and Claude-synced entries,
+// those matching user.unmanaged and those skenv owns.
+func (e *UserScope) foreignEntries(fn func(name, p string)) {
 	for _, dir := range append([]string{e.store}, e.targets...) {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -308,17 +324,12 @@ func (e *UserScope) scanInstalled(r *imported, inManifest map[string]bool) (list
 		for _, de := range entries {
 			name := de.Name()
 			p := filepath.Join(dir, name)
-			if strings.HasPrefix(name, ".") || e.isClaudeSynced(p) || e.manifest.IsUnmanaged(name) || e.owned(p) || inManifest[name] {
+			if strings.HasPrefix(name, ".") || e.isClaudeSynced(p) || e.manifest.IsUnmanaged(name) || e.owned(p) {
 				continue
 			}
-			f, ok := e.installed(r, seen, name, p, plugins)
-			if ok {
-				seen[name] = f
-				list = append(list, f)
-			}
+			fn(name, p)
 		}
 	}
-	return list, seen
 }
 
 // installed resolves the entry p named name, false when the import skips
