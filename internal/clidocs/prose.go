@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -50,12 +51,12 @@ func proseFiles(root string) ([]string, error) {
 		}
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
-			if rel == ".git" || slicesContain(proseExcludedDirs, rel) {
+			if rel == ".git" || slices.Contains(proseExcludedDirs, rel) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if filepath.Ext(p) != ".md" || slicesContain(proseExcludedFiles, rel) {
+		if filepath.Ext(p) != ".md" || slices.Contains(proseExcludedFiles, rel) {
 			return nil
 		}
 		files = append(files, rel)
@@ -66,15 +67,6 @@ func proseFiles(root string) ([]string, error) {
 	}
 	sort.Strings(files)
 	return files, nil
-}
-
-func slicesContain(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 // fenceOpenRe matches a fenced code block's opening delimiter and captures
@@ -244,7 +236,7 @@ func proseIsPlaceholder(tok string) bool {
 func proseResolveAlternatives(cur *cobra.Command, tok string) (*cobra.Command, string) {
 	unescaped := strings.ReplaceAll(tok, `\|`, "|")
 	var next *cobra.Command
-	for _, alt := range strings.Split(unescaped, "|") {
+	for alt := range strings.SplitSeq(unescaped, "|") {
 		sub := proseFindSubcommand(cur, alt)
 		if sub == nil {
 			return nil, fmt.Sprintf("unknown command %q", alt)
