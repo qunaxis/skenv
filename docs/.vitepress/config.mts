@@ -82,7 +82,6 @@ function commandItems(): DefaultTheme.SidebarItem[] {
 // tasks, then reference; tooling for skill authors comes last.
 const gettingStarted: DefaultTheme.SidebarItem[] = [
   { text: 'Overview', link: '/getting-started' },
-  { text: 'Install', link: '/install' },
   { text: 'Create your first environment', link: '/first-environment' },
   { text: 'Adopt existing skills', link: '/adopting' },
   { text: 'Connect another machine', link: '/another-machine' },
@@ -175,7 +174,7 @@ export default defineConfig({
         text: 'Guide',
         link: '/getting-started',
         activeMatch:
-          '^/(getting-started|install|first-environment|adopting|another-machine|commands$|list-skills|manage-skills|create-skill|conflicts|autostart)',
+          '^/(getting-started|first-environment|adopting|another-machine|commands$|list-skills|manage-skills|create-skill|conflicts|autostart)',
       },
       {
         text: 'Reference',
