@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +27,21 @@ import (
 	"github.com/qunaxis/skenv/internal/platform/paths"
 	"github.com/qunaxis/skenv/schemas"
 )
+
+//go:embed help/*.md
+var helpFS embed.FS
+
+// help is the Long text of a command, from help/<name>.md (the command path
+// without "skenv", spaces replaced by "_"; "root" for skenv itself). It
+// panics on a missing file: every test that builds the command tree
+// (Command, Main) catches that at startup, before the text ever ships.
+func help(name string) string {
+	b, err := helpFS.ReadFile("help/" + name + ".md")
+	if err != nil {
+		panic("cli: " + err.Error())
+	}
+	return strings.TrimSuffix(string(b), "\n")
+}
 
 // The help lists commands in the order they are added, by task, not
 // alphabetically.
@@ -79,30 +95,7 @@ func newRoot(a *app) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "skenv",
 		Short: "Install agent skills (Claude Code, Codex, pi) from a manifest in git",
-		Long: `skenv installs agent skills (Claude Code, Codex, pi) from a manifest you
-keep in git, and keeps every machine in line with it. The manifest is the
-[user] section of skenv.toml in a git repository: skills of editable git
-working copies ("checkouts") are linked, other skills are copies pinned to
-a commit ("dependencies").
-
-First steps, by situation:
-- No manifest yet: ` + "`skenv init`" + ` in a git repository starts one.
-- Skills already installed (npx skills, copies): ` + "`skenv init --import`" + `
-  starts one, records them and takes over those it can match to a commit.
-- Another machine: ` + "`skenv clone <repo>`" + ` clones your manifest repository
-  and uses it; ` + "`skenv use .`" + ` in a checkout you already have.
-
-Then ` + "`skenv sync`" + ` applies the manifest, ` + "`skenv list`" + ` shows the skills and
-whether they are installed, ` + "`skenv vendor add <repo>`" + ` installs a third-party
-skill and ` + "`skenv doctor`" + ` checks the machine.
-
-In a project repository whose skenv file has a [project] section, sync and
-doctor work on the skills of the project instead. The manifest location and
-the config file: https://qunaxis.github.io/skenv/configuration and
-"skenv schema config".
-
-Exit codes: 0 success, 1 problems found, 2 error. Warnings do not change
-the exit code; "skenv doctor" exits 0 only when the machine matches.`,
+		Long:  help("root"),
 		Example: `# Set up a machine from the manifest repository
 skenv clone example-org/skills
 skenv sync
@@ -186,8 +179,7 @@ func addCompletion(root *cobra.Command) {
 			continue
 		}
 		c.Short = "Generate the autocompletion script for bash, zsh or fish"
-		c.Long = `Generate the autocompletion script for skenv for bash, zsh or fish.
-See each sub-command's help for details on how to use the generated script.`
+		c.Long = help("completion")
 		c.Args, c.RunE = nil, groupRun
 		for _, s := range c.Commands() {
 			if s.Name() == "powershell" {
@@ -337,46 +329,7 @@ func initCmd(a *app) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "init",
 		Short: "Start a manifest in a git repository",
-		Long: `Start a manifest in the git repository of the current directory (or --dir).
-Its skenv file gets a [user] section with a commented skeleton, or
-skenv.toml is created with one (skenv.yaml or skenv.json with --format); the
-repository itself becomes its first checkout, with checkout_dir "." (the
-repository that holds the manifest, wherever it is cloned) and repo
-owner/repo for an origin on github.com, gitlab:... on gitlab.com,
-codeberg:... on codeberg.org, the URL (without credentials) on any other
-host; a local origin is left out. A repository without an origin yet names
-its future remote with --remote (owner/repo, gitlab:group/repo,
-codeberg:owner/repo or a full URL), written the same way; with an origin,
---remote is an error. It does not set up [repository]: "skenv repo init"
-does, and picks the CI system from the host of origin. The file is recorded
-as "manifest" in the config file (~/.config/skenv/config.toml unless a YAML
-or JSON one exists; a new one in the format of the skenv file), and nothing
-is synced. It refuses when the file has [user] already (` + "`skenv use .`" + ` uses
-that one) or its [repository] is public.
-
-To use an existing manifest on this machine: ` + "`skenv clone <repo>`" + `, or
-` + "`skenv use <path>`" + ` for a checkout you already have.
-
-With --import: start the manifest, import the skills already installed on
-this machine into it (see "skenv import") and run ` + "`skenv sync --adopt`" + `: one
-command to adopt an existing setup. Skills pinned without a matching commit
-are recorded but left as installed.
-
-An existing file keeps its format: --format that disagrees with it is an
-error (exit code 2), and nothing is written.
-
-- Reads: the git repository of the current directory (or --dir), its origin
-  and skenv file; with --import, the installed skills and the lock of the
-  skills CLI.
-- Changes: the skenv file and "manifest" in the config file; with --import,
-  the lock of the skills CLI and what ` + "`skenv sync --adopt`" + ` changes.
-- Network: none; --import fetches the repositories of the installed skills.
-- Conflicts: with --import, installed copies are moved to
-  ~/.local/state/skenv/backup/<ts>/ and replaced, except skills pinned
-  without a matching commit, which stay as installed.
-- Preview: --dry-run writes nothing except, with --import, the clone cache.
-- Next: commit and push the skenv file, then ` + "`skenv clone <repo>`" + ` on your other
-  machines.`,
+		Long:  help("init"),
 		Example: `# Start a manifest in the git repository of the current directory
 skenv init
 # Start one with the skills already installed here, and take them over
@@ -414,37 +367,7 @@ func cloneCmd(a *app) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "clone <repo> [<dir>]",
 		Short: "Clone a manifest repository and use its manifest on this machine",
-		Long: `Clone the repository that holds your manifest into <dir> (default ./<repo>
-in the current directory, like git clone) and record its skenv file as
-"manifest" in the config file, as ` + "`skenv use`" + ` does. When <dir> is a working copy of
-<repo> already, it is used as it is, and an empty directory is cloned into;
-another repository or a directory that is not a git working copy is an
-error. <repo> is owner/repo (or github:owner/repo) on github.com,
-gitlab:group/sub/repo, codeberg:owner/repo or a full git URL; hosts declared
-in the manifest are not known before it is cloned, so a self-hosted
-repository takes its URL.
-
-It does not sync, whether it cloned or not: run ` + "`skenv sync --dry-run`" + ` to see what
-the manifest would change on this machine, then ` + "`skenv sync`" + `.
-
-The manifest usually lists its own repository as a checkout. With
-checkout_dir "." that is wherever the manifest is cloned. With another
-checkout_dir, that path is the working copy sync keeps up to date: without
-<dir>, a new clone goes there when nothing is there yet, and when the
-manifest ends up elsewhere, clone warns: sync would keep a second working
-copy at checkout_dir and never pull the manifest checkout, so changes
-pushed from other machines would not arrive (sync warns and doctor reports
-manifest-checkout until you ` + "`skenv use`" + ` the working copy there).
-
-- Reads: the repository and its skenv file, and the config file.
-- Changes: the new working copy <dir> and "manifest" in the config file
-  (~/.config/skenv/config.toml unless a YAML or JSON one exists; a new one is
-  YAML or JSON with --format). Nothing is synced.
-- Network: git clone.
-- Conflicts: a <dir> that is not a working copy of <repo> is an error.
-- Preview: --dry-run clones nothing and writes nothing.
-- Next: ` + "`skenv sync --dry-run`" + `, then ` + "`skenv sync`" + ` (with --adopt when skills are installed
-  here another way).`,
+		Long:  help("clone"),
 		Example: `# Clone the manifest repository into ./skills and record it
 skenv clone example-org/skills
 # Into a directory of your choice
@@ -472,24 +395,7 @@ func useCmd(a *app) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "use <path>",
 		Short: "Use an existing manifest on this machine",
-		Long: `Record the manifest at <path>, a skenv file with a [user] section or
-a directory that holds one (` + "`skenv use .`" + ` in the root of your skills repository),
-as "manifest" in the config file. A manifest recorded before is replaced,
-and the output names it. skenv never switches manifests by itself: the
-current directory does not select one.
-
-The manifest usually lists its own repository as a checkout; when its
-checkout_dir is not the checkout of <path>, use warns: sync would clone a
-second working copy there.
-
-- Reads: the skenv file and the config file.
-- Changes: "manifest" in the config file (~/.config/skenv/config.toml unless
-  a YAML or JSON one exists; a new one is YAML or JSON with --format).
-  Nothing is synced.
-- Network: none.
-- Preview: --dry-run writes nothing.
-- Next: ` + "`skenv sync --dry-run`" + `, then ` + "`skenv sync`" + ` (with --adopt when skills are installed
-  here another way).`,
+		Long:  help("use"),
 		Example: `# Use the manifest of the repository in the current directory
 skenv use .`,
 		Args: nArgs(1),
@@ -511,23 +417,7 @@ func listCmd(a *app) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "list",
 		Short: "List the skills of the manifest and whether they are installed",
-		Long: `List the manifest, the store and the agent directories, then every skill of
-the manifest: KIND is editable for a skill of a checkout (linked from a git
-working copy, VERSION is its path) and pinned for a dependency (a copy at a
-commit, VERSION is the commit). STATE is:
-
-- installed: in the store and linked into every agent directory;
-- not synced: in the manifest, but its copy or a link is missing or out of
-  date: run ` + "`skenv sync`" + `;
-- conflict: a path skenv does not manage is in the way: ` + "`skenv sync --adopt`" + `
-  backs it up and replaces it;
-- not selected: a skill of a checkout left out by its include or exclude;
-- excluded on this machine: left out by the rules of this machine
-  (user.machines.<name>).
-
-Checkouts that are not cloned yet are listed below the table. It is
-read-only and offline and exits 0: ` + "`skenv doctor`" + ` is the check. Project skills
-are files committed with the project; ` + "`skenv doctor --project`" + ` checks them.`,
+		Long:  help("list"),
 		Example: `# The skills of the manifest on this machine
 skenv list`,
 		Args: nArgs(0),
@@ -546,73 +436,7 @@ func importCmd(a *app) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "import",
 		Short: "Add the skills already installed on this machine, or in a project, to the skenv file",
-		Long: `Add the skills installed on this machine that the manifest does not have
-yet, so adopting skenv on a machine with skills is one command. What it
-changes:
-
-- The manifest: a skill installed by the vercel skills CLI becomes
-  ` + "`[user.dependencies.<name>]`" + `, pinned to a commit; a link into a git
-  working copy becomes ` + "`[user.checkouts.<id>]`" + ` (with ` + "`include = [...]`" + ` when
-  only some of its skills are linked; the ID is the repository name). The
-  diff is printed and the file written in place, comments kept; a skenv
-  file without [user] gets one, as "skenv init" adds it. The change is not
-  committed.
-- The lock of the skills CLI, ~/.agents/.skill-lock.json (or
-  ` + "`$XDG_STATE_HOME/skills/.skill-lock.json`" + `): the skills now in the manifest
-  leave it, so ` + "`npx skills update`" + ` no longer changes what skenv manages. The
-  lock as it was goes to ~/.local/state/skenv/backup/<ts>/ first.
-- Nothing installed: the copies and links stay until ` + "`skenv sync --adopt`" + `
-  backs them up and replaces them.
-
-The report lists what becomes managed, grouped by how the commit of each
-dependency was found: exact (the commit has the hash recorded in the
-lock), same files (no commit has the hash, one has the files of the
-installed copy) and unmatched (neither: pinned to the tip of the branch, so
-the installed copy may differ; a warning). Then what is not imported, with
-the reason: a directory neither in the lock nor a link into a working copy,
-a lock entry from a source that is not a git repository or not installed.
-Skipped without a word: ~/.claude/skills/synced, skills of Claude Code
-plugins, user.unmanaged matches and skills in the manifest. A second run
-imports nothing.
-
-With --sync, ` + "`skenv sync --adopt`" + ` follows and takes over the exact and
-same-files skills and the checkouts. The unmatched ones are recorded
-but left as installed; the report after the sync lists what was recorded
-and what was taken over, and for each unmatched skill the two ways to
-decide: ` + "`skenv sync --adopt`" + ` replaces it with the pinned commit,
-` + "`skenv vendor remove <name>`" + ` drops the entry.
-
-How the commit is found: the hash of the lock (skillFolderHash: a git tree
-id for GitHub installs, a sha256 of the files otherwise) is compared with
-the skill folder of each commit on the ref of the lock (or the default
-branch), newest first from updatedAt back; then the files of the installed
-copy; then HEAD.
-
-With --project: the same for the git repository of the current directory
-and the skills-lock.json of the skills CLI in its root. Each skill of the
-lock becomes ` + "`[project.dependencies.<name>]`" + ` of the repository's skenv file (a
-skenv file without [project] gets one, a repository without a skenv file a
-skenv.toml), matched with its computedHash the same way (without dates:
-every commit is a candidate). The imported entries leave skills-lock.json
-(the file goes when none are left), after a copy to the backup directory.
-Project-own skills in dir, the mirrors, .agents/skills, .claude/skills and
-.pi/skills are reported and never changed; one that is in several of them
-with different files is a warning, and --sync does not run until you pick
-the version to keep. --sync leaves unmatched skills as installed here too
-(` + "`skenv vendor remove --project <name>`" + ` drops one).
-
-- Reads: the manifest (or [project]), the store and agent directories, the
-  lock of the skills CLI.
-- Changes: the manifest (or [project]) and the lock, after a backup; with
-  --sync, what ` + "`skenv sync --adopt`" + ` changes, except for unmatched skills.
-- Network: fetches the repository of each skill of the lock into the clone
-  cache ~/.cache/skenv/repos to find its commit.
-- Conflicts: none without --sync; with it, installed copies of exact and
-  same-files skills are backed up to ~/.local/state/skenv/backup/<ts>/ and
-  replaced, unmatched ones are left as installed.
-- Preview: --dry-run writes nothing except the clone cache.
-- Next: ` + "`skenv sync --adopt`" + ` to take the installed copies over, then commit
-  the skenv file.`,
+		Long:  help("import"),
 		Example: `# Show the manifest diff and the lock changes, write nothing
 skenv import --dry-run
 # Write the manifest and clean the lock of the skills CLI
@@ -649,45 +473,7 @@ func syncCmd(a *app, name string) *cobra.Command {
 	c := &cobra.Command{
 		Use:   name,
 		Short: "Apply the manifest to this machine, or sync a project",
-		Long: `Apply the manifest: pull the checkouts (editable git working copies of your
-skills), copy each dependency at its commit, link everything into the
-store and the agent directories, and remove managed paths that left the
-manifest. It never changes the skenv file: pins, selections, template
-versions and agents change only by an edit or by "skenv vendor", "skenv
-import" and "skenv repo upgrade".
-
-In a project, a git repository whose skenv file has a [project] section
-(checked at the root of the repository of the current directory), sync
-works on the project instead: it copies every pinned skill of [project]
-into its dir at its commit, removes copies whose entry is gone, and gives
-every skill of dir to each mirror. It changes a skill authored in dir only
-with --adopt, after a backup.
---manifest syncs the machine from there; --project requires a project.
-
-A checkout is fast-forwarded from origin only when it is clean and on its
-branch (branch in the manifest, else the default branch of origin). sync
-never resets, switches, stashes or re-clones: a checkout on another branch
-or a detached HEAD, with uncommitted changes or diverged from origin is
-local development state, printed as "unresolved:" and linked as it is;
-exit code 0. A checkout_dir that is not a working copy of its repo (another
-origin, no git) is an unresolved error: its skills are not linked, links it
-had are kept, nothing in it changes, exit code 1. The summary counts the
-unresolved. ` + "`skenv doctor`" + ` exits 0 only when the machine matches the
-manifest. With --dry-run nothing is pulled, so the plan uses the checkouts
-(and a manifest inside one) as they are now.
-
-- Reads: the manifest, the checkouts, the store (user.storage.dir, default
-  ~/.agents/skills), the agent directories and the state file
-  ~/.local/state/skenv/state.json.
-- Changes: the checkouts (clone, pull --ff-only), the store, the agent
-  links and the state file; in a project, its dir and mirrors.
-- Network: git clone and pull of checkouts, fetches of dependencies into
-  the clone cache ~/.cache/skenv/repos.
-- Conflicts: an unmanaged path in the way is an error and stays; --adopt
-  moves it to ~/.local/state/skenv/backup/<ts>/ and replaces it.
-- Preview: --dry-run writes and pulls nothing, so upstream changes are not
-  in the plan.
-- Next: "skenv doctor".`,
+		Long:  help("sync"),
 		Example: `# Show what a sync would change
 skenv sync --dry-run
 # Pull, vendor and link
@@ -704,19 +490,7 @@ skenv sync --project`,
 	}
 	if name == "link" {
 		c.Short = "Create store and agent links without pulling"
-		c.Long = `Create store links for the skills of checkouts and agent links for every
-skill of the manifest. Projects have no links to create: ` + "`skenv sync`" + ` updates
-their mirrors.
-
-- Reads: the manifest, the checkouts, the store, the agent directories and
-  the state file.
-- Changes: the store links of the skills of checkouts, the agent links and
-  the state file; it pulls, copies and removes nothing.
-- Network: none.
-- Conflicts: an unmanaged path in the way is an error and stays; --adopt
-  moves it to ~/.local/state/skenv/backup/<ts>/ and replaces it.
-- Preview: --dry-run writes nothing.
-- Next: "skenv doctor".`
+		c.Long = help("link")
 		c.Example = "# Recreate a link removed by hand, without pulling\nskenv link"
 	}
 	manifestFlag(c.Flags(), &o)
@@ -735,24 +509,7 @@ func doctorCmd(a *app) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "doctor",
 		Short: "Compare the machine with the manifest, or a project with its [project]",
-		Long: `Compare the machine with the manifest. It changes no skill, link or file,
-but runs ` + "`git fetch`" + ` in each checkout (network access; it updates their
-remote-tracking branches) to report unpushed and behind.
-Classes: missing, extra-managed, unmanaged, wrong-rev, broken-link, conflict,
-dirty, unpushed, behind, agent-mismatch, manifest-checkout (the manifest is
-not in the working copy its checkout names, so sync never pulls it),
-wrong-origin (a checkout_dir that is not a working copy of its repo) and
-wrong-branch (a checkout not on the branch sync keeps it on).
-
-In a project (a git repository whose skenv file has [project]), doctor
-compares the project with its [project] section instead, offline, so it can
-run in CI. Classes: missing, wrong-rev, modified (a copy edited locally),
-extra-managed, conflict, broken-mirror, mirror-drift, unmanaged (a skill
-only in a mirror). --manifest checks the machine from there; --project
-requires a project.
-
-Exit code: 0 in sync, 1 discrepancies, 2 error. Exit code 0 is the check
-that a sync converged: sync itself exits 0 with warnings.`,
+		Long:  help("doctor"),
 		Example: `# The machine matches the manifest
 skenv doctor
 # A skill link was removed by hand
@@ -856,35 +613,7 @@ func vendorCmd(a *app) *cobra.Command {
 	add := &cobra.Command{
 		Use:   "add <repo>",
 		Short: "Install a third-party skill, pinned to a commit",
-		Long: `Pin a third-party skill in the manifest (HEAD of the default branch unless
---rev) and sync it. The manifest change is not committed.
-
---path is the directory of the skill inside the repository; it can be left
-out when the repository has exactly one SKILL.md. The skill is installed
-under --name, by default the last element of that directory (the
-repository name when the skill is at its root), lowercased.
-
-It adds a [user.dependencies.<name>] table with repo, skill_dir and commit.
-<repo> is written as given: owner/repo (or github:owner/repo) on github.com,
-gitlab:group/sub/repo, codeberg:owner/repo, <alias>:path of a host declared
-under [user.git_hosts.<alias>], or a full git URL; a relative local path is
-written absolute. An unknown prefix is an error. See
-https://qunaxis.github.io/skenv/git-hosts
-
-With --project: add a [project.dependencies.<name>] table to the skenv file
-of the current repository and sync the project, which copies the skill into
-its dir and mirrors. Its hosts are the ones declared under
-[project.git_hosts.<alias>]. Commit the file and the copies with the
-project.
-
-- Reads: the manifest (or [project]) and the repository of the skill.
-- Changes: the manifest (or [project]), the copy of the skill in the store
-  (or the project), its agent links (or mirrors) and the state file.
-- Network: fetches the repository into the clone cache ~/.cache/skenv/repos.
-- Conflicts: an unmanaged path with the skill's name is an error and stays;
-  --adopt moves it to ~/.local/state/skenv/backup/<ts>/ and replaces it.
-- Preview: --dry-run writes nothing except the clone cache.
-- Next: commit the skenv file; "skenv doctor".`,
+		Long:  help("vendor_add"),
 		Example: `# Pin the skill in tools/release-notes/ at HEAD of the default branch
 skenv vendor add example-vendor/tools --path tools/release-notes
 # A skill from a GitLab subgroup
@@ -910,22 +639,7 @@ skenv vendor add example-vendor/tools --path tools/release-notes --project`,
 		Use:     "update [name...]",
 		Aliases: []string{"upgrade"},
 		Short:   "Move third-party skills to a new commit",
-		Long: `Move dependencies to a new commit and sync them: the named ones, or every
-dependency without names. Each goes to HEAD of its default branch; --rev
-pins a single named skill. Shows the log of the skill's directory.
-
-With --project: move entries of [project] and sync the project. A skill of
-a [project.from.<id>] entry moves the whole entry, whose skills share one
-commit.
-
-- Reads: the manifest (or [project]) and the repositories of the skills.
-- Changes: the commit of each moved skill in the manifest (or [project]),
-  its copy, its links (or mirrors) and the state file.
-- Network: fetches each repository into the clone cache ~/.cache/skenv/repos.
-- Conflicts: as vendor add: --adopt replaces an unmanaged path, after a
-  backup.
-- Preview: --dry-run writes nothing except the clone cache.
-- Next: commit the skenv file; "skenv doctor".`,
+		Long:    help("vendor_update"),
 		Example: `# Move diagrams to HEAD of the default branch of its repository
 skenv vendor update diagrams
 # Update every dependency
@@ -950,19 +664,7 @@ skenv vendor update --project`,
 	remove := &cobra.Command{
 		Use:   "remove <name>",
 		Short: "Remove a third-party skill and its installed copy",
-		Long: `Remove a dependency from the manifest and its managed paths.
-
-With --project: remove its [project.dependencies.<name>] table and sync the
-project, which removes the copy and its mirrors. A skill of a
-[project.from.<id>] entry is removed by editing the skills of that entry.
-
-- Reads: the manifest (or [project]) and the state file.
-- Changes: the manifest (or [project]), and removes the paths the state file
-  records for the skill: its copy and links (or mirrors).
-- Network: none.
-- Conflicts: paths skenv does not manage are left alone.
-- Preview: --dry-run writes and removes nothing.
-- Next: commit the skenv file.`,
+		Long:  help("vendor_remove"),
 		Example: "skenv vendor remove diagrams\n" +
 			"# Remove a skill pinned in the current project\n" +
 			"skenv vendor remove diagrams --project",
@@ -975,13 +677,7 @@ project, which removes the copy and its mirrors. A skill of a
 	shared(remove, &rmF, dryRunPlain)
 
 	c := group("vendor", "Install, update and remove third-party skills, pinned to a commit", add, update, remove)
-	c.Long = `Install, update and remove third-party skills. Each is a dependency pinned
-to a commit: the manifest records the repository, the directory of the
-skill and the commit ([user.dependencies.<name>]), and skenv installs a
-copy of the skill at that commit. The copy changes only when "skenv vendor
-update" moves the pin, not when the repository moves on. Skills you edit
-are different: they are linked from editable git working copies
-([user.checkouts.<id>]), which sync pulls.`
+	c.Long = help("vendor")
 	c.Example = "skenv vendor add example-vendor/tools --path tools/release-notes\n" +
 		"skenv vendor update\n" +
 		"skenv vendor remove diagrams"
@@ -1026,27 +722,7 @@ func configCmd(a *app) *cobra.Command {
 	show := &cobra.Command{
 		Use:   "show",
 		Short: "Show the effective configuration and why each skill is installed or not",
-		Long: `Show the configuration as it applies on this machine: the manifest and where
-its location came from (--manifest, $SKENV_MANIFEST or the tool config),
-the machine name and its source (the tool config "machine",
-$SKENV_MACHINE, the full or the short hostname) with the machine rules
-that apply, $HOME and $CLAUDE_CONFIG_DIR, the store, each agent directory
-with why it is on or off (listed, detected, not detected), each checkout
-with its resolved directory, the branch sync keeps it on and its state,
-and each skill of the checkouts and dependencies with why it is installed
-or not (include, exclude, machine rules). The raw configuration is the
-skenv file itself.
-
-The file alone does not reproduce everything: dependencies are pinned to
-a commit, but checkouts follow their branch and local edits, and agent
-detection, the machine name and $HOME come from the machine. The output
-ends with that note.
-
-- Reads: the tool config, the manifest, the checkouts (local git commands)
-  and the agent directories.
-- Changes: nothing.
-- Network: none.
-- Next: "skenv list" for what is installed, "skenv doctor" to check.`,
+		Long:  help("config_show"),
 		Example: `# Why is a skill installed on this machine, or not?
 skenv config show`,
 		Args: nArgs(0),
@@ -1070,16 +746,9 @@ skenv config show`,
 func schemaCmd(a *app) *cobra.Command {
 	kinds := map[string]string{"skenv": schemas.Skenv, "config": schemas.Config}
 	return &cobra.Command{
-		Use:   "schema [skenv|config]",
-		Short: "Print the JSON Schema of the skenv file or the tool config",
-		Long: `Print the JSON Schema of this skenv version to stdout: "skenv" (default) for
-the skenv file (skenv.toml, .yaml, .yml or .json with [repository], [user]
-and [project]), "config" for the tool config ~/.config/skenv/config.*.
-
-Files that skenv writes name their schema in a directive, so most editors
-need no setup. Use this for offline work or a custom mapping, for example a
-JSON Schema mapping in JetBrains IDEs or a rule in .taplo.toml. The same
-schemas are published at ` + schemas.Base + `.`,
+		Use:       "schema [skenv|config]",
+		Short:     "Print the JSON Schema of the skenv file or the tool config",
+		Long:      help("schema"),
 		Example:   "skenv schema > skenv.schema.json\nskenv schema config",
 		Args:      rangeArgs(0, 1),
 		ValidArgs: []string{"skenv", "config"},
@@ -1113,21 +782,11 @@ func autostartCmd(a *app) *cobra.Command {
 		}
 	}
 	c := group("autostart", "Run `skenv sync --quiet` at login and every hour",
-		sub("enable", "Install and load the autostart job", `Install and load the autostart job, which runs `+"`skenv sync --quiet`"+` at
-login and every hour.
-
-- Reads: the path of this skenv binary and of git.
-- Changes: ~/Library/LaunchAgents/`+autostart.Label+`.plist (macOS) or
-  skenv.service and skenv.timer in ~/.config/systemd/user (Linux), loaded
-  with launchctl or systemctl --user; an existing job is replaced.
-- Network: none itself; each hourly sync pulls and fetches.
-- Preview: none; `+"`skenv sync --dry-run`"+` shows what the job would change.
-- Next: "skenv autostart status"; the log is ~/.local/state/skenv/autostart.log.`),
+		sub("enable", "Install and load the autostart job", help("autostart_enable")),
 		sub("disable", "Unload and remove the autostart job", ""),
 		sub("status", "Show whether the autostart job is installed and loaded (exit 1 if not)", ""),
 	)
-	c.Long = "Run `skenv sync --quiet` at login and every hour (macOS LaunchAgent\n" +
-		autostart.Label + ", Linux systemd user timer). Log: ~/.local/state/skenv/autostart.log."
+	c.Long = help("autostart")
 	c.Example = "skenv autostart enable\nskenv autostart status\nskenv autostart disable"
 	return c
 }

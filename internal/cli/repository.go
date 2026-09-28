@@ -27,14 +27,7 @@ func lintCmd(a *app) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "lint [path...]",
 		Short: "Check skills for format, links, size and secrets",
-		Long: `Check skills (directories with SKILL.md) under each path (default "."):
-L1 frontmatter, L2 name, L3 Agent Skills limits, L4 relative links,
-L5 file size and secret-like files, L6 shebangs. --publish adds P1: a license,
-metadata.source not book/internal/third-party-copy, no stop-list phrase
-($SKENV_DENYLIST or ~/.config/skenv/denylist.txt) and gitleaks over the whole
-history. --hook is the Claude Code PostToolUse hook: it reads the event on stdin.
-Exit code 0: clean, 1: problems, 2: error (--hook: 2 with findings,
-so Claude Code shows them to the agent).`,
+		Long:  help("lint"),
 		Example: `# Check every skill under the current directory
 skenv lint
 # A skill with problems
@@ -228,18 +221,7 @@ func repoCmd(a *app) *cobra.Command {
 		return c
 	}
 	initC := sub("init", "init --visibility private|public [--ci github|gitlab] [--runner label,...]", "Set up the repository templates of a skills repository",
-		"Set up the repository templates of a skills repository: the [repository] section and the\nschema directive of the skenv file, lefthook.yml, the CI pipeline, linter\nconfigs and the managed blocks of AGENTS.md and .gitignore; then `lefthook\ninstall`. Refuses if [repository] exists.\n\n"+
-			"--visibility is a declared policy: skenv never reads or changes the access\nsetting on the hosting service. A public repository must not carry [user],\nand its CI also runs `skenv lint --publish`.\n\n"+
-			"--ci picks the CI system: github (.github/workflows/check.yml) or gitlab\n(.gitlab-ci.yml). Without it, the host of origin decides: gitlab when origin\nis on gitlab.com or on a host declared with provider \"gitlab\" in the manifest\n(this repository's own [user], else the manifest in the config file),\ngithub otherwise, also when there is no origin.\n\n"+
-			"CI jobs of a public repository run on the hosted runners (ubuntu-latest on\nGitHub, the shared runners on GitLab). Those of a private one run on --runner: the runs-on labels on GitHub, the\nrunner tags on GitLab; default self-hosted, linux, docker (a self-hosted\nDocker runner). --runner ubuntu-latest picks the GitHub-hosted runners.\nAfterwards repository.ci.github.runs_on (or repository.ci.gitlab.tags) holds\nit; change it there and run `skenv repo apply`.\n\n"+
-			"The generated git hooks need lefthook, uv and gitleaks on PATH; the output\nsays which of them are missing. Skill management and sync need none of\nthem: these repository templates are optional tooling for a repository you\npublish or share.\n\n"+
-			"Without a skenv file it creates skenv.toml, or skenv.yaml or skenv.json with\n--format. An existing skenv file gets [repository] added in its own format;\n--format that disagrees with it is an error, and nothing is written.\n\n"+
-			"- Reads: the repository, its origin and skenv file, and the hosts declared\n  in the manifest (to detect the CI system).\n"+
-			"- Changes: the skenv file ([repository], created if absent), the managed\n  files and blocks, and the git hooks (lefthook install).\n"+
-			"- Network: none.\n"+
-			"- Conflicts: a file that exists and that skenv does not manage yet is an\n  error; --force replaces it.\n"+
-			"- Preview: --dry-run writes nothing and does not run lefthook install.\n"+
-			"- Next: commit the generated files; \"skenv repo check\" compares them\n  with the templates later.",
+		help("repo_init"),
 		"# Set up the repository templates of a public skills repository in the current directory\n"+
 			"skenv repo init --visibility public\n"+
 			"# A private repository on GitLab, with jobs on runners tagged self-hosted, linux, docker\n"+
@@ -256,32 +238,24 @@ func repoCmd(a *app) *cobra.Command {
 	initC.RunE = a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
 		return runRepoInit(ctx, env, dir, visibility, ci, format, runner, initC.Flags().Changed("runner"), dryRun, force)
 	})
+	// repo_apply.md, repo_upgrade.md and repo_check.md carry %s where the
+	// template version belongs: it moves at every release (LatestTemplates),
+	// unlike the rest of the help text, so it stays a Go value, not a
+	// baked-in string.
 	apply := sub("apply", "apply", "Regenerate the managed files from the repository templates",
-		"Regenerate the managed files and blocks from the templates of\nrepository.template_version; then `lefthook install`. apply never changes\nthe skenv file: template_version is what the repository asks for, and\nthis skenv embeds the templates of "+skenvfile.LatestTemplates+" only. Another version\nis an error: run `skenv repo upgrade` to move the repository to "+skenvfile.LatestTemplates+",\nor use the skenv release it names.\n\nThe CI pipeline follows the table under repository.ci. To switch CI systems,\nreplace [repository.ci.github] with [repository.ci.gitlab] (or back) and run\napply: it writes the pipeline of the new one and removes the managed file\nof the other (.github/workflows/check.yml or .gitlab-ci.yml).\n\n"+
-			"- Reads: the skenv file ([repository]) and the managed files.\n"+
-			"- Changes: the managed files and blocks, and the git hooks (lefthook\n  install).\n"+
-			"- Network: none.\n"+
-			"- Conflicts: a file that exists and that skenv does not manage yet is an\n  error; --force replaces it.\n"+
-			"- Preview: --dry-run writes nothing and does not run lefthook install.\n"+
-			"- Next: commit the changed files.",
+		fmt.Sprintf(help("repo_apply"), skenvfile.LatestTemplates, skenvfile.LatestTemplates),
 		"# Restore a managed file edited by hand\nskenv repo apply")
 	apply.RunE = a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
 		return runRepoApply(ctx, env, dir, dryRun, force)
 	})
 	upgrade := sub("upgrade", "upgrade", "Move the repository to the templates of this skenv",
-		"Set repository.template_version to "+skenvfile.LatestTemplates+", the templates of this skenv,\nand point the schema directive of the skenv file at that version (comments\nand formatting stay), then regenerate the managed files as `skenv repo\napply` does. The generated CI installs the skenv release of\ntemplate_version, so that release must exist before you push.\n\n"+
-			"- Reads: the skenv file ([repository]) and the managed files.\n"+
-			"- Changes: repository.template_version and the schema directive of the\n  skenv file, the managed files and blocks, and the git hooks (lefthook\n  install).\n"+
-			"- Network: none.\n"+
-			"- Conflicts: a file that exists and that skenv does not manage yet is an\n  error; --force replaces it.\n"+
-			"- Preview: --dry-run writes nothing and does not run lefthook install.\n"+
-			"- Next: commit the skenv file and the changed files.",
+		fmt.Sprintf(help("repo_upgrade"), skenvfile.LatestTemplates),
 		"# Move the repository to the templates of the installed skenv\nskenv repo upgrade --dry-run\nskenv repo upgrade")
 	upgrade.RunE = a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
 		return runRepoUpgrade(ctx, env, dir, dryRun, force)
 	})
 	check := sub("check", "check", "Compare the managed files with the repository templates",
-		"Compare repository.template_version with the templates of this skenv\n("+skenvfile.LatestTemplates+"), and the managed files and blocks with the templates of that\nversion: a file generated by another version (its header), or edited by\nhand, is drift. Exit code 0: in sync, 1: drift (files listed), 2: error.\nA missing or outdated schema directive in the skenv file is a warning that\ndoes not change the exit code.",
+		fmt.Sprintf(help("repo_check"), skenvfile.LatestTemplates),
 		"# The managed files match the repository templates\nskenv repo check\n# A managed file was edited by hand\nskenv repo check")
 	check.RunE = a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
 		return runRepoCheck(ctx, env, dir)
