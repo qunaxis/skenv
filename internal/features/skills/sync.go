@@ -214,7 +214,7 @@ func (e *UserScope) syncCheckouts() {
 // really fetches from (after url.<base>.insteadOf), and a cache whose origin
 // is another repository is cloned again, so two repositories never share one.
 func (e *scope) ensureCache(repo, rev string) (string, error) {
-	remote, err := e.hosts.ResolveIn(e.hostsDir, repo)
+	remote, err := e.hosts.ResolveIn(skenvfile.SectionUser, e.hostsDir, repo)
 	if err != nil {
 		return "", err
 	}

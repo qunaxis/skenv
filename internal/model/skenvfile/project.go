@@ -176,9 +176,7 @@ func (p *Project) Validate() error {
 		errs = append(errs, fmt.Errorf("project.mirrors_mode %q must be %s", p.MirrorsMode, strings.Join(quoted(MirrorModes), " or ")))
 	}
 	for _, d := range p.DependencyList() {
-		for _, err := range checkDependency("project.dependencies", d, p.GitHosts, "") {
-			errs = append(errs, projectHosts(err))
-		}
+		errs = append(errs, checkDependency("project.dependencies", d, p.GitHosts, SectionProject, "")...)
 	}
 	for _, f := range p.FromList() {
 		where := fmt.Sprintf("project.from.%s (%s)", f.ID, f.Repo)
@@ -187,8 +185,8 @@ func (p *Project) Validate() error {
 		}
 		if f.Repo == "" {
 			errs = append(errs, fmt.Errorf("project.from.%s: repo is required", f.ID))
-		} else if _, err := p.GitHosts.Resolve(f.Repo); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", where, projectHosts(err)))
+		} else if _, err := p.GitHosts.ResolveIn(SectionProject, "", f.Repo); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", where, err))
 		}
 		if !cleanRel(f.SkillsDir) {
 			errs = append(errs, fmt.Errorf("%s: skills_dir %q must be a relative path inside the repository", where, f.SkillsDir))
@@ -226,20 +224,11 @@ func (p *Project) Validate() error {
 	return errors.Join(errs...)
 }
 
-// projectHosts points an error of Hosts.Resolve at project.hosts, where a
-// project declares its hosts.
-func projectHosts(err error) error {
-	msg := strings.ReplaceAll(err.Error(), "[user.git_hosts.", "[project.git_hosts.")
-	if msg == err.Error() {
-		return err
-	}
-	return errors.New(msg)
-}
-
 // checkDependency validates one dependency of [user] or [project] (in
-// section where): the name, a repo that hosts resolve (a local path
-// against base), the skill directory and a full SHA.
-func checkDependency(where string, d *Dependency, hosts Hosts, base string) []error {
+// section where, naming the git_hosts section too): the name, a repo that
+// hosts resolve (a local path against base), the skill directory and a
+// full SHA.
+func checkDependency(where string, d *Dependency, hosts Hosts, section, base string) []error {
 	var errs []error
 	where = fmt.Sprintf("%s.%s", where, quoteKey(d.Name))
 	if err := ValidName(d.Name); err != nil {
@@ -247,7 +236,7 @@ func checkDependency(where string, d *Dependency, hosts Hosts, base string) []er
 	}
 	if d.Repo == "" {
 		errs = append(errs, fmt.Errorf("%s: repo is required", where))
-	} else if _, err := hosts.ResolveIn(base, d.Repo); err != nil {
+	} else if _, err := hosts.ResolveIn(section, base, d.Repo); err != nil {
 		errs = append(errs, fmt.Errorf("%s: %w", where, err))
 	}
 	if !cleanRel(d.SkillDir) {
