@@ -5,12 +5,6 @@ import (
 	"testing"
 )
 
-const sha = "0123456789abcdef0123456789abcdef01234567"
-
-func vendorItem(name string) Map {
-	return Map{{"name", name}, {"repo", "ext/tools"}, {"path", "tools/" + name}, {"rev", sha}}
-}
-
 func edit(t *testing.T, ext, in string, ops ...func(Doc) error) string {
 	t.Helper()
 	d, err := Open([]byte(in), ext)
@@ -25,142 +19,19 @@ func edit(t *testing.T, ext, in string, ops ...func(Doc) error) string {
 	return string(d.Bytes())
 }
 
-func appendVendor(name string) func(Doc) error {
-	return func(d Doc) error { return d.Append([]string{"environment", "vendor"}, vendorItem(name)) }
-}
-
-func TestYAMLAppend(t *testing.T) {
-	cases := map[string]struct{ in, want string }{
-		"after the last item, keeping comments and blank lines": {
-			in: `# yaml-language-server: $schema=https://example.org/s.json
-# my manifest
-environment:
-  # where skills live
-  layout:
-    store: ~/.skills
-
-  vendor:
-    - name: a   # first
-      repo: x/y
-      rev: "` + sha + `"
-
-    # trailing comment
-host: {}
-`,
-			want: `# yaml-language-server: $schema=https://example.org/s.json
-# my manifest
-environment:
-  # where skills live
-  layout:
-    store: ~/.skills
-
-  vendor:
-    - name: a   # first
-      repo: x/y
-      rev: "` + sha + `"
-    - name: b
-      repo: ext/tools
-      path: tools/b
-      rev: ` + sha + `
-
-    # trailing comment
-host: {}
-`,
-		},
-		"indentless sequence": {
-			in:   "environment:\n  vendor:\n  - name: a\n    repo: x/y\n  layout: {}\n",
-			want: "environment:\n  vendor:\n  - name: a\n    repo: x/y\n  - name: b\n    repo: ext/tools\n    path: tools/b\n    rev: " + sha + "\n  layout: {}\n",
-		},
-		"empty flow list": {
-			in:   "environment:\n  vendor: []  # none yet\n",
-			want: "environment:\n  vendor:  # none yet\n    - name: b\n      repo: ext/tools\n      path: tools/b\n      rev: " + sha + "\n",
-		},
-		"missing key": {
-			in:   "environment:\n  layout:\n    store: x\n# end\n",
-			want: "environment:\n  layout:\n    store: x\n  vendor:\n    - name: b\n      repo: ext/tools\n      path: tools/b\n      rev: " + sha + "\n# end\n",
-		},
-		"missing section": {
-			in:   "repo:\n    template_version: 0.4.0\n",
-			want: "repo:\n    template_version: 0.4.0\nenvironment:\n    vendor:\n        - name: b\n          repo: ext/tools\n          path: tools/b\n          rev: " + sha + "\n",
-		},
-		"empty document": {
-			in:   "# only a comment",
-			want: "# only a comment\nenvironment:\n  vendor:\n    - name: b\n      repo: ext/tools\n      path: tools/b\n      rev: " + sha + "\n",
-		},
-	}
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			if got := edit(t, ".yaml", c.in, appendVendor("b")); got != c.want {
-				t.Errorf("got:\n%s\nwant:\n%s", got, c.want)
-			}
-		})
-	}
-}
-
-func TestYAMLQuotesAmbiguousScalars(t *testing.T) {
-	got := edit(t, ".yaml", "environment: {}\n", func(d Doc) error {
-		return d.Append([]string{"environment", "vendor"}, Map{{"name", "a"}, {"rev", "1234567890123456789012345678901234567890"}, {"path", "yes"}})
-	})
-	want := "environment:\n  vendor:\n    - name: a\n      rev: \"1234567890123456789012345678901234567890\"\n      path: \"yes\"\n"
-	if got != want {
-		t.Errorf("got:\n%s\nwant:\n%s", got, want)
-	}
-}
-
-func TestYAMLFlowListIsRefused(t *testing.T) {
-	d, err := Open([]byte("environment:\n  vendor: [{name: a}]\n"), ".yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Append([]string{"environment", "vendor"}, vendorItem("b")); err == nil || !strings.Contains(err.Error(), "flow style") {
-		t.Errorf("err = %v", err)
-	}
-}
-
 func TestYAMLSetString(t *testing.T) {
-	in := "repo:\n  template_version: 0.3.0   # old\n  visibility: 'private'\nenvironment:\n  vendor:\n    - name: a\n      rev: \"aaaa\" # pinned\n"
+	in := "repo:\n  template_version: 0.3.0   # old\n  visibility: 'private'\n"
 	got := edit(t, ".yaml", in,
-		func(d Doc) error { return d.SetString([]any{"repo", "template_version"}, "0.4.0") },
-		func(d Doc) error { return d.SetString([]any{"repo", "visibility"}, "it's") },
-		func(d Doc) error { return d.SetString([]any{"environment", "vendor", 0, "rev"}, sha) },
+		func(d Doc) error { return d.SetString([]string{"repo", "template_version"}, "0.4.0") },
+		func(d Doc) error { return d.SetString([]string{"repo", "visibility"}, "it's") },
 	)
-	want := "repo:\n  template_version: 0.4.0   # old\n  visibility: 'it''s'\nenvironment:\n  vendor:\n    - name: a\n      rev: \"" + sha + "\" # pinned\n"
+	want := "repo:\n  template_version: 0.4.0   # old\n  visibility: 'it''s'\n"
 	if got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
 	d, _ := Open([]byte("a:\n  b: |\n    x\n"), ".yaml")
-	if err := d.SetString([]any{"a", "b"}, "y"); err == nil {
+	if err := d.SetString([]string{"a", "b"}, "y"); err == nil {
 		t.Error("a block scalar must be refused")
-	}
-}
-
-func TestYAMLRemove(t *testing.T) {
-	in := `environment:
-  vendor:
-    # first one
-    - name: a
-      repo: x/y
-
-    - name: b
-      repo: x/z
-  layout: {}
-`
-	got := edit(t, ".yaml", in, func(d Doc) error { return d.Remove([]any{"environment", "vendor", 0}) })
-	want := `environment:
-  vendor:
-    # first one
-
-    - name: b
-      repo: x/z
-  layout: {}
-`
-	if got != want {
-		t.Errorf("got:\n%s\nwant:\n%s", got, want)
-	}
-	got = edit(t, ".yaml", want, func(d Doc) error { return d.Remove([]any{"environment", "vendor", 0}) })
-	want = "environment:\n  vendor: []\n    # first one\n\n  layout: {}\n"
-	if got != want {
-		t.Errorf("last item, got:\n%s\nwant:\n%s", got, want)
 	}
 }
 
@@ -186,8 +57,22 @@ func TestYAMLPut(t *testing.T) {
 	}
 }
 
+// A scalar that would read back as a different type (a long digit string, a
+// reserved word) is quoted so it round-trips as a string.
+func TestYAMLPutQuotesAmbiguousScalars(t *testing.T) {
+	got := edit(t, ".yaml", "environment: {}\n", func(d Doc) error {
+		return d.Put([]string{"environment"}, "vendor", Map{{"name", "a"}, {"rev", "1234567890123456789012345678901234567890"}, {"path", "yes"}}, false)
+	})
+	want := "environment:\n  vendor:\n    name: a\n    rev: \"1234567890123456789012345678901234567890\"\n    path: \"yes\"\n"
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestYAMLCRLF(t *testing.T) {
-	got := edit(t, ".yaml", "environment:\r\n  vendor:\r\n    - name: a\r\n", appendVendor("b"))
+	got := edit(t, ".yaml", "environment:\r\n  vendor: a\r\n", func(d Doc) error {
+		return d.Put([]string{"environment"}, "layout", "b", false)
+	})
 	if strings.Count(got, "\r\n") != strings.Count(got, "\n") {
 		t.Errorf("mixed line endings:\n%q", got)
 	}
@@ -203,7 +88,7 @@ func TestJSONKeepsIndent(t *testing.T) {
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
 			got := edit(t, ".json", in, func(d Doc) error {
-				return d.SetString([]any{"a", "b"}, "y")
+				return d.SetString([]string{"a", "b"}, "y")
 			})
 			want := strings.Replace(in, `"x"`, `"y"`, 1)
 			if got != want {
@@ -217,16 +102,14 @@ func TestJSON(t *testing.T) {
 	in := `{
   "$schema": "https://example.org/s.json?a=1&b=2",
   "environment": {
-    "vendor": [],
-    "layout": {"ignore": ["tool<x>&*"], "n": 1.50, "ok": true, "none": null}
+    "layout": {"ignore": ["tool<x>&*"], "n": 1.50, "ok": true, "none": null, "store": "old"}
   }
 }`
 	got := edit(t, ".json", in,
-		appendVendor("b"),
 		func(d Doc) error {
 			return d.Put(nil, "repo", Map{{"template_version", "0.4.0"}, {"runner", []string{"a"}}}, true)
 		},
-		func(d Doc) error { return d.SetString([]any{"environment", "vendor", 0, "rev"}, "<new>") },
+		func(d Doc) error { return d.SetString([]string{"environment", "layout", "store"}, "<new>") },
 	)
 	want := `{
   "$schema": "https://example.org/s.json?a=1&b=2",
@@ -237,21 +120,14 @@ func TestJSON(t *testing.T) {
     ]
   },
   "environment": {
-    "vendor": [
-      {
-        "name": "b",
-        "repo": "ext/tools",
-        "path": "tools/b",
-        "rev": "<new>"
-      }
-    ],
     "layout": {
       "ignore": [
         "tool<x>&*"
       ],
       "n": 1.50,
       "ok": true,
-      "none": null
+      "none": null,
+      "store": "<new>"
     }
   }
 }
@@ -259,11 +135,11 @@ func TestJSON(t *testing.T) {
 	if got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
-	got = edit(t, ".json", got, func(d Doc) error { return d.Remove([]any{"environment", "vendor", 0}) })
-	if !strings.Contains(got, `"vendor": [],`) {
+	got = edit(t, ".json", got, func(d Doc) error { return d.Remove([]string{"environment", "layout", "store"}) })
+	if strings.Contains(got, `"store"`) {
 		t.Errorf("after remove:\n%s", got)
 	}
-	got = edit(t, ".json", "", appendVendor("b"))
+	got = edit(t, ".json", "", func(d Doc) error { return d.Put(nil, "environment", Map{{"vendor", []string{"b"}}}, false) })
 	if !strings.HasPrefix(got, "{\n  \"environment\": {\n    \"vendor\": [\n") {
 		t.Errorf("empty file:\n%s", got)
 	}
@@ -303,25 +179,19 @@ func TestDirective(t *testing.T) {
 // nodes are refused instead of being edited at the wrong place.
 func TestYAMLRefusesAnchorsAndTags(t *testing.T) {
 	for _, in := range []string{
-		"environment:\n  vendor: &v\n    - name: a\n      rev: x\n",
-		"environment:\n  vendor: !!seq\n    - name: a\n      rev: x\n",
-		"environment:\n  vendor: !!seq\n  - name: a\n    rev: x\n  - name: b\n",
+		"environment: &e\n  vendor:\n    - name: a\n",
+		"environment: !!map\n  vendor:\n    - name: a\n",
 	} {
-		for name, op := range map[string]func(Doc) error{
-			"append": appendVendor("b"),
-			"remove": func(d Doc) error { return d.Remove([]any{"environment", "vendor", 0}) },
-		} {
-			d, err := Open([]byte(in), ".yaml")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := op(d); err == nil || !strings.Contains(err.Error(), "anchor, alias or tag") {
-				t.Errorf("%s on %q: %v", name, in, err)
-			}
+		d, err := Open([]byte(in), ".yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := d.Remove([]string{"environment", "vendor"}); err == nil || !strings.Contains(err.Error(), "anchor, alias or tag") {
+			t.Errorf("remove on %q: %v", in, err)
 		}
 	}
 	d, _ := Open([]byte("repo:\n  template_version: &h 0.3.0\n"), ".yaml")
-	if err := d.SetString([]any{"repo", "template_version"}, "0.4.0"); err == nil {
+	if err := d.SetString([]string{"repo", "template_version"}, "0.4.0"); err == nil {
 		t.Error("an anchored scalar must be refused")
 	}
 }
@@ -333,14 +203,14 @@ func TestYAMLEdgeCases(t *testing.T) {
 		t.Errorf("empty document:\n%q", got)
 	}
 	// A byte order mark is kept and does not shift the columns.
-	got = edit(t, ".yaml", "\ufeffmanifest: \"a\"\n", func(d Doc) error { return d.SetString([]any{"manifest"}, "b") })
+	got = edit(t, ".yaml", "\ufeffmanifest: \"a\"\n", func(d Doc) error { return d.SetString([]string{"manifest"}, "b") })
 	if got != "\ufeffmanifest: \"b\"\n" {
 		t.Errorf("BOM:\n%q", got)
 	}
 	// A comment after a tab; a # inside a plain value is not a comment.
 	got = edit(t, ".yaml", "repo:\n  template_version: 0.3.0\t# old\n  x: a#b # c\n",
-		func(d Doc) error { return d.SetString([]any{"repo", "template_version"}, "0.4.0") },
-		func(d Doc) error { return d.SetString([]any{"repo", "x"}, "y") })
+		func(d Doc) error { return d.SetString([]string{"repo", "template_version"}, "0.4.0") },
+		func(d Doc) error { return d.SetString([]string{"repo", "x"}, "y") })
 	if got != "repo:\n  template_version: 0.4.0\t# old\n  x: \"y\" # c\n" && got != "repo:\n  template_version: 0.4.0\t# old\n  x: y # c\n" {
 		t.Errorf("comments:\n%q", got)
 	}
@@ -364,21 +234,32 @@ func TestRemoveKey(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := d.Remove([]any{"user", "deps", "a"}); err != nil {
+		if err := d.Remove([]string{"user", "deps", "a"}); err != nil {
 			t.Fatalf("%s: %v", ext, err)
 		}
 		if got := string(d.Bytes()); got != c.one {
 			t.Errorf("%s:\n%s\nwant:\n%s", ext, got, c.one)
 		}
 		d, _ = Open(d.Bytes(), ext)
-		if err := d.Remove([]any{"user", "deps", "b"}); err != nil {
+		if err := d.Remove([]string{"user", "deps", "b"}); err != nil {
 			t.Fatalf("%s: %v", ext, err)
 		}
 		if got := string(d.Bytes()); got != c.none {
 			t.Errorf("%s:\n%s\nwant:\n%s", ext, got, c.none)
 		}
-		if err := d.Remove([]any{"user", "deps", "zzz"}); err == nil {
+		if err := d.Remove([]string{"user", "deps", "zzz"}); err == nil {
 			t.Errorf("%s: a missing key must fail", ext)
 		}
+	}
+}
+
+// Remove on a key whose value is an indentless sequence (items dashed at the
+// key's own column, not indented under it) takes the whole list with it.
+func TestRemoveKeyIndentlessSequence(t *testing.T) {
+	in := "environment:\n  vendor:\n  - name: a\n  layout: {}\n"
+	got := edit(t, ".yaml", in, func(d Doc) error { return d.Remove([]string{"environment", "vendor"}) })
+	want := "environment:\n  layout: {}\n"
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
 }

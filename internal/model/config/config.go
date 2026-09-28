@@ -317,7 +317,7 @@ func setKey(data []byte, ext, key, value string) ([]byte, error) {
 			return nil, err
 		}
 		if _, exists := cur[key]; exists {
-			err = d.SetString([]any{key}, value)
+			err = d.SetString([]string{key}, value)
 		} else {
 			err = d.Put(nil, key, value, false)
 		}

@@ -77,7 +77,7 @@ func SetDirective(data []byte, ext, url string) ([]byte, error) {
 			return nil, err
 		}
 		if _, v := d.root.get(SchemaKey); v != nil {
-			if err := d.SetString([]any{SchemaKey}, url); err != nil {
+			if err := d.SetString([]string{SchemaKey}, url); err != nil {
 				return nil, err
 			}
 		} else if err := d.Put(nil, SchemaKey, url, true); err != nil {

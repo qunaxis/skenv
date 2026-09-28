@@ -72,7 +72,7 @@ func (d *yamlDoc) Bytes() []byte { return []byte(d.bom + strings.Join(d.lines, "
 
 // editable refuses nodes whose text skenv cannot splice safely: an anchor
 // or an explicit tag moves the reported column away from the content.
-func editable(n *yaml.Node, path []any) error {
+func editable(n *yaml.Node, path []string) error {
 	if n.Anchor != "" || n.Style&yaml.TaggedStyle != 0 || n.Kind == yaml.AliasNode {
 		return fmt.Errorf("%s has an anchor, alias or tag; remove it so that skenv can edit the value", pathString(path))
 	}
@@ -107,30 +107,18 @@ func pair(m *yaml.Node, key string) (*yaml.Node, *yaml.Node) {
 }
 
 // find returns the node at path and, for a mapping value, its key node.
-func (d *yamlDoc) find(path []any) (key, val *yaml.Node, err error) {
+func (d *yamlDoc) find(path []string) (key, val *yaml.Node, err error) {
 	cur := d.root
 	if cur == nil && len(path) > 0 {
 		return nil, nil, fmt.Errorf("%s does not exist", pathString(path[:1]))
 	}
 	for i, p := range path {
-		key = nil
-		switch p := p.(type) {
-		case string:
-			if cur.Kind != yaml.MappingNode {
-				return nil, nil, fmt.Errorf("%s is not a mapping", pathString(path[:i]))
-			}
-			key, cur = pair(cur, p)
-			if cur == nil {
-				return nil, nil, fmt.Errorf("%s does not exist", pathString(path[:i+1]))
-			}
-		case int:
-			if cur.Kind != yaml.SequenceNode {
-				return nil, nil, fmt.Errorf("%s is not a list", pathString(path[:i]))
-			}
-			if p < 0 || p >= len(cur.Content) {
-				return nil, nil, fmt.Errorf("%s does not exist", pathString(path[:i+1]))
-			}
-			cur = cur.Content[p]
+		if cur.Kind != yaml.MappingNode {
+			return nil, nil, fmt.Errorf("%s is not a mapping", pathString(path[:i]))
+		}
+		key, cur = pair(cur, p)
+		if cur == nil {
+			return nil, nil, fmt.Errorf("%s does not exist", pathString(path[:i+1]))
 		}
 	}
 	return key, cur, nil
@@ -237,41 +225,53 @@ func (d *yamlDoc) entryLines(key string, v any, col int) ([]string, error) {
 			out = append(out, l...)
 		}
 		return out, nil
-	case []Map:
-		if len(v) == 0 {
-			return []string{head + " []"}, nil
-		}
-		out := []string{head}
-		for _, m := range v {
-			l, err := d.itemLines(m, col+d.unit, col+d.unit+2)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, l...)
-		}
-		return out, nil
 	}
 	return nil, fmt.Errorf("docedit: unsupported value %T", v)
 }
 
-// itemLines renders a sequence item: the dash at dashCol, the keys at col.
-func (d *yamlDoc) itemLines(m Map, dashCol, col int) ([]string, error) {
-	if len(m) == 0 {
-		return []string{pad(dashCol) + "- {}"}, nil
-	}
-	var out []string
-	for _, f := range m {
-		l, err := d.entryLines(f.Key, f.Value, col)
-		if err != nil {
-			return nil, err
+// scalarEnd returns the byte offset just past the scalar that starts at
+// start on line, or -1 when it cannot be edited safely: a plain scalar
+// whose text on the line (after stripping a trailing comment) does not
+// match value, for example because it spans more than one line.
+func scalarEnd(line string, start int, style yaml.Style, value string) int {
+	switch {
+	case style&yaml.DoubleQuotedStyle != 0:
+		for j := start + 1; j < len(line); j++ {
+			if line[j] == '\\' {
+				j++
+				continue
+			}
+			if line[j] == '"' {
+				return j + 1
+			}
 		}
-		out = append(out, l...)
+	case style&yaml.SingleQuotedStyle != 0:
+		for j := start + 1; j < len(line); j++ {
+			if line[j] == '\'' {
+				if j+1 < len(line) && line[j+1] == '\'' {
+					j++
+					continue
+				}
+				return j + 1
+			}
+		}
+	default:
+		rest := strings.TrimRight(line[start:], "\r\n")
+		for k := 1; k < len(rest); k++ {
+			if rest[k] == '#' && (rest[k-1] == ' ' || rest[k-1] == '\t') {
+				rest = rest[:k]
+				break
+			}
+		}
+		rest = strings.TrimRight(rest, " \t")
+		if rest == value {
+			return start + len(rest)
+		}
 	}
-	out[0] = pad(dashCol) + "-" + pad(col-dashCol-1) + out[0][col:]
-	return out, nil
+	return -1
 }
 
-func (d *yamlDoc) SetString(path []any, value string) error {
+func (d *yamlDoc) SetString(path []string, value string) error {
 	_, v, err := d.find(path)
 	if err != nil {
 		return err
@@ -285,92 +285,20 @@ func (d *yamlDoc) SetString(path []any, value string) error {
 	i := v.Line - 1
 	line := d.lines[i]
 	start := byteOffset(line, v.Column)
-	end := -1
-	var repl string
-	switch {
-	case v.Style&yaml.DoubleQuotedStyle != 0:
-		for j := start + 1; j < len(line); j++ {
-			if line[j] == '\\' {
-				j++
-				continue
-			}
-			if line[j] == '"' {
-				end = j + 1
-				break
-			}
-		}
-		repl = jsonString(value)
-	case v.Style&yaml.SingleQuotedStyle != 0:
-		for j := start + 1; j < len(line); j++ {
-			if line[j] == '\'' {
-				if j+1 < len(line) && line[j+1] == '\'' {
-					j++
-					continue
-				}
-				end = j + 1
-				break
-			}
-		}
-		repl = "'" + strings.ReplaceAll(value, "'", "''") + "'"
-	default:
-		rest := strings.TrimRight(line[start:], "\r\n")
-		for k := 1; k < len(rest); k++ {
-			if rest[k] == '#' && (rest[k-1] == ' ' || rest[k-1] == '\t') {
-				rest = rest[:k]
-				break
-			}
-		}
-		rest = strings.TrimRight(rest, " \t")
-		if rest != v.Value {
-			break
-		}
-		end = start + len(rest)
-		repl = yamlScalar(value)
-	}
+	end := scalarEnd(line, start, v.Style, v.Value)
 	if end < 0 {
 		return fmt.Errorf("%s: skenv can only edit a string written on one line", pathString(path))
 	}
-	return d.splice(i, i+1, []string{line[:start] + repl + line[end:]})
-}
-
-func (d *yamlDoc) Append(path []string, item Map) error {
-	parent, key := path[:len(path)-1], path[len(path)-1]
-	_, pm, err := d.find(keysPath(parent))
-	if err != nil || d.root == nil {
-		return d.Put(parent, key, []Map{item}, false)
-	}
-	if pm.Kind != yaml.MappingNode {
-		return fmt.Errorf("%s must be a mapping", pathString(keysPath(parent)))
-	}
-	k, v := pair(pm, key)
-	if v != nil {
-		if err := editable(v, keysPath(path)); err != nil {
-			return err
-		}
-	}
+	var repl string
 	switch {
-	case v == nil:
-		return d.Put(parent, key, []Map{item}, false)
-	case v.Kind == yaml.SequenceNode && !isFlow(v) && len(v.Content) > 0:
-		last := v.Content[len(v.Content)-1]
-		dashCol := v.Column - 1
-		lines, err := d.itemLines(item, dashCol, last.Column-1)
-		if err != nil {
-			return err
-		}
-		end := d.blockEnd(last.Line-1, dashCol, false)
-		return d.splice(end+1, end+1, lines)
-	case (v.Kind == yaml.SequenceNode && isFlow(v) && len(v.Content) == 0) || (isNull(v) && v.Value == ""):
-		dashCol := k.Column - 1 + d.unit
-		lines, err := d.itemLines(item, dashCol, dashCol+2)
-		if err != nil {
-			return err
-		}
-		return d.replaceEmpty(k, v, "[", "]", lines)
-	case v.Kind == yaml.SequenceNode && isFlow(v):
-		return fmt.Errorf("%s is written in flow style ([...]); write it as a block list (one \"- \" item per entry) so that skenv can edit it", pathString(keysPath(path)))
+	case v.Style&yaml.DoubleQuotedStyle != 0:
+		repl = jsonString(value)
+	case v.Style&yaml.SingleQuotedStyle != 0:
+		repl = "'" + strings.ReplaceAll(value, "'", "''") + "'"
+	default:
+		repl = yamlScalar(value)
 	}
-	return fmt.Errorf("%s must be a list", pathString(keysPath(path)))
+	return d.splice(i, i+1, []string{line[:start] + repl + line[end:]})
 }
 
 // replaceEmpty turns an empty flow collection (or an implicit null) on the
@@ -393,60 +321,26 @@ func (d *yamlDoc) replaceEmpty(k, v *yaml.Node, open, closing string, lines []st
 	return d.splice(i, i+1, append([]string{line}, lines...))
 }
 
-func (d *yamlDoc) Remove(path []any) error {
-	if key, ok := path[len(path)-1].(string); ok {
-		return d.removeKey(path[:len(path)-1], key)
-	}
-	idx, ok := path[len(path)-1].(int)
-	if !ok {
-		return errors.New("docedit: Remove needs an index or a key")
-	}
-	k, seq, err := d.find(path[:len(path)-1])
-	if err != nil {
-		return err
-	}
-	if seq.Kind != yaml.SequenceNode || idx < 0 || idx >= len(seq.Content) {
-		return fmt.Errorf("%s does not exist", pathString(path))
-	}
-	if isFlow(seq) {
-		return fmt.Errorf("%s is written in flow style ([...]); write it as a block list so that skenv can edit it", pathString(path[:len(path)-1]))
-	}
-	if err := editable(seq, path[:len(path)-1]); err != nil {
-		return err
-	}
-	item := seq.Content[idx]
-	dashCol := seq.Column - 1
-	start := item.Line - 1
-	for start > 0 && (indentOf(d.lines[start]) != dashCol || !isDash(d.lines[start])) {
-		start--
-	}
-	end := d.blockEnd(item.Line-1, dashCol, false)
-	if len(seq.Content) > 1 || k == nil {
-		return d.splice(start, end+1, nil)
-	}
-	// The last item: leave an empty list behind rather than a null.
-	return d.emptyAfter(k, " []", start, end)
-}
-
-// removeKey deletes key from the mapping at path. The last key leaves an
-// empty {} behind rather than a null.
-func (d *yamlDoc) removeKey(path []any, key string) error {
-	pk, m, err := d.find(path)
+// Remove deletes key from the mapping at path (its last element is the
+// key). The last key leaves an empty {} behind rather than a null.
+func (d *yamlDoc) Remove(path []string) error {
+	parent, key := path[:len(path)-1], path[len(path)-1]
+	pk, m, err := d.find(parent)
 	if err != nil {
 		return err
 	}
 	if m.Kind != yaml.MappingNode {
-		return fmt.Errorf("%s is not a mapping", pathString(path))
+		return fmt.Errorf("%s is not a mapping", pathString(parent))
 	}
 	if isFlow(m) {
-		return fmt.Errorf("%s is written in flow style ({...}); write it as a block mapping so that skenv can edit it", pathString(path))
+		return fmt.Errorf("%s is written in flow style ({...}); write it as a block mapping so that skenv can edit it", pathString(parent))
 	}
-	if err := editable(m, path); err != nil {
+	if err := editable(m, parent); err != nil {
 		return err
 	}
 	k, v := pair(m, key)
 	if k == nil {
-		return fmt.Errorf("%s does not exist", pathString(append(append([]any{}, path...), key)))
+		return fmt.Errorf("%s does not exist", pathString(path))
 	}
 	start, end := k.Line-1, d.entryEnd(k, v)
 	if len(m.Content) > 2 || pk == nil {
@@ -496,7 +390,7 @@ func (d *yamlDoc) Put(path []string, key string, value any, first bool) error {
 	m := d.root
 	for i, p := range path {
 		if m.Kind != yaml.MappingNode {
-			return fmt.Errorf("%s must be a mapping", pathString(keysPath(path[:i])))
+			return fmt.Errorf("%s must be a mapping", pathString(path[:i]))
 		}
 		k, v := pair(m, p)
 		switch {
@@ -539,16 +433,16 @@ func (d *yamlDoc) putIn(m *yaml.Node, path []string, key string, value any, firs
 		return d.splice(len(d.lines), len(d.lines), lines)
 	}
 	if m.Kind != yaml.MappingNode {
-		return fmt.Errorf("%s must be a mapping", pathString(keysPath(path)))
+		return fmt.Errorf("%s must be a mapping", pathString(path))
 	}
 	if isFlow(m) {
-		return fmt.Errorf("%s is written in flow style ({...}); write it as a block mapping so that skenv can edit it", pathString(keysPath(path)))
+		return fmt.Errorf("%s is written in flow style ({...}); write it as a block mapping so that skenv can edit it", pathString(path))
 	}
-	if err := editable(m, keysPath(path)); err != nil {
+	if err := editable(m, path); err != nil {
 		return err
 	}
 	if k, _ := pair(m, key); k != nil {
-		return fmt.Errorf("%s exists already", pathString(keysPath(append(append([]string{}, path...), key))))
+		return fmt.Errorf("%s exists already", pathString(append(append([]string{}, path...), key)))
 	}
 	col := m.Column - 1
 	lines, err := d.entryLines(key, value, col)

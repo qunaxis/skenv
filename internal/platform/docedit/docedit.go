@@ -8,8 +8,8 @@
 // HTML escaping, keeping the file's indentation (its first indented line,
 // or two spaces for a file with none).
 //
-// Paths address nodes from the top of the document: a string selects a
-// mapping key, an int a sequence item.
+// Paths address nodes from the top of the document as a sequence of
+// mapping keys.
 package docedit
 
 import (
@@ -20,7 +20,7 @@ import (
 // Field is one key of a Map.
 type Field struct {
 	Key   string
-	Value any // string, []string, Map or []Map
+	Value any // string, []string or Map
 }
 
 // Map is an ordered mapping to write: the keys come out in this order.
@@ -29,13 +29,9 @@ type Map []Field
 // Doc is a YAML or JSON document being edited.
 type Doc interface {
 	// SetString replaces the string at path, which must exist.
-	SetString(path []any, value string) error
-	// Append adds item at the end of the sequence at path, creating the
-	// sequence and the mappings above it when they are missing.
-	Append(path []string, item Map) error
-	// Remove deletes the sequence item or the mapping key at path (its
-	// last element is the index or the key).
-	Remove(path []any) error
+	SetString(path []string, value string) error
+	// Remove deletes the mapping key at path (its last element is the key).
+	Remove(path []string) error
 	// Put adds key to the mapping at path, creating the mappings above it
 	// when missing. With first, the key goes before the other keys (after
 	// a "$schema" key); otherwise after them. The key must not exist yet.
@@ -55,29 +51,9 @@ func Open(data []byte, ext string) (Doc, error) {
 	return nil, fmt.Errorf("docedit: unsupported format %q", ext)
 }
 
-func pathString(path []any) string {
-	var b strings.Builder
-	for _, p := range path {
-		switch v := p.(type) {
-		case int:
-			fmt.Fprintf(&b, "[%d]", v)
-		default:
-			if b.Len() > 0 {
-				b.WriteByte('.')
-			}
-			fmt.Fprint(&b, v)
-		}
-	}
-	if b.Len() == 0 {
+func pathString(path []string) string {
+	if len(path) == 0 {
 		return "the top level"
 	}
-	return b.String()
-}
-
-func keysPath(keys []string) []any {
-	out := make([]any, len(keys))
-	for i, k := range keys {
-		out[i] = k
-	}
-	return out
+	return strings.Join(path, ".")
 }
