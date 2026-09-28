@@ -12,8 +12,15 @@ import (
 
 // RepoName returns the last path element of repo without ".git".
 func RepoName(repo string) string {
-	_, name := ownerRepo(repo)
-	return name
+	s := repo
+	if u, err := url.Parse(s); err == nil && u.Scheme != "" && u.Host != "" {
+		s = u.Path
+	} else if i := strings.Index(s, ":"); i > 0 && !strings.Contains(s[:i], "/") {
+		s = s[i+1:] // scp-like git@host:owner/repo
+	}
+	s = strings.TrimSuffix(strings.Trim(s, "/"), ".git")
+	parts := strings.Split(s, "/")
+	return parts[len(parts)-1]
 }
 
 // CacheKey is the directory name of the vendor cache for a clone URL (as
@@ -106,22 +113,6 @@ func localPath(p string) string {
 		p = abs
 	}
 	return "/" + trimRepoPath(filepath.ToSlash(p))
-}
-
-func ownerRepo(repo string) (owner, name string) {
-	s := repo
-	if u, err := url.Parse(s); err == nil && u.Scheme != "" && u.Host != "" {
-		s = u.Path
-	} else if i := strings.Index(s, ":"); i > 0 && !strings.Contains(s[:i], "/") {
-		s = s[i+1:] // scp-like git@host:owner/repo
-	}
-	s = strings.TrimSuffix(strings.Trim(s, "/"), ".git")
-	parts := strings.Split(s, "/")
-	name = parts[len(parts)-1]
-	if len(parts) > 1 {
-		owner = parts[len(parts)-2]
-	}
-	return owner, name
 }
 
 var idCharsRe = regexp.MustCompile(`[^a-z0-9_-]+`)

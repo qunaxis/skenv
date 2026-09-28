@@ -133,20 +133,20 @@ func TestBadFiles(t *testing.T) {
 	}
 }
 
-// Set keeps the format of an existing file and its other keys, and
-// creates config.toml when there is none.
+// SetFormat without a format keeps the format of an existing file and its
+// other keys, and creates config.toml when there is none.
 func TestSet(t *testing.T) {
 	home := t.TempDir()
-	p, err := Set(home, "manifest", "~/a/env.toml")
+	p, err := SetFormat(home, "", "manifest", "~/a/env.toml")
 	if err != nil || filepath.Base(p) != "config.toml" {
-		t.Fatalf("Set without a file: %s, %v", p, err)
+		t.Fatalf("SetFormat without a file: %s, %v", p, err)
 	}
 	for name, content := range samples {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			home := t.TempDir()
 			write(t, home, name, content)
-			p, err := Set(home, "manifest", "~/new/env.toml")
+			p, err := SetFormat(home, "", "manifest", "~/new/env.toml")
 			if err != nil || filepath.Base(p) != name {
 				t.Fatalf("Set: %s, %v", p, err)
 			}
@@ -183,8 +183,8 @@ func TestEnvVar(t *testing.T) {
 	}
 }
 
-// Set changes only the key: comments, the schema directive, other keys and
-// their order stay. A skenv directive moves to the running version (the
+// SetFormat changes only the key: comments, the schema directive, other keys
+// and their order stay. A skenv directive moves to the running version (the
 // latest URL for a test binary).
 func TestSetKeepsTheRest(t *testing.T) {
 	latest := schemas.URL(schemas.Config, "")
@@ -211,7 +211,7 @@ func TestSetKeepsTheRest(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			home := t.TempDir()
 			write(t, home, name, c.in)
-			p, err := Set(home, "manifest", "~/new")
+			p, err := SetFormat(home, "", "manifest", "~/new")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -222,7 +222,7 @@ func TestSetKeepsTheRest(t *testing.T) {
 	}
 	// A new file carries the header and the directive.
 	home := t.TempDir()
-	p, err := Set(home, "manifest", "~/a <&> b")
+	p, err := SetFormat(home, "", "manifest", "~/a <&> b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,14 +233,14 @@ func TestSetKeepsTheRest(t *testing.T) {
 	// A new line follows the line endings of the file.
 	home = t.TempDir()
 	write(t, home, "config.toml", "# c\r\n")
-	p, _ = Set(home, "manifest", "~/m")
+	p, _ = SetFormat(home, "", "manifest", "~/m")
 	if got := readFile(t, p); got != "# c\r\nmanifest = \"~/m\"\r\n" {
 		t.Errorf("CRLF:\n%q", got)
 	}
 	// A key missing from a TOML file goes after the top-level keys.
 	home = t.TempDir()
 	write(t, home, "config.toml", "# c\n\"$schema\" = \"x\"\n")
-	p, _ = Set(home, "manifest", "~/m")
+	p, _ = SetFormat(home, "", "manifest", "~/m")
 	if got := readFile(t, p); got != "# c\n\"$schema\" = \"x\"\nmanifest = \"~/m\"\n" {
 		t.Errorf("appended key:\n%s", got)
 	}
@@ -267,7 +267,7 @@ func TestSetFormat(t *testing.T) {
 				t.Errorf("new config.%s:\n%s\nwant:\n%s", format, got, want)
 			}
 			// Without --format the file keeps its format.
-			if p2, err := Set(home, "manifest", "~/other"); err != nil || p2 != p {
+			if p2, err := SetFormat(home, "", "manifest", "~/other"); err != nil || p2 != p {
 				t.Fatalf("Set: %s, %v", p2, err)
 			}
 			if f, err := Load(home); err != nil || f.Path != p {
