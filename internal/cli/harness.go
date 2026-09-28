@@ -14,9 +14,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/qunaxis/skenv/internal/engine"
-	"github.com/qunaxis/skenv/internal/harness"
-	"github.com/qunaxis/skenv/internal/lint"
+	"github.com/qunaxis/skenv/internal/features/lint"
+	"github.com/qunaxis/skenv/internal/features/repository"
+	"github.com/qunaxis/skenv/internal/features/skills"
 	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
@@ -41,7 +41,7 @@ skenv lint
 skenv lint skills/draft
 # Before the repository goes public
 skenv lint --publish`,
-		RunE: a.action(func(ctx context.Context, env engine.Env, pos []string) (int, error) {
+		RunE: a.action(func(ctx context.Context, env skills.Env, pos []string) (int, error) {
 			return runLint(ctx, env, pos, staged, publish, hook)
 		}),
 	}
@@ -51,29 +51,29 @@ skenv lint --publish`,
 	return c
 }
 
-func runLint(ctx context.Context, env engine.Env, pos []string, staged, publish, hook bool) (int, error) {
+func runLint(ctx context.Context, env skills.Env, pos []string, staged, publish, hook bool) (int, error) {
 	var err error
 	if hook {
 		// The hook reads its skill from the event: paths, --staged and
 		// --publish would be ignored, so they are rejected instead.
 		if len(pos) > 0 || staged || publish {
-			return engine.ExitFatal, usageError{"lint: --hook takes the file from the hook event on stdin; it does not combine with paths, --staged or --publish"}
+			return skills.ExitFatal, usageError{"lint: --hook takes the file from the hook event on stdin; it does not combine with paths, --staged or --publish"}
 		}
 		return lintHook(env)
 	}
-	var skills []string
+	var skillDirs []string
 	switch {
 	case staged:
 		if len(pos) > 0 {
-			return engine.ExitFatal, usageError{"lint: --staged takes no paths"}
+			return skills.ExitFatal, usageError{"lint: --staged takes no paths"}
 		}
 		root, err := gitRoot(ctx, ".")
 		if err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 		out, err := gitx.Git{}.Run(ctx, root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z")
 		if err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 		var files []string
 		for f := range strings.SplitSeq(out, "\x00") {
@@ -81,7 +81,7 @@ func runLint(ctx context.Context, env engine.Env, pos []string, staged, publish,
 				files = append(files, f)
 			}
 		}
-		skills = lint.ForFiles(root, files)
+		skillDirs = lint.ForFiles(root, files)
 	default:
 		if len(pos) == 0 {
 			pos = []string{"."}
@@ -89,15 +89,15 @@ func runLint(ctx context.Context, env engine.Env, pos []string, staged, publish,
 		for _, p := range pos {
 			found, err := lint.Find(p)
 			if err != nil {
-				return engine.ExitFatal, err
+				return skills.ExitFatal, err
 			}
-			skills = append(skills, found...)
+			skillDirs = append(skillDirs, found...)
 		}
 	}
 	var deny *lint.Denylist
 	if publish {
 		if deny, err = lint.LoadDenylist(env.Home, env.Getenv); err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 	}
 	cwd, _ := os.Getwd()
@@ -111,7 +111,7 @@ func runLint(ctx context.Context, env engine.Env, pos []string, staged, publish,
 			problems++
 		}
 	}
-	for _, s := range skills {
+	for _, s := range skillDirs {
 		report(lint.Skill(s))
 		if publish {
 			report(lint.Publish(s))
@@ -124,28 +124,28 @@ func runLint(ctx context.Context, env engine.Env, pos []string, staged, publish,
 		}
 		root, err := gitRoot(ctx, dir)
 		if err != nil {
-			return engine.ExitFatal, fmt.Errorf("--publish scans the repository and its history: %w", err)
+			return skills.ExitFatal, fmt.Errorf("--publish scans the repository and its history: %w", err)
 		}
 		// The whole repository is published, not only the skills.
 		files, err := lint.RepoFiles(root)
 		if err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 		report(lint.ScanDenylist(root, files, deny))
 		leaks, err := lint.Gitleaks(root)
 		if err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 		if leaks != "" {
 			fmt.Fprintf(env.Stdout, "%s: P1: gitleaks found secrets in the history (redacted report below)\n%s", root, leaks)
 			problems++
 		}
 	}
-	fmt.Fprintf(env.Stderr, "lint: %d skills, %d problems\n", len(skills), problems)
+	fmt.Fprintf(env.Stderr, "lint: %d skills, %d problems\n", len(skillDirs), problems)
 	if problems > 0 {
-		return engine.ExitProblems, nil
+		return skills.ExitProblems, nil
 	}
-	return engine.ExitOK, nil
+	return skills.ExitOK, nil
 }
 
 // hookStdin is the Claude Code hook event; replaced in tests.
@@ -156,7 +156,7 @@ var hookStdin io.Reader = os.Stdin
 // stderr with exit code 2, which Claude Code feeds back to the agent.
 // Files outside skills and malformed events are ignored (exit 0) so the
 // hook never gets in the way of unrelated edits.
-func lintHook(env engine.Env) (int, error) {
+func lintHook(env skills.Env) (int, error) {
 	var event struct {
 		ToolName  string `json:"tool_name"`
 		ToolInput struct {
@@ -164,21 +164,21 @@ func lintHook(env engine.Env) (int, error) {
 		} `json:"tool_input"`
 	}
 	if err := json.NewDecoder(hookStdin).Decode(&event); err != nil || event.ToolInput.FilePath == "" {
-		return engine.ExitOK, nil //nolint:nilerr // not an edit event: nothing to lint
+		return skills.ExitOK, nil //nolint:nilerr // not an edit event: nothing to lint
 	}
 	skill, ok := lint.SkillOf(event.ToolInput.FilePath)
 	if !ok {
-		return engine.ExitOK, nil
+		return skills.ExitOK, nil
 	}
 	findings := lint.Skill(skill)
 	if len(findings) == 0 {
-		return engine.ExitOK, nil
+		return skills.ExitOK, nil
 	}
 	fmt.Fprintf(env.Stderr, "skenv lint: %s has %d problems after %s; fix them:\n", skill, len(findings), event.ToolName)
 	for _, f := range findings {
 		fmt.Fprintln(env.Stderr, f)
 	}
-	return engine.ExitFatal, nil
+	return skills.ExitFatal, nil
 }
 
 func gitRoot(ctx context.Context, dir string) (string, error) {
@@ -201,7 +201,7 @@ func repoCmd(a *app) *cobra.Command {
 			Example: example,
 			Args:    nArgs(0),
 		}
-		c.RunE = a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
+		c.RunE = a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
 			return runRepo(ctx, env, name, dir, visibility, ci, format, runner, c.Flags().Changed("runner"), dryRun, force)
 		})
 		if name != "check" {
@@ -262,33 +262,33 @@ func repoCmd(a *app) *cobra.Command {
 	return c
 }
 
-func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, format string, runner []string, runnerSet, dryRun, force bool) (int, error) {
+func runRepo(ctx context.Context, env skills.Env, sub, dir, visibility, ci, format string, runner []string, runnerSet, dryRun, force bool) (int, error) {
 	root, err := gitRoot(ctx, dir)
 	if err != nil {
-		return engine.ExitFatal, err
+		return skills.ExitFatal, err
 	}
 	switch sub {
 	case "init":
 		if visibility == "" {
-			return engine.ExitFatal, usageError{"repo init: --visibility private|public is required"}
+			return skills.ExitFatal, usageError{"repo init: --visibility private|public is required"}
 		}
 		if err := docedit.ValidFormat(format); err != nil {
-			return engine.ExitFatal, usageError{"repo init: " + err.Error()}
+			return skills.ExitFatal, usageError{"repo init: " + err.Error()}
 		}
 		detected := ""
 		switch {
 		case ci == "":
 			ci, detected = detectCI(ctx, env, root)
 		case !slices.Contains(skenvfile.CIs, ci):
-			return engine.ExitFatal, usageError{fmt.Sprintf("repo init: --ci must be github or gitlab, got %q", ci)}
+			return skills.ExitFatal, usageError{fmt.Sprintf("repo init: --ci must be github or gitlab, got %q", ci)}
 		}
 		if len(runner) == 0 && runnerSet {
-			return engine.ExitFatal, usageError{"repo init: --runner needs at least one label"}
+			return skills.ExitFatal, usageError{"repo init: --runner needs at least one label"}
 		}
-		c, changes, err := harness.Init(root, visibility, ci, format, runner, dryRun, force)
+		c, changes, err := repository.Init(root, visibility, ci, format, runner, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 		if detected != "" {
 			fmt.Fprintf(env.Stdout, "ci %s: %s; --ci overrides it\n", c.Provider, detected)
@@ -310,16 +310,16 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, form
 	case "apply":
 		c, err := skenvfile.LoadRepository(root)
 		if err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 		if c.TemplateVersion != skenvfile.LatestTemplates {
-			return engine.ExitFatal, fmt.Errorf("%s: template_version %s is not the template set of this skenv (%s); "+
+			return skills.ExitFatal, fmt.Errorf("%s: template_version %s is not the template set of this skenv (%s); "+
 				"run `skenv repo upgrade` to move the repository to %s, or use skenv %s", filepath.Base(c.File), c.TemplateVersion, skenvfile.LatestTemplates, skenvfile.LatestTemplates, c.TemplateVersion)
 		}
-		changes, err := harness.Apply(root, c, dryRun, force)
+		changes, err := repository.Apply(root, c, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 		if len(changes) == 0 {
 			fmt.Fprintln(env.Stdout, "repo apply: up to date")
@@ -328,18 +328,18 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, form
 	case "upgrade":
 		c, err := skenvfile.LoadRepository(root)
 		if err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 		old := c.TemplateVersion
 		c.TemplateVersion = skenvfile.LatestTemplates
 		// Refuse (foreign files without --force) before the version moves.
-		if _, err := harness.Apply(root, c, true, force); err != nil {
-			return engine.ExitFatal, err
+		if _, err := repository.Apply(root, c, true, force); err != nil {
+			return skills.ExitFatal, err
 		}
 		// repository.template_version and the schema directive.
-		updated, err := harness.Update(root, skenvfile.LatestTemplates, dryRun)
+		updated, err := repository.Update(root, skenvfile.LatestTemplates, dryRun)
 		if err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 		prefix := ""
 		if dryRun {
@@ -349,25 +349,25 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, form
 		case old != skenvfile.LatestTemplates:
 			fmt.Fprintf(env.Stdout, "%stemplate_version %s → %s\n", prefix, old, skenvfile.LatestTemplates)
 		case updated:
-			printChanges(env, []harness.Change{{Path: filepath.Base(c.File), Action: "update"}}, dryRun)
+			printChanges(env, []repository.Change{{Path: filepath.Base(c.File), Action: "update"}}, dryRun)
 		default:
 			fmt.Fprintf(env.Stdout, "template_version is %s already\n", skenvfile.LatestTemplates)
 		}
-		changes, err := harness.Apply(root, c, dryRun, force)
+		changes, err := repository.Apply(root, c, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 		return lefthookInstall(ctx, env, root, dryRun), nil
 	}
-	drift, err := harness.Check(root)
+	drift, err := repository.Check(root)
 	if err != nil {
-		return engine.ExitFatal, err
+		return skills.ExitFatal, err
 	}
 	// A missing or outdated schema directive is a warning: it only helps
 	// editors, and the exit code stays.
 	if c, err := skenvfile.LoadRepository(root); err == nil {
-		if w, err := harness.DirectiveWarning(c); err == nil && w != "" {
+		if w, err := repository.DirectiveWarning(c); err == nil && w != "" {
 			fmt.Fprintf(env.Stderr, "warning: %s: %s\n", filepath.Base(c.File), w)
 		}
 	}
@@ -376,10 +376,10 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, form
 	}
 	if len(drift) > 0 {
 		fmt.Fprintf(env.Stdout, "repo check: %d files differ; run `skenv repo apply` (templates live in skenv, not in this repository)\n", len(drift))
-		return engine.ExitProblems, nil
+		return skills.ExitProblems, nil
 	}
 	fmt.Fprintln(env.Stdout, "repo check: managed files match the harness")
-	return engine.ExitOK, nil
+	return skills.ExitOK, nil
 }
 
 // detectCI is the CI system for `repo init` without --ci: gitlab when
@@ -387,7 +387,7 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, form
 // manifest count: the [user] of the repository itself, else the manifest of
 // the config file. The origin URL is never printed (it may carry
 // credentials); why says what decided.
-func detectCI(ctx context.Context, env engine.Env, root string) (ci, why string) {
+func detectCI(ctx context.Context, env skills.Env, root string) (ci, why string) {
 	origin, err := gitx.Git{}.Run(ctx, root, "config", "--get", "remote.origin.url")
 	if err != nil || strings.TrimSpace(origin) == "" {
 		return skenvfile.CIGitHub, "the default, the repository has no origin"
@@ -396,7 +396,7 @@ func detectCI(ctx context.Context, env engine.Env, root string) (ci, why string)
 	if err != nil {
 		return skenvfile.CIGitHub, "the default, origin is not a git URL skenv recognises"
 	}
-	ci = harness.DetectCI(r.Type)
+	ci = repository.DetectCI(r.Type)
 	if ci == skenvfile.CIGitLab {
 		return ci, "detected from origin, on a GitLab host"
 	}
@@ -408,7 +408,7 @@ func detectCI(ctx context.Context, env engine.Env, root string) (ci, why string)
 
 // declaredHosts are the hosts of the manifest that applies to root, nil
 // when there is none or it does not load.
-func declaredHosts(ctx context.Context, env engine.Env, root string) skenvfile.Hosts {
+func declaredHosts(ctx context.Context, env skills.Env, root string) skenvfile.Hosts {
 	file, err := skenvfile.Find(root)
 	if err == nil && file != "" {
 		if doc, err := skenvfile.Read(file); err == nil && doc.Has(skenvfile.SectionUser) {
@@ -420,7 +420,7 @@ func declaredHosts(ctx context.Context, env engine.Env, root string) skenvfile.H
 			return m.GitHosts
 		}
 	}
-	file, err = engine.ResolveManifest(ctx, env, "")
+	file, err = skills.ResolveManifest(ctx, env, "")
 	if err != nil {
 		return nil
 	}
@@ -432,7 +432,7 @@ func declaredHosts(ctx context.Context, env engine.Env, root string) skenvfile.H
 	return m.GitHosts
 }
 
-func printChanges(env engine.Env, changes []harness.Change, dryRun bool) {
+func printChanges(env skills.Env, changes []repository.Change, dryRun bool) {
 	prefix := ""
 	if dryRun {
 		prefix = "would "
@@ -444,28 +444,28 @@ func printChanges(env engine.Env, changes []harness.Change, dryRun bool) {
 
 // lefthookInstall activates the hooks; a missing lefthook is a warning,
 // not a failure, so the files are still generated.
-func lefthookInstall(ctx context.Context, env engine.Env, root string, dryRun bool) int {
+func lefthookInstall(ctx context.Context, env skills.Env, root string, dryRun bool) int {
 	if dryRun {
 		fmt.Fprintln(env.Stdout, "would run lefthook install")
-		return engine.ExitOK
+		return skills.ExitOK
 	}
 	bin, err := lookLefthook("lefthook")
 	if err != nil {
 		fmt.Fprintln(env.Stderr, "warning: lefthook not found; install it (brew install lefthook) and run `lefthook install`")
-		return engine.ExitOK
+		return skills.ExitOK
 	}
 	cmd := exec.CommandContext(ctx, bin, "install")
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if _, ok := errors.AsType[*exec.ExitError](err); ok {
 			fmt.Fprintf(env.Stderr, "error: lefthook install failed: %s\n", strings.TrimSpace(string(out)))
-			return engine.ExitProblems
+			return skills.ExitProblems
 		}
 		fmt.Fprintf(env.Stderr, "error: lefthook install: %v\n", err)
-		return engine.ExitProblems
+		return skills.ExitProblems
 	}
 	fmt.Fprintln(env.Stdout, "lefthook install: hooks active")
-	return engine.ExitOK
+	return skills.ExitOK
 }
 
 // lookLefthook is replaced in tests.
@@ -481,7 +481,7 @@ var (
 // printHookTools lists the programs the hooks need, found or not on PATH,
 // and warns about the missing ones: without them a commit in the
 // repository fails.
-func printHookTools(env engine.Env) {
+func printHookTools(env skills.Env) {
 	var found, missing []string
 	if _, err := lookLefthook("lefthook"); err != nil {
 		missing = append(missing, "lefthook")

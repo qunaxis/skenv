@@ -1,4 +1,4 @@
-package engine
+package skills
 
 import (
 	"errors"
@@ -10,9 +10,9 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/qunaxis/skenv/internal/features/skills/state"
 	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
-	"github.com/qunaxis/skenv/internal/state"
 )
 
 const markerName = ".skenv"

@@ -1,10 +1,10 @@
-// Package harness generates and verifies the tooling of a skills repository
-// ("repository harness"): git hooks, the CI pipeline of GitHub Actions or
-// GitLab CI, linter configs and the
-// managed blocks of AGENTS.md and .gitignore. The templates of one
-// version (Latest) are embedded. Its settings are the [repository] section
-// of the skenv file.
-package harness
+// Package repository generates and verifies the tooling of a skills
+// repository ("repository harness"): git hooks, the CI pipeline of GitHub
+// Actions or GitLab CI, linter configs and the managed blocks of AGENTS.md
+// and .gitignore. The templates of one version
+// (skenvfile.LatestTemplates) are embedded. Its settings are the
+// [repository] section of the skenv file (skenvfile.Repository).
+package repository
 
 import (
 	"bytes"

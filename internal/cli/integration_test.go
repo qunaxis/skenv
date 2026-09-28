@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qunaxis/skenv/internal/engine"
+	"github.com/qunaxis/skenv/internal/features/skills"
 	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/schemas"
 )
@@ -566,7 +566,7 @@ func TestVendorAddRejectsOwnNameClash(t *testing.T) {
 func TestConcurrentRunIsRejected(t *testing.T) {
 	w := newWorld(t)
 	w.initStandard("")
-	e, err := engine.OpenUser(context.Background(), engine.Env{Home: w.home, Getenv: os.Getenv, Stdout: io.Discard, Stderr: io.Discard}, engine.Options{})
+	e, err := skills.OpenUser(context.Background(), skills.Env{Home: w.home, Getenv: os.Getenv, Stdout: io.Discard, Stderr: io.Discard}, skills.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

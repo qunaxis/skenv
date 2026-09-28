@@ -1,6 +1,6 @@
-// Package engine implements the skenv commands: sync, link, doctor, list,
+// Package skills implements the skenv commands: sync, link, doctor, list,
 // vendor, init, clone, use and import.
-package engine
+package skills
 
 import (
 	"context"
@@ -16,12 +16,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/qunaxis/skenv/internal/features/skills/state"
 	"github.com/qunaxis/skenv/internal/model/agents"
 	"github.com/qunaxis/skenv/internal/model/config"
 	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
 	"github.com/qunaxis/skenv/internal/platform/paths"
-	"github.com/qunaxis/skenv/internal/state"
 )
 
 // Env is everything the engine takes from the outside world.

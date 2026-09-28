@@ -1,4 +1,4 @@
-package engine
+package skills
 
 import (
 	"errors"
@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/qunaxis/skenv/internal/features/skills/state"
 	"github.com/qunaxis/skenv/internal/model/agents"
-	"github.com/qunaxis/skenv/internal/state"
 )
 
 // isClaudeSynced reports whether p is ~/.claude/skills/synced (or the same

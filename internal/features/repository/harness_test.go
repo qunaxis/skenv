@@ -1,4 +1,4 @@
-package harness
+package repository
 
 import (
 	"encoding/json"

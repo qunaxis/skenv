@@ -19,7 +19,7 @@ user_facing=(
 	"internal/model/skenvfile"
 	"internal/model/config"
 	"schemas"
-	"internal/harness/templates"
+	"internal/features/repository/templates"
 )
 
 # Docs paths: changes to these count as documentation updates

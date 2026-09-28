@@ -13,7 +13,7 @@ import (
 // The [repository] section: the development tooling of a skills
 // repository. Parsing and validation live here, with the rest of the
 // file model, so that every feature can read the section; generating the
-// files it asks for is internal/harness.
+// files it asks for is internal/features/repository.
 
 // DefaultName is the skenv file that `repo init` creates when the
 // repository has none and --format is not given; errors about a file not
@@ -21,10 +21,10 @@ import (
 const DefaultName = "skenv.toml"
 
 // LatestTemplates is the harness version of the templates that
-// internal/harness embeds; `repo init` and `repo upgrade` write it as
-// repository.template_version, and `repo apply` generates it only. The CI
-// workflow installs this skenv release. It lives in the file model
-// because validation refuses a template_version newer than it.
+// internal/features/repository embeds; `repo init` and `repo upgrade`
+// write it as repository.template_version, and `repo apply` generates it
+// only. The CI workflow installs this skenv release. It lives in the file
+// model because validation refuses a template_version newer than it.
 const LatestTemplates = "0.6.0"
 
 // DefaultRunner is the runner of private repositories (the self-hosted

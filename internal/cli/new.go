@@ -10,15 +10,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/qunaxis/skenv/internal/engine"
-	"github.com/qunaxis/skenv/internal/lint"
+	"github.com/qunaxis/skenv/internal/features/lint"
+	"github.com/qunaxis/skenv/internal/features/skills"
 	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/paths"
 )
 
 // newCmd scaffolds a skill (P3) in --dir or in a checkout of the manifest.
 func newCmd(a *app) *cobra.Command {
-	var o engine.Options
+	var o skills.Options
 	var visibility, dir string
 	c := &cobra.Command{
 		Use:   "new <name>",
@@ -44,7 +44,7 @@ skenv new release-checklist --dir .
 skenv new release-checklist`,
 		Args: nArgs(1),
 	}
-	c.RunE = a.action(func(ctx context.Context, env engine.Env, pos []string) (int, error) {
+	c.RunE = a.action(func(ctx context.Context, env skills.Env, pos []string) (int, error) {
 		return runNew(ctx, env, o, pos[0], visibility, c.Flags().Changed("visibility"), dir)
 	})
 	manifestFlag(c.Flags(), &o)
@@ -54,27 +54,27 @@ skenv new release-checklist`,
 	return c
 }
 
-func runNew(ctx context.Context, env engine.Env, o engine.Options, name, visibility string, visibilitySet bool, dir string) (int, error) {
+func runNew(ctx context.Context, env skills.Env, o skills.Options, name, visibility string, visibilitySet bool, dir string) (int, error) {
 	if err := skenvfile.ValidName(name); err != nil {
-		return engine.ExitFatal, fmt.Errorf("skill %w", err)
+		return skills.ExitFatal, fmt.Errorf("skill %w", err)
 	}
 	if visibility != "private" && visibility != "public" {
-		return engine.ExitFatal, usageError{fmt.Sprintf("new: --visibility must be private or public, got %q", visibility)}
+		return skills.ExitFatal, usageError{fmt.Sprintf("new: --visibility must be private or public, got %q", visibility)}
 	}
 	o.ReadOnly = true
-	e, openErr := engine.OpenUser(ctx, env, o)
+	e, openErr := skills.OpenUser(ctx, env, o)
 	if openErr == nil {
 		defer e.Close()
 	}
 
 	// target is the checkout of the manifest the skill goes to, nil
 	// for a repository the manifest does not list.
-	var target *engine.CheckoutDir
+	var target *skills.CheckoutDir
 	var root, skillsDir string
 	if dir != "" {
 		var err error
 		if root, err = gitRoot(ctx, dir); err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 		skillsDir = "skills"
 		if openErr == nil {
@@ -84,11 +84,11 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, visibil
 		}
 	} else {
 		if openErr != nil {
-			return engine.ExitFatal, openErr
+			return skills.ExitFatal, openErr
 		}
 		d, err := ownTarget(e.CheckoutDirs(), visibility)
 		if err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 		target = &d
 		root, skillsDir = d.Path, d.SkillsDir
@@ -96,18 +96,18 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, visibil
 	// The repository's own [repository] section knows its visibility.
 	c, ok, err := skenvfile.ReadRepository(root)
 	if err != nil {
-		return engine.ExitFatal, err
+		return skills.ExitFatal, err
 	}
 	if ok && c.Visibility != "" {
 		if visibilitySet && c.Visibility != visibility {
-			return engine.ExitFatal, fmt.Errorf("--visibility %s, but %s is %s according to its skenv file", visibility, paths.Collapse(env.Home, root), c.Visibility)
+			return skills.ExitFatal, fmt.Errorf("--visibility %s, but %s is %s according to its skenv file", visibility, paths.Collapse(env.Home, root), c.Visibility)
 		}
 		visibility = c.Visibility
 	}
 
 	skill := filepath.Join(root, filepath.FromSlash(skillsDir), name)
 	if _, err := os.Lstat(skill); err == nil {
-		return engine.ExitFatal, fmt.Errorf("%s already exists", paths.Collapse(env.Home, skill))
+		return skills.ExitFatal, fmt.Errorf("%s already exists", paths.Collapse(env.Home, skill))
 	}
 	title := strings.ReplaceAll(name, "-", " ")
 	title = strings.ToUpper(title[:1]) + title[1:]
@@ -120,10 +120,10 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, visibil
 	for rel, content := range files {
 		p := filepath.Join(skill, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-			return engine.ExitFatal, err
+			return skills.ExitFatal, err
 		}
 	}
 	fmt.Fprintf(env.Stdout, "created %s (SKILL.md, references/notes.md)\n", paths.Collapse(env.Home, skill))
@@ -131,7 +131,7 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, visibil
 		for _, f := range findings {
 			fmt.Fprintln(env.Stderr, f)
 		}
-		return engine.ExitProblems, nil
+		return skills.ExitProblems, nil
 	}
 	fmt.Fprintln(env.Stdout, "next steps:")
 	fmt.Fprintln(env.Stdout, "  - fill in the description and instructions, then run `skenv lint`")
@@ -139,15 +139,15 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, visibil
 		fmt.Fprintln(env.Stdout, "  - before publishing, add a license (LICENSE or the license field) and run `skenv lint --publish`")
 	}
 	fmt.Fprintln(env.Stdout, "  - "+availability(env, name, root, target, openErr))
-	return engine.ExitOK, nil
+	return skills.ExitOK, nil
 }
 
 // availability is the step that makes the new skill name available to the
 // agents: a link when the manifest installs it from target, otherwise what
 // keeps it out.
-func availability(env engine.Env, name, root string, target *engine.CheckoutDir, openErr error) string {
+func availability(env skills.Env, name, root string, target *skills.CheckoutDir, openErr error) string {
 	switch {
-	case errors.Is(openErr, engine.ErrNoManifest):
+	case errors.Is(openErr, skills.ErrNoManifest):
 		return "no manifest is configured, so no agent sees the skill yet: `skenv init` starts one with this repository"
 	case openErr != nil:
 		return fmt.Sprintf("the manifest could not be read, so it is unknown whether agents will see the skill: %v", openErr)
@@ -167,8 +167,8 @@ func availability(env engine.Env, name, root string, target *engine.CheckoutDir,
 // ownTarget picks the checkout that `new` writes to without --dir: the
 // only one of the manifest, else the one whose [repository] section has
 // visibility.
-func ownTarget(dirs []engine.CheckoutDir, visibility string) (engine.CheckoutDir, error) {
-	var cloned []engine.CheckoutDir
+func ownTarget(dirs []skills.CheckoutDir, visibility string) (skills.CheckoutDir, error) {
+	var cloned []skills.CheckoutDir
 	var repos, missing []string
 	for _, d := range dirs {
 		repos = append(repos, d.Repo)
@@ -184,18 +184,18 @@ func ownTarget(dirs []engine.CheckoutDir, visibility string) (engine.CheckoutDir
 	}
 	switch len(dirs) {
 	case 0:
-		return engine.CheckoutDir{}, errors.New("the manifest has no checkout; pass --dir")
+		return skills.CheckoutDir{}, errors.New("the manifest has no checkout; pass --dir")
 	case 1:
 		if len(cloned) == 0 {
-			return engine.CheckoutDir{}, errors.New("the checkout of the manifest is not cloned yet" + notCloned)
+			return skills.CheckoutDir{}, errors.New("the checkout of the manifest is not cloned yet" + notCloned)
 		}
 		return cloned[0], nil
 	}
-	var matches []engine.CheckoutDir
+	var matches []skills.CheckoutDir
 	for _, d := range cloned {
 		c, ok, err := skenvfile.ReadRepository(d.Path)
 		if err != nil {
-			return engine.CheckoutDir{}, err
+			return skills.CheckoutDir{}, err
 		}
 		if ok && c.Visibility == visibility {
 			matches = append(matches, d)
@@ -203,7 +203,7 @@ func ownTarget(dirs []engine.CheckoutDir, visibility string) (engine.CheckoutDir
 	}
 	switch len(matches) {
 	case 0:
-		return engine.CheckoutDir{}, fmt.Errorf("no checkout of the manifest (%s) has visibility %q in its [repository] section; pass --dir%s",
+		return skills.CheckoutDir{}, fmt.Errorf("no checkout of the manifest (%s) has visibility %q in its [repository] section; pass --dir%s",
 			strings.Join(repos, ", "), visibility, notCloned)
 	case 1:
 		return matches[0], nil
@@ -212,12 +212,12 @@ func ownTarget(dirs []engine.CheckoutDir, visibility string) (engine.CheckoutDir
 	for _, m := range matches {
 		names = append(names, m.Repo)
 	}
-	return engine.CheckoutDir{}, fmt.Errorf("several checkouts are %s (%s); pass --dir", visibility, strings.Join(names, ", "))
+	return skills.CheckoutDir{}, fmt.Errorf("several checkouts are %s (%s); pass --dir", visibility, strings.Join(names, ", "))
 }
 
 // ownAt returns the checkout whose working copy is root, which git reports
 // with symlinks resolved.
-func ownAt(dirs []engine.CheckoutDir, root string) *engine.CheckoutDir {
+func ownAt(dirs []skills.CheckoutDir, root string) *skills.CheckoutDir {
 	for i, d := range dirs {
 		if p, err := filepath.EvalSymlinks(d.Path); err == nil && p == root {
 			return &dirs[i]

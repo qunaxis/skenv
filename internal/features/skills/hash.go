@@ -1,4 +1,4 @@
-package engine
+package skills
 
 import (
 	"crypto/sha256"
