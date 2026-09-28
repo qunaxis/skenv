@@ -3,7 +3,6 @@ package skenvfile
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -128,13 +127,7 @@ func ParseProject(data []byte, ext string) (*Project, error) {
 		p.MirrorsMode = MirrorSymlink
 	}
 	p.GitHosts.fillDefaults()
-	for name, d := range p.Dependencies {
-		d.Name = name
-		if d.SkillDir == "" {
-			d.SkillDir = "."
-		}
-		p.Dependencies[name] = d
-	}
+	defaultDependencies(p.Dependencies)
 	for id, f := range p.From {
 		f.ID = id
 		if f.SkillsDir == "" {
@@ -263,24 +256,10 @@ func quoted(ss []string) []string {
 }
 
 // DependencyList returns the dependencies sorted by name.
-func (p *Project) DependencyList() []*Dependency {
-	out := make([]*Dependency, 0, len(p.Dependencies))
-	for _, name := range slices.Sorted(maps.Keys(p.Dependencies)) {
-		d := p.Dependencies[name]
-		out = append(out, &d)
-	}
-	return out
-}
+func (p *Project) DependencyList() []*Dependency { return sortedValues(p.Dependencies) }
 
 // FromList returns the from entries sorted by ID.
-func (p *Project) FromList() []*From {
-	out := make([]*From, 0, len(p.From))
-	for _, id := range slices.Sorted(maps.Keys(p.From)) {
-		f := p.From[id]
-		out = append(out, &f)
-	}
-	return out
-}
+func (p *Project) FromList() []*From { return sortedValues(p.From) }
 
 // Skills lists every skill the section copies, sorted by name. A name
 // defined twice appears twice; Validate reports it.

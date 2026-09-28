@@ -83,12 +83,6 @@ func TestRemoveDependency(t *testing.T) {
 	}
 }
 
-func TestQuote(t *testing.T) {
-	if got := quote("a\"b\\c"); got != `"a\"b\\c"` {
-		t.Errorf("quote = %s", got)
-	}
-}
-
 // YAML and JSON manifests are edited in place too.
 func TestEditOtherFormats(t *testing.T) {
 	for ext, text := range map[string]string{

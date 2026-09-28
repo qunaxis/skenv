@@ -258,13 +258,7 @@ func ParseManifestIn(data []byte, ext, dir string) (*Manifest, error) {
 		}
 	}
 	m.GitHosts.fillDefaults()
-	for name, d := range m.Dependencies {
-		d.Name = name
-		if d.SkillDir == "" {
-			d.SkillDir = "."
-		}
-		m.Dependencies[name] = d
-	}
+	defaultDependencies(m.Dependencies)
 	if err := m.Validate(); err != nil {
 		return nil, err
 	}
@@ -428,7 +422,7 @@ func (c *Checkout) Select(found []string, dir string) ([]string, error) {
 	}
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("user.checkouts.%s: include lists %s, not found in %s (a directory with SKILL.md)",
-			c.ID, quoteAll(missing), dir)
+			c.ID, strings.Join(quoted(missing), ", "), dir)
 	}
 	var out []string
 	for _, n := range found {
@@ -445,12 +439,27 @@ func (c *Checkout) Selects(name string) bool { return Selected(c.Include, c.Excl
 // Selects reports whether the machine rules keep the skill name.
 func (mc Machine) Selects(name string) bool { return Selected(mc.Include, mc.Exclude, name) }
 
-func quoteAll(names []string) string {
-	q := make([]string, len(names))
-	for i, n := range names {
-		q[i] = strconv.Quote(n)
+// defaultDependencies fills the Name and SkillDir defaults of every
+// dependency of deps in place, once its key is known.
+func defaultDependencies(deps map[string]Dependency) {
+	for name, d := range deps {
+		d.Name = name
+		if d.SkillDir == "" {
+			d.SkillDir = "."
+		}
+		deps[name] = d
 	}
-	return strings.Join(q, ", ")
+}
+
+// sortedValues returns the values of m sorted by key, each as a pointer to
+// its own copy.
+func sortedValues[V any](m map[string]V) []*V {
+	out := make([]*V, 0, len(m))
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		v := m[k]
+		out = append(out, &v)
+	}
+	return out
 }
 
 // quoteKey writes a table key as TOML needs it in a dotted path.
@@ -482,24 +491,10 @@ func cleanRel(p string) bool {
 }
 
 // CheckoutList returns the checkouts sorted by ID.
-func (m *Manifest) CheckoutList() []*Checkout {
-	out := make([]*Checkout, 0, len(m.Checkouts))
-	for _, id := range slices.Sorted(maps.Keys(m.Checkouts)) {
-		c := m.Checkouts[id]
-		out = append(out, &c)
-	}
-	return out
-}
+func (m *Manifest) CheckoutList() []*Checkout { return sortedValues(m.Checkouts) }
 
 // DependencyList returns the dependencies sorted by name.
-func (m *Manifest) DependencyList() []*Dependency {
-	out := make([]*Dependency, 0, len(m.Dependencies))
-	for _, name := range slices.Sorted(maps.Keys(m.Dependencies)) {
-		d := m.Dependencies[name]
-		out = append(out, &d)
-	}
-	return out
-}
+func (m *Manifest) DependencyList() []*Dependency { return sortedValues(m.Dependencies) }
 
 // Remote resolves a repo value of the manifest: a relative local path
 // against the directory of the skenv file.

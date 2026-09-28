@@ -3,7 +3,6 @@ package skenvfile
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -39,12 +38,19 @@ func sectionRe(section string) *regexp.Regexp {
 
 type block struct{ start, end int } // line range [start, end)
 
+// splitLines is docedit.SplitLines, except it keeps a trailing empty
+// element when data ends with a newline. insertTable sizes its blank
+// separator off len(lines), and dropping that element (as
+// docedit.SplitLines does) changes the number of blank lines it inserts
+// before a brand new section's first table (a pre-existing quirk, #110).
+// Kept byte for byte so this refactor changes no output (#69); unifying
+// the two is a separate, behaviour-changing follow-up.
 func splitLines(data []byte) []string {
-	s := string(data)
-	if s == "" {
-		return nil
+	ls := docedit.SplitLines(data)
+	if len(data) > 0 && data[len(data)-1] == '\n' {
+		ls = append(ls, "")
 	}
-	return strings.SplitAfter(s, "\n")
+	return ls
 }
 
 // tableEnd is the end of the table whose header is at line i: the next
@@ -80,7 +86,7 @@ func AppendDependency(data []byte, ext, section string, d Dependency) ([]byte, e
 		})
 	}
 	table := fmt.Sprintf("[%s.dependencies.%s]\nrepo      = %s\nskill_dir = %s\ncommit    = %s\n",
-		section, d.Name, quote(d.Repo), quote(d.SkillDir), quote(d.Commit))
+		section, d.Name, docedit.Quote(d.Repo), docedit.Quote(d.SkillDir), docedit.Quote(d.Commit))
 	return checked(insertTable(data, section, table), ext, section)
 }
 
@@ -109,17 +115,17 @@ func AppendCheckout(data []byte, ext string, c Checkout) ([]byte, error) {
 // checkoutTable is the TOML table of a new checkout.
 func checkoutTable(c Checkout) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "[user.checkouts.%s]\nrepo         = %s\ncheckout_dir = %s\n", c.ID, quote(c.Repo), quote(c.CheckoutDir))
+	fmt.Fprintf(&b, "[user.checkouts.%s]\nrepo         = %s\ncheckout_dir = %s\n", c.ID, docedit.Quote(c.Repo), docedit.Quote(c.CheckoutDir))
 	if c.SkillsDir != "" && c.SkillsDir != DefaultSkillsDir {
-		fmt.Fprintf(&b, "skills_dir   = %s\n", quote(c.SkillsDir))
+		fmt.Fprintf(&b, "skills_dir   = %s\n", docedit.Quote(c.SkillsDir))
 	}
 	if c.Branch != "" {
-		fmt.Fprintf(&b, "branch       = %s\n", quote(c.Branch))
+		fmt.Fprintf(&b, "branch       = %s\n", docedit.Quote(c.Branch))
 	}
 	if c.Include != nil {
 		q := make([]string, len(c.Include))
 		for i, n := range c.Include {
-			q[i] = quote(n)
+			q[i] = docedit.Quote(n)
 		}
 		fmt.Fprintf(&b, "include      = [%s]\n", strings.Join(q, ", "))
 	}
@@ -140,7 +146,7 @@ func insertTable(data []byte, section, table string) []byte {
 	for i, line := range slices.Backward(lines) {
 		if re.MatchString(line) {
 			at = tableEnd(lines, i)
-			for at > i+1 && isBlankOrComment(lines[at-1]) {
+			for at > i+1 && docedit.IsBlankOrComment(lines[at-1]) {
 				at--
 			}
 			for at < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[at]), "#") && !headerRe.MatchString(lines[at]) {
@@ -165,11 +171,6 @@ func insertTable(data []byte, section, table string) []byte {
 		b.WriteString(strings.Join(lines[at:], ""))
 	}
 	return b.Bytes()
-}
-
-func isBlankOrComment(line string) bool {
-	t := strings.TrimSpace(line)
-	return t == "" || strings.HasPrefix(t, "#")
 }
 
 // SetDependencyCommit returns data with the commit of dependency name in
@@ -209,7 +210,7 @@ func setCommit(lines []string, blk block, ext, section, what, commit string) ([]
 	for j := blk.start + 1; j < blk.end; j++ {
 		if m := commitKeyRe.FindStringSubmatch(strings.TrimRight(lines[j], "\r\n")); m != nil {
 			nl := lines[j][len(strings.TrimRight(lines[j], "\r\n")):]
-			lines[j] = m[1] + quote(commit) + m[2] + nl
+			lines[j] = m[1] + docedit.Quote(commit) + m[2] + nl
 			return checked([]byte(strings.Join(lines, "")), ext, section)
 		}
 	}
@@ -232,7 +233,7 @@ func RemoveDependency(data []byte, ext, section, name string) ([]byte, error) {
 	}
 	last := blk.start
 	for j := blk.start + 1; j < blk.end; j++ {
-		if !isBlankOrComment(lines[j]) {
+		if !docedit.IsBlankOrComment(lines[j]) {
 			last = j
 		}
 	}
@@ -276,37 +277,7 @@ func checked(data []byte, ext, section string) ([]byte, error) {
 	return data, nil
 }
 
-// quote renders s as a TOML basic string.
-func quote(s string) string {
-	var b strings.Builder
-	b.WriteByte('"')
-	for _, r := range s {
-		switch r {
-		case '"':
-			b.WriteString(`\"`)
-		case '\\':
-			b.WriteString(`\\`)
-		case '\n':
-			b.WriteString(`\n`)
-		case '\t':
-			b.WriteString(`\t`)
-		default:
-			if r < 0x20 || r == 0x7f {
-				fmt.Fprintf(&b, `\u%04X`, r)
-			} else {
-				b.WriteRune(r)
-			}
-		}
-	}
-	b.WriteByte('"')
-	return b.String()
-}
-
 // WriteFile atomically replaces file with data, keeping its permissions.
 func WriteFile(file string, data []byte) error {
-	mode := os.FileMode(0o644)
-	if fi, err := os.Stat(file); err == nil {
-		mode = fi.Mode().Perm()
-	}
-	return atomicfile.Write(file, data, mode)
+	return atomicfile.Replace(file, data)
 }
