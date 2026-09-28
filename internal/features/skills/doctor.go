@@ -139,15 +139,8 @@ func (e *UserScope) Doctor(asJSON bool) (int, error) {
 		}
 	}
 
-	sortIssues(r.Issues)
 	r.OK = len(r.Issues) == 0
-	if err := e.printDoctor(r, asJSON); err != nil {
-		return ExitFatal, err
-	}
-	if !r.OK {
-		return ExitProblems, nil
-	}
-	return ExitOK, nil
+	return e.printDoctor(r, asJSON)
 }
 
 func (e *UserScope) doctorOwn(add func(class, skill, p, detail string), warn func(string, ...any)) {
@@ -260,26 +253,34 @@ func (e *UserScope) checkLink(p, dest, skill string, add func(class, skill, p, d
 	}
 }
 
-func (e *UserScope) printDoctor(r *DoctorReport, asJSON bool) error {
+func (e *UserScope) printDoctor(r *DoctorReport, asJSON bool) (int, error) {
 	ok := fmt.Sprintf("ok: %d skills match %s (store %s, targets %s)", r.Skills, r.Manifest, r.Store, strings.Join(r.Targets, ", "))
 	return e.printReport(r, asJSON, r.Warnings, r.Issues, ok)
 }
 
 // printReport prints a doctor report: as JSON, or the warnings on stderr
-// and okLine or a table of the issues on stdout.
-func (e *scope) printReport(report any, asJSON bool, warnings []string, issues []Issue, okLine string) error {
+// and okLine or a table of the issues on stdout. It sorts issues in place
+// and returns ExitProblems if any remain, ExitOK otherwise.
+func (e *scope) printReport(report any, asJSON bool, warnings []string, issues []Issue, okLine string) (int, error) {
+	sortIssues(issues)
 	out := e.env.Stdout
 	if asJSON {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
-		return enc.Encode(report)
+		if err := enc.Encode(report); err != nil {
+			return ExitFatal, err
+		}
+		if len(issues) == 0 {
+			return ExitOK, nil
+		}
+		return ExitProblems, nil
 	}
 	for _, w := range warnings {
 		fmt.Fprintf(e.env.Stderr, "warning: %s\n", w)
 	}
 	if len(issues) == 0 {
 		fmt.Fprintln(out, okLine)
-		return nil
+		return ExitOK, nil
 	}
 	tw := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "CLASS\tSKILL\tPATH\tDETAIL")
@@ -291,10 +292,10 @@ func (e *scope) printReport(report any, asJSON bool, warnings []string, issues [
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", is.Class, skill, is.Path, is.Detail)
 	}
 	if err := tw.Flush(); err != nil {
-		return err
+		return ExitFatal, err
 	}
 	fmt.Fprintf(out, "%d discrepancies\n", len(issues))
-	return nil
+	return ExitProblems, nil
 }
 
 // sortIssues orders issues by class, then path.

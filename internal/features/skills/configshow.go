@@ -245,6 +245,22 @@ func (e *UserScope) targetBranchLocal(dir string, c *skenvfile.Checkout) (string
 	return strings.TrimPrefix(ref, "origin/"), nil
 }
 
+// ConfigShow builds and prints the effective configuration. It returns
+// ExitProblems if the selection has errors, ExitOK otherwise.
+func (e *UserScope) ConfigShow(source string, asJSON bool) (int, error) {
+	r, err := e.Explain(source)
+	if err != nil {
+		return ExitFatal, err
+	}
+	if err := e.PrintEffective(r, asJSON); err != nil {
+		return ExitFatal, err
+	}
+	if len(r.Problems) > 0 {
+		return ExitProblems, nil
+	}
+	return ExitOK, nil
+}
+
 // PrintEffective prints the effective configuration, as JSON or text.
 func (e *UserScope) PrintEffective(r *Effective, asJSON bool) error {
 	out := e.env.Stdout

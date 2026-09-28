@@ -61,20 +61,13 @@ func (e *ProjectScope) Doctor(asJSON bool) (int, error) {
 	for _, m := range e.project.Mirrors {
 		e.doctorMirror(e.abs(m), names, add)
 	}
-	sortIssues(r.Issues)
 	r.OK = len(r.Issues) == 0
 	mirrors := "no mirrors"
 	if len(e.project.Mirrors) > 0 {
 		mirrors = fmt.Sprintf("mirrors %s (%s)", strings.Join(e.project.Mirrors, ", "), e.project.MirrorsMode)
 	}
 	ok := fmt.Sprintf("ok: %d project skills match %s (dir %s, %s)", r.Skills, e.rel(e.file), e.project.Dir, mirrors)
-	if err := e.printReport(r, asJSON, r.Warnings, r.Issues, ok); err != nil {
-		return ExitFatal, err
-	}
-	if !r.OK {
-		return ExitProblems, nil
-	}
-	return ExitOK, nil
+	return e.printReport(r, asJSON, r.Warnings, r.Issues, ok)
 }
 
 // doctorCopy checks the copy of s in dir.

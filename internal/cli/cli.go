@@ -1056,17 +1056,7 @@ skenv config show`,
 				return 0, err
 			}
 			return withUser(ctx, env, o, func(e *skills.UserScope) (int, error) {
-				r, err := e.Explain(source)
-				if err != nil {
-					return 0, err
-				}
-				if err := e.PrintEffective(r, asJSON); err != nil {
-					return 0, err
-				}
-				if len(r.Problems) > 0 {
-					return skills.ExitProblems, nil
-				}
-				return skills.ExitOK, nil
+				return e.ConfigShow(source, asJSON)
 			})
 		}),
 	}
