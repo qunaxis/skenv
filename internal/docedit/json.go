@@ -19,11 +19,14 @@ type jnode struct {
 	str   string   // its value
 }
 
-type jsonDoc struct{ root *jnode }
+type jsonDoc struct {
+	root   *jnode
+	indent string // one level's worth, e.g. "  ", "\t" or "    "
+}
 
 func openJSON(data []byte) (*jsonDoc, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
-		return &jsonDoc{root: &jnode{kind: 'o'}}, nil
+		return &jsonDoc{root: &jnode{kind: 'o'}, indent: "  "}, nil
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
@@ -37,7 +40,20 @@ func openJSON(data []byte) (*jsonDoc, error) {
 	if root.kind != 'o' {
 		return nil, errors.New("the top level must be an object")
 	}
-	return &jsonDoc{root: root}, nil
+	return &jsonDoc{root: root, indent: detectIndent(data)}, nil
+}
+
+// detectIndent returns the leading whitespace of the first indented line of
+// data, or two spaces when none is found (a file with no indentation, such
+// as a compact one-liner).
+func detectIndent(data []byte) string {
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		trimmed := bytes.TrimLeft(line, " \t")
+		if len(trimmed) > 0 && len(trimmed) < len(line) {
+			return string(line[:len(line)-len(trimmed)])
+		}
+	}
+	return "  "
 }
 
 func decodeJSON(dec *json.Decoder) (*jnode, error) {
@@ -272,12 +288,12 @@ func (d *jsonDoc) Put(path []string, key string, value any, first bool) error {
 
 func (d *jsonDoc) Bytes() []byte {
 	var b strings.Builder
-	writeJSON(&b, d.root, 0)
+	writeJSON(&b, d.root, 0, d.indent)
 	b.WriteByte('\n')
 	return []byte(b.String())
 }
 
-func writeJSON(b *strings.Builder, n *jnode, depth int) {
+func writeJSON(b *strings.Builder, n *jnode, depth int, indent string) {
 	switch n.kind {
 	case 's':
 		b.WriteString(n.raw)
@@ -294,15 +310,15 @@ func writeJSON(b *strings.Builder, n *jnode, depth int) {
 	}
 	b.WriteString(open + "\n")
 	for i, v := range n.vals {
-		b.WriteString(strings.Repeat("  ", depth+1))
+		b.WriteString(strings.Repeat(indent, depth+1))
 		if n.kind == 'o' {
 			b.WriteString(jsonString(n.keys[i]) + ": ")
 		}
-		writeJSON(b, v, depth+1)
+		writeJSON(b, v, depth+1, indent)
 		if i < len(n.vals)-1 {
 			b.WriteByte(',')
 		}
 		b.WriteByte('\n')
 	}
-	b.WriteString(strings.Repeat("  ", depth) + closing)
+	b.WriteString(strings.Repeat(indent, depth) + closing)
 }
