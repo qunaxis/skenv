@@ -255,6 +255,19 @@ refuses such a name before it edits anything (unless `--adopt`). Only
 project-own skill with the copy of an entry of the same name, after moving
 it to the backup directory.
 
+A copy the `skills` CLI installed before `skenv import --project` has no
+marker either, so it is a `conflict` too until skenv takes it over. When
+its files are those of the pinned commit, `sync` says so:
+
+```text
+error: conflict: .agents/skills/<name> has the files of <repo>@<commit> (<skill-dir>) but no .skenv marker: installed another way, as by the skills CLI before `skenv import --project`; run `skenv sync --adopt` to take it over (the copy goes to ~/.local/state/skenv/backup)
+```
+
+`skenv sync --adopt` moves the copy to the backup directory and puts the
+copy of the pinned commit, with its marker, in its place. `doctor` works
+offline and does not compare the files: it reports both cases as a
+possible project-own skill.
+
 Edit a project-own skill in `dir`, not in a mirror: with symlink mirrors
 both are the same files anyway, and with copy mirrors `sync` refuses to
 overwrite a mirror copy that differs from `dir` and was not made by skenv.
@@ -364,7 +377,7 @@ rules, for example with `.agents/skills/** -text -filter`.
 | `wrong-rev`     | the copy's marker names another repo, skill directory or commit than the entry               | `skenv sync`                                                                                  |
 | `modified`      | the copy was edited: its content hash is not the one in its marker                            | move the change upstream or into a project-own skill, then `skenv sync --adopt` restores the copy |
 | `extra-managed` | a copy (a directory with a marker) whose entry left `[project]`                              | `skenv sync` removes it; to keep it as a project-own skill, delete its `.skenv` instead        |
-| `conflict`      | an entry's name is taken by a project-own skill                                              | rename the skill or the entry; `skenv sync --adopt` backs the skill up and copies the entry    |
+| `conflict`      | an entry's name is taken by a project-own skill, or by a copy installed another way (by the `skills` CLI before `skenv import --project`) | rename the skill or the entry; for an installed copy, or to replace the skill, `skenv sync --adopt` backs it up and copies the entry |
 | `broken-mirror` | a mirror entry is missing, points elsewhere, or belongs to a skill no longer in `dir`         | `skenv sync`                                                                                  |
 | `mirror-drift`  | a mirror entry is a directory where a symlink is expected, a symlink where a copy is expected, or a copy that differs from `dir` | `skenv sync`; if the mirror was edited, move the change to `dir` first, then `skenv sync --adopt` |
 | `unmanaged`     | a skill that is only in a mirror, not in `dir`                                               | move it to `dir`                                                                              |
