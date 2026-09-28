@@ -7,27 +7,26 @@ import (
 
 // jobPath is exercised at the package level (#56): the CLI has no seam to
 // tell it whether git is on PATH, and covering that from a black-box test
-// would depend on the machine running the tests. execLookPath is the seam
-// production code already exposes.
+// would depend on the machine running the tests, so the test passes its
+// own lookPath.
 func TestJobPath(t *testing.T) {
-	orig := execLookPath
-	t.Cleanup(func() { execLookPath = orig })
 	const fixed = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+	var look func(string) (string, error)
 
-	execLookPath = func(string) (string, error) { return "", errors.New("not found") }
-	if got := jobPath(); got != fixed {
+	look = func(string) (string, error) { return "", errors.New("not found") }
+	if got := jobPath(look); got != fixed {
 		t.Errorf("without git: %q, want %q", got, fixed)
 	}
 
-	execLookPath = func(string) (string, error) { return "/custom/bin/git", nil }
-	if got, want := jobPath(), "/custom/bin:"+fixed; got != want {
+	look = func(string) (string, error) { return "/custom/bin/git", nil }
+	if got, want := jobPath(look), "/custom/bin:"+fixed; got != want {
 		t.Errorf("with git: %q, want %q", got, want)
 	}
 
 	// git's own directory is already one of the fixed ones: no duplicate,
 	// but it still comes first since add() records it before the fixed list.
-	execLookPath = func(string) (string, error) { return "/usr/bin/git", nil }
-	if got, want := jobPath(), "/usr/bin:/opt/homebrew/bin:/usr/local/bin:/bin"; got != want {
+	look = func(string) (string, error) { return "/usr/bin/git", nil }
+	if got, want := jobPath(look), "/usr/bin:/opt/homebrew/bin:/usr/local/bin:/bin"; got != want {
 		t.Errorf("git alongside a fixed dir: %q, want %q", got, want)
 	}
 }

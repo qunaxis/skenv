@@ -282,6 +282,10 @@ func TestRepoInitCI(t *testing.T) {
 	if _, errOut := w.mustRun(2, "repo", "init", "--visibility", "private", "--ci", "jenkins", "--dir", newRepo(w, "bad", "")); !strings.Contains(errOut, "--ci must be github or gitlab") {
 		t.Errorf("--ci jenkins: %s", errOut)
 	}
+	// --visibility is checked before the directory, even outside a repository.
+	if _, errOut := w.mustRun(2, "repo", "init", "--dir", t.TempDir()); errOut != "skenv: required flag(s) \"visibility\" not set\n" {
+		t.Errorf("without --visibility: %q", errOut)
+	}
 
 	// A self-hosted GitLab declared in the repository's own manifest, and
 	// one declared in the manifest of the config file.

@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -32,15 +33,18 @@ func init() { cobra.EnableCommandSorting = false }
 
 // Main runs skenv with args (without the program name) and returns the
 // exit code.
-func Main(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+func Main(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	a := &app{stdout: stdout, stderr: stderr}
 	root := newRoot(a)
+	root.SetIn(stdin)
 	root.SetArgs(args)
 	err := root.ExecuteContext(ctx)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "skenv: %s\n", gitx.Mask(err.Error()))
-		if !a.ran {
-			// Parse and usage errors never reach a command.
+		// The one place an error becomes an exit code: commands return
+		// 0 with an error, parse and usage errors never set a code, and
+		// both exit 2. A command that found problems keeps its 1.
+		if a.code == skills.ExitOK {
 			a.code = skills.ExitFatal
 		}
 	}
@@ -52,16 +56,13 @@ func Main(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 type app struct {
 	stdout, stderr io.Writer
 	code           int
-	ran            bool
 }
 
 // action adapts a skenv command to cobra's RunE.
 func (a *app) action(fn func(ctx context.Context, env skills.Env, args []string) (int, error)) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		a.ran = true
 		env, err := newEnv(a.stdout, a.stderr)
 		if err != nil {
-			a.code = skills.ExitFatal
 			return err
 		}
 		a.code, err = fn(cmd.Context(), env, args)
@@ -119,7 +120,7 @@ skenv doctor`,
 	root.SetErr(a.stderr)
 	root.SetVersionTemplate("{{.Version}}\n")
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-		return usageError{fmt.Sprintf("%s (see `%s --help`)", err, cmd.CommandPath())}
+		return fmt.Errorf("%w (see `%s --help`)", err, cmd.CommandPath())
 	})
 	root.AddGroup(
 		&cobra.Group{ID: groupStart, Title: "Get started:"},
@@ -136,7 +137,6 @@ skenv doctor`,
 		Example: "skenv version",
 		Args:    nArgs(0),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			a.ran = true
 			fmt.Fprintln(cmd.OutOrStdout(), buildinfo.Get())
 			return nil
 		},
@@ -217,10 +217,6 @@ func newEnv(stdout, stderr io.Writer) (skills.Env, error) {
 	return skills.Env{Home: home, Getenv: os.Getenv, Hostname: host, Stdout: stdout, Stderr: stderr}, nil
 }
 
-type usageError struct{ msg string }
-
-func (u usageError) Error() string { return u.msg }
-
 // cmdName is the command path without "skenv ", as in "vendor add".
 func cmdName(cmd *cobra.Command) string {
 	return strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
@@ -253,7 +249,7 @@ func argError(cmd *cobra.Command, problem string) error {
 			break
 		}
 	}
-	return usageError{msg}
+	return errors.New(msg)
 }
 
 // group is a command that only holds subcommands.
@@ -273,7 +269,7 @@ func groupRun(cmd *cobra.Command, args []string) error {
 	for _, s := range cmd.Commands() {
 		names = append(names, s.Name())
 	}
-	return usageError{fmt.Sprintf("%s: unknown subcommand %q (%s)", cmdName(cmd), args[0], strings.Join(names, ", "))}
+	return fmt.Errorf("%s: unknown subcommand %q (%s)", cmdName(cmd), args[0], strings.Join(names, ", "))
 }
 
 // formatFlag adds --format with the completion of its values.
@@ -294,7 +290,7 @@ func projectFlag(fs *pflag.FlagSet, p *bool, usage string) {
 // the current directory has a skenv file with [project].
 func projectScope(ctx context.Context, env skills.Env, cmd string, project, auto bool, manifestFlag string) (string, error) {
 	if project && manifestFlag != "" {
-		return "", usageError{cmd + ": --project and --manifest exclude each other"}
+		return "", errors.New(cmd + ": --project and --manifest exclude each other")
 	}
 	if manifestFlag != "" || (!project && !auto) {
 		return "", nil
@@ -389,14 +385,14 @@ skenv init --import
 skenv init --remote gitlab:example-group/my-skills`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return usageError{"init: takes no <repo>; to connect this machine to an existing manifest: " +
-					"`skenv clone <repo>` (or `skenv use <path>` for a checkout you already have)"}
+				return errors.New("init: takes no <repo>; to connect this machine to an existing manifest: " +
+					"`skenv clone <repo>` (or `skenv use <path>` for a checkout you already have)")
 			}
 			return nil
 		},
 		RunE: a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
 			if err := docedit.ValidFormat(format); err != nil {
-				return skills.ExitFatal, usageError{"init: " + err.Error()}
+				return 0, fmt.Errorf("init: %w", err)
 			}
 			if imp {
 				return skills.InitImport(ctx, env, dir, format, remote, dryRun)
@@ -456,7 +452,7 @@ skenv clone example-org/skills ~/src/skills`,
 		Args: rangeArgs(1, 2),
 		RunE: a.action(func(ctx context.Context, env skills.Env, args []string) (int, error) {
 			if err := docedit.ValidFormat(format); err != nil {
-				return skills.ExitFatal, usageError{"clone: " + err.Error()}
+				return 0, fmt.Errorf("clone: %w", err)
 			}
 			dir := ""
 			if len(args) == 2 {
@@ -499,7 +495,7 @@ skenv use .`,
 		Args: nArgs(1),
 		RunE: a.action(func(ctx context.Context, env skills.Env, args []string) (int, error) {
 			if err := docedit.ValidFormat(format); err != nil {
-				return skills.ExitFatal, usageError{"use: " + err.Error()}
+				return 0, fmt.Errorf("use: %w", err)
 			}
 			return skills.Use(ctx, env, args[0], format, dryRun)
 		}),
@@ -536,12 +532,7 @@ are files committed with the project; ` + "`skenv doctor --project`" + ` checks 
 skenv list`,
 		Args: nArgs(0),
 		RunE: a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
-			e, err := skills.OpenUser(ctx, env, o)
-			if err != nil {
-				return skills.ExitFatal, err
-			}
-			defer e.Close()
-			return e.List(asJSON)
+			return withUser(ctx, env, o, func(e *skills.UserScope) (int, error) { return e.List(asJSON) })
 		}),
 	}
 	manifestFlag(c.Flags(), &o)
@@ -634,11 +625,11 @@ skenv import --project`,
 		RunE: a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
 			if project {
 				if o.Manifest != "" {
-					return skills.ExitFatal, usageError{"import: --project and --manifest exclude each other"}
+					return 0, errors.New("import: --project and --manifest exclude each other")
 				}
 				cwd, err := os.Getwd()
 				if err != nil {
-					return skills.ExitFatal, err
+					return 0, err
 				}
 				return skills.ImportProject(ctx, env, cwd, o.DryRun, sync)
 			}
@@ -705,29 +696,10 @@ skenv sync
 skenv sync --project`,
 		Args: nArgs(0),
 		RunE: a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
-			if name == "sync" {
-				file, err := projectScope(ctx, env, name, project, true, o.Manifest)
-				if err != nil {
-					return skills.ExitFatal, err
-				}
-				if file != "" {
-					e, err := skills.OpenProject(ctx, env, o, file)
-					if err != nil {
-						return skills.ExitFatal, err
-					}
-					defer e.Close()
-					return e.Sync()
-				}
-			}
-			e, err := skills.OpenUser(ctx, env, o)
-			if err != nil {
-				return skills.ExitFatal, err
-			}
-			defer e.Close()
 			if name == "link" {
-				return e.Link()
+				return withUser(ctx, env, o, (*skills.UserScope).Link)
 			}
-			return e.Sync()
+			return withScope(ctx, env, o, name, project, true, scope.Sync)
 		}),
 	}
 	if name == "link" {
@@ -789,24 +761,7 @@ skenv doctor
 skenv doctor --project`,
 		Args: nArgs(0),
 		RunE: a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
-			file, err := projectScope(ctx, env, "doctor", project, true, o.Manifest)
-			if err != nil {
-				return skills.ExitFatal, err
-			}
-			if file != "" {
-				e, err := skills.OpenProject(ctx, env, o, file)
-				if err != nil {
-					return skills.ExitFatal, err
-				}
-				defer e.Close()
-				return e.Doctor(asJSON)
-			}
-			e, err := skills.OpenUser(ctx, env, o)
-			if err != nil {
-				return skills.ExitFatal, err
-			}
-			defer e.Close()
-			return e.Doctor(asJSON)
+			return withScope(ctx, env, o, "doctor", project, true, func(s scope) (int, error) { return s.Doctor(asJSON) })
 		}),
 	}
 	manifestFlag(c.Flags(), &o)
@@ -815,12 +770,43 @@ skenv doctor --project`,
 	return c
 }
 
-// vendorer is the manifest or a project, for the vendor commands.
-type vendorer interface {
+// scope is the manifest or a project: what sync, doctor and the vendor
+// commands call on either.
+type scope interface {
+	Sync() (int, error)
+	Doctor(asJSON bool) (int, error)
 	VendorAdd(skills.VendorAddOptions) (int, error)
 	VendorUpdate(names []string, rev string) (int, error)
 	VendorRemove(name string) (int, error)
 	Close()
+}
+
+// withScope opens the scope of cmd (see projectScope), runs fn on it and
+// closes it.
+func withScope(ctx context.Context, env skills.Env, o skills.Options, cmd string, project, auto bool, fn func(scope) (int, error)) (int, error) {
+	file, err := projectScope(ctx, env, cmd, project, auto, o.Manifest)
+	if err != nil {
+		return 0, err
+	}
+	if file == "" {
+		return withUser(ctx, env, o, func(e *skills.UserScope) (int, error) { return fn(e) })
+	}
+	e, err := skills.OpenProject(ctx, env, o, file)
+	if err != nil {
+		return 0, err
+	}
+	defer e.Close()
+	return fn(e)
+}
+
+// withUser opens the manifest, runs fn on it and closes it.
+func withUser(ctx context.Context, env skills.Env, o skills.Options, fn func(*skills.UserScope) (int, error)) (int, error) {
+	e, err := skills.OpenUser(ctx, env, o)
+	if err != nil {
+		return 0, err
+	}
+	defer e.Close()
+	return fn(e)
 }
 
 func vendorCmd(a *app) *cobra.Command {
@@ -835,25 +821,11 @@ func vendorCmd(a *app) *cobra.Command {
 		c.Flags().BoolVar(&f.o.Adopt, "adopt", false, "move conflicting unmanaged paths to the backup directory and replace them")
 		projectFlag(c.Flags(), &f.project, "edit [project] of the current repository instead of the manifest, and sync the project")
 	}
-	withEngine := func(f *flags, fn func(v vendorer, args []string) (int, error)) func(*cobra.Command, []string) error {
+	withEngine := func(f *flags, fn func(v scope, args []string) (int, error)) func(*cobra.Command, []string) error {
 		return func(cmd *cobra.Command, args []string) error {
 			name := cmdName(cmd)
 			return a.action(func(ctx context.Context, env skills.Env, args []string) (int, error) {
-				file, err := projectScope(ctx, env, name, f.project, false, f.o.Manifest)
-				if err != nil {
-					return skills.ExitFatal, err
-				}
-				var v vendorer
-				if file != "" {
-					v, err = skills.OpenProject(ctx, env, f.o, file)
-				} else {
-					v, err = skills.OpenUser(ctx, env, f.o)
-				}
-				if err != nil {
-					return skills.ExitFatal, err
-				}
-				defer v.Close()
-				return fn(v, args)
+				return withScope(ctx, env, f.o, name, f.project, false, func(s scope) (int, error) { return fn(s, args) })
 			})(cmd, args)
 		}
 	}
@@ -922,7 +894,7 @@ skenv vendor add work:platform/skills --path deploy
 # Pin it in the current project instead
 skenv vendor add example-vendor/tools --path tools/release-notes --project`,
 		Args: nArgs(1),
-		RunE: withEngine(&addF, func(v vendorer, args []string) (int, error) {
+		RunE: withEngine(&addF, func(v scope, args []string) (int, error) {
 			va.Repo = args[0]
 			return v.VendorAdd(va)
 		}),
@@ -962,12 +934,12 @@ skenv vendor update
 skenv vendor update --project`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if rev != "" && len(args) != 1 {
-				return usageError{fmt.Sprintf("%s: --rev needs exactly 1 name, got %d (see `%s --help`)", cmdName(cmd), len(args), cmd.CommandPath())}
+				return fmt.Errorf("%s: --rev needs exactly 1 name, got %d (see `%s --help`)", cmdName(cmd), len(args), cmd.CommandPath())
 			}
 			return nil
 		},
 		ValidArgsFunction: pinned(&updateF, math.MaxInt),
-		RunE: withEngine(&updateF, func(v vendorer, args []string) (int, error) {
+		RunE: withEngine(&updateF, func(v scope, args []string) (int, error) {
 			return v.VendorUpdate(args, rev)
 		}),
 	}
@@ -996,7 +968,7 @@ project, which removes the copy and its mirrors. A skill of a
 			"skenv vendor remove diagrams --project",
 		Args:              nArgs(1),
 		ValidArgsFunction: pinned(&rmF, 1),
-		RunE: withEngine(&rmF, func(v vendorer, args []string) (int, error) {
+		RunE: withEngine(&rmF, func(v scope, args []string) (int, error) {
 			return v.VendorRemove(args[0])
 		}),
 	}
@@ -1019,16 +991,12 @@ are different: they are linked from editable git working copies
 // pinnedNames are the names of the skills pinned in the manifest, or in the
 // [project] section of the current repository.
 func pinnedNames(ctx context.Context, env skills.Env, project bool, manifestFlag string) ([]string, error) {
+	file, err := projectScope(ctx, env, "", project, false, manifestFlag)
+	if err != nil {
+		return nil, err
+	}
 	var deps []*skenvfile.Dependency
-	if project {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return nil, err
-		}
-		file, err := skills.FindProject(ctx, env, cwd)
-		if err != nil || file == "" {
-			return nil, err
-		}
+	if file != "" {
 		p, err := skenvfile.LoadProject(file)
 		if err != nil {
 			return nil, err
@@ -1085,24 +1053,21 @@ skenv config show`,
 		RunE: a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
 			_, source, err := skills.ManifestSource(ctx, env, o.Manifest)
 			if err != nil {
-				return skills.ExitFatal, err
+				return 0, err
 			}
-			e, err := skills.OpenUser(ctx, env, o)
-			if err != nil {
-				return skills.ExitFatal, err
-			}
-			defer e.Close()
-			r, err := e.Explain(source)
-			if err != nil {
-				return skills.ExitFatal, err
-			}
-			if err := e.PrintEffective(r, asJSON); err != nil {
-				return skills.ExitFatal, err
-			}
-			if len(r.Problems) > 0 {
-				return skills.ExitProblems, nil
-			}
-			return skills.ExitOK, nil
+			return withUser(ctx, env, o, func(e *skills.UserScope) (int, error) {
+				r, err := e.Explain(source)
+				if err != nil {
+					return 0, err
+				}
+				if err := e.PrintEffective(r, asJSON); err != nil {
+					return 0, err
+				}
+				if len(r.Problems) > 0 {
+					return skills.ExitProblems, nil
+				}
+				return skills.ExitOK, nil
+			})
 		}),
 	}
 	manifestFlag(show.Flags(), &o)
@@ -1135,7 +1100,7 @@ schemas are published at ` + schemas.Base + `.`,
 			}
 			name, ok := kinds[kind]
 			if !ok {
-				return skills.ExitFatal, usageError{fmt.Sprintf("schema: unknown schema %q (skenv or config)", kind)}
+				return 0, fmt.Errorf("schema: unknown schema %q (skenv or config)", kind)
 			}
 			data, _ := schemas.Stamped(name, schemas.Running())
 			_, err := env.Stdout.Write(data)
@@ -1180,7 +1145,7 @@ login and every hour.
 func runAutostart(ctx context.Context, env skills.Env, action string) (int, error) {
 	exe, err := os.Executable()
 	if err != nil {
-		return skills.ExitFatal, err
+		return 0, err
 	}
 	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = resolved
@@ -1190,25 +1155,25 @@ func runAutostart(ctx context.Context, env skills.Env, action string) (int, erro
 		Home: env.Home,
 		Exe:  exe,
 		Log:  paths.Layout{Home: env.Home}.AutostartLog(),
-		Path: jobPath(),
+		Path: jobPath(exec.LookPath),
 		UID:  os.Getuid(),
 		Run:  autostart.ExecRunner,
 	}
 	switch action {
 	case "enable":
 		if err := cfg.Enable(ctx); err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		fmt.Fprintf(env.Stdout, "autostart enabled: %s sync --quiet at load and hourly; log %s\n", exe, paths.Collapse(env.Home, cfg.Log))
 	case "disable":
 		if err := cfg.Disable(ctx); err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		fmt.Fprintln(env.Stdout, "autostart disabled")
 	default:
 		st, err := cfg.Status(ctx)
 		if err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		fmt.Fprintf(env.Stdout, "autostart: %s\n", st.Detail)
 		if !st.Installed || !st.Loaded {
@@ -1218,9 +1183,9 @@ func runAutostart(ctx context.Context, env skills.Env, action string) (int, erro
 	return skills.ExitOK, nil
 }
 
-// jobPath is the PATH for the autostart job: the directory of the current
-// git plus the usual system locations.
-func jobPath() string {
+// jobPath is the PATH for the autostart job: the directory of the git
+// lookPath finds plus the usual system locations.
+func jobPath(lookPath func(string) (string, error)) string {
 	var dirs []string
 	seen := map[string]bool{}
 	add := func(d string) {
@@ -1229,7 +1194,7 @@ func jobPath() string {
 			dirs = append(dirs, d)
 		}
 	}
-	if git, err := execLookPath("git"); err == nil {
+	if git, err := lookPath("git"); err == nil {
 		add(filepath.Dir(git))
 	}
 	for _, d := range []string{"/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"} {
@@ -1237,5 +1202,3 @@ func jobPath() string {
 	}
 	return strings.Join(dirs, ":")
 }
-
-var execLookPath = exec.LookPath

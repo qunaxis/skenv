@@ -81,9 +81,7 @@ func TestLintHook(t *testing.T) {
 	writeFile(t, filepath.Join(skill, "SKILL.md"), skillMD("demo", ""))
 	hook := func(event string) (int, string) {
 		t.Helper()
-		hookStdin = strings.NewReader(event)
-		t.Cleanup(func() { hookStdin = os.Stdin })
-		code, _, errOut := w.run("lint", "--hook")
+		code, _, errOut := w.runIn(strings.NewReader(event), "lint", "--hook")
 		return code, errOut
 	}
 	event := `{"tool_name":"Edit","tool_input":{"file_path":"` + filepath.Join(skill, "SKILL.md") + `"}}`
@@ -102,8 +100,7 @@ func TestLintHook(t *testing.T) {
 		{"lint", "--hook", "--staged"},
 		{"lint", "--hook", "/does-not-exist"},
 	} {
-		hookStdin = strings.NewReader("{}")
-		code, out, errOut := w.run(args...)
+		code, out, errOut := w.runIn(strings.NewReader("{}"), args...)
 		if code != 2 || out != "" || !strings.Contains(errOut, "--hook") {
 			t.Errorf("%v: %d %q %q", args, code, out, errOut)
 		}
