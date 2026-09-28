@@ -9,3 +9,6 @@
 /docs/.vitepress/cache/
 /docs/public/schemas/*
 !/docs/public/schemas/README.md
+
+# devloop scratch files (drafts, briefs, coordinator state)
+/tmp/

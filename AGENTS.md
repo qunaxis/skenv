@@ -44,3 +44,5 @@ it would stop Claude Code from loading this file.
   hand, never release 1.0.0 without the owner's decision.
 - This repository is public: no secrets, tokens, private paths or internal
   data in code, tests, fixtures or commit messages.
+- Work on issues follows `.devloop/process.md` (board, executor model
+  labels `model:*`, merge queue, definition of done); config in `devloop.toml`.
