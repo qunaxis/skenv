@@ -13,12 +13,12 @@ const SkipDirective = "<!-- docs-check: snippet -->"
 type Block struct {
 	File string // as passed to Blocks
 	Line int    // 1-based line of the opening fence
-	Lang string // the fence's info string, e.g. "toml"
+	Lang string // the fence's language, e.g. "toml" (the info string's first word)
 	Text string // the block's content, without the fences
 	Skip bool   // SkipDirective precedes this block
 }
 
-// Blocks returns the fenced code blocks of data whose info string is one of
+// Blocks returns the fenced code blocks of data whose language is one of
 // langs, in the order they appear. A block without a matching closing fence
 // is ignored.
 func Blocks(file, data string, langs ...string) []Block {
@@ -29,11 +29,14 @@ func Blocks(file, data string, langs ...string) []Block {
 	lines := strings.Split(data, "\n")
 	var blocks []Block
 	for i := 0; i < len(lines); i++ {
-		lang, ok := strings.CutPrefix(lines[i], "```")
+		info, ok := strings.CutPrefix(lines[i], "```")
 		if !ok {
 			continue
 		}
-		lang = strings.TrimSpace(lang)
+		// CommonMark's info string is the language plus arbitrary trailing
+		// text (VitePress code-group titles: "```toml [GitHub]"); only the
+		// first word is the language.
+		lang, _, _ := strings.Cut(strings.TrimSpace(info), " ")
 		end := -1
 		for j := i + 1; j < len(lines); j++ {
 			if strings.TrimSpace(lines[j]) == "```" {

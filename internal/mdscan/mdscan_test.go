@@ -16,7 +16,7 @@ func TestBlocks(t *testing.T) {
 		"skenv doctor\n" +
 		"```\n" +
 		"\n" +
-		"" + SkipDirective + "\n" +
+		SkipDirective + "\n" +
 		"```json\n" +
 		"{\"a\": 1}\n" +
 		"```\n"
@@ -40,6 +40,16 @@ func TestBlocksSkipDirectiveMustBeAdjacent(t *testing.T) {
 	}
 }
 
+// VitePress code-group fences carry a title after the language
+// ("```toml [GitHub]"); only the first word of the info string counts.
+func TestBlocksCodeGroupTitle(t *testing.T) {
+	data := "```toml [GitHub]\na = 1\n```\n"
+	got := Blocks("x.md", data, "toml")
+	if len(got) != 1 || got[0].Lang != "toml" || got[0].Text != "a = 1\n" {
+		t.Errorf("Blocks() = %#v, want a single toml block", got)
+	}
+}
+
 func TestBlocksLangFilter(t *testing.T) {
 	data := "```yaml\na: 1\n```\n```toml\nb = 1\n```\n"
 	got := Blocks("x.md", data, "toml")
@@ -55,5 +65,13 @@ func TestBlocksEmptyAndUnclosed(t *testing.T) {
 	// An unclosed fence yields no block rather than panicking.
 	if got := Blocks("x.md", "```toml\na = 1\n", "toml"); len(got) != 0 {
 		t.Errorf("unclosed fence: %#v", got)
+	}
+}
+
+// A bare fence (a prose code block with no info string) never matches a
+// non-empty want set.
+func TestBlocksBareFence(t *testing.T) {
+	if got := Blocks("x.md", "```\na = 1\n```\n", "toml"); len(got) != 0 {
+		t.Errorf("Blocks() = %#v, want none", got)
 	}
 }
