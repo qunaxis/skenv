@@ -80,7 +80,7 @@ type EffectiveSkill struct {
 
 // ManifestSource resolves the manifest like ResolveManifest and says where
 // its location came from.
-func ManifestSource(ctx context.Context, env Env, flag string) (string, string, error) {
+func ManifestSource(ctx context.Context, env Env, flag string) (path, source string, err error) {
 	m, src, err := config.Resolve(env.Home, env.Getenv, "manifest", flag, "")
 	if err != nil {
 		return "", "", err

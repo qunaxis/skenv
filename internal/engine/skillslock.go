@@ -242,11 +242,16 @@ func lockFolder(skillPath string) string {
 	return strings.Trim(f, "/")
 }
 
-// How a rev was found for a lock entry.
+// revSource says how a rev was found for a lock entry. revSourceUnknown is
+// the zero value returned alongside a non-nil error, so it is never a real
+// match: callers that check err first never observe it as revByHash.
+type revSource int
+
 const (
-	revByHash = iota // a commit's folder has the hash of the entry
-	revByCopy        // a commit's folder has the files of the installed copy
-	revByHead        // nothing matched: HEAD of ref or the default branch
+	revSourceUnknown revSource = iota
+	revByHash                  // a commit's folder has the hash of the entry
+	revByCopy                  // a commit's folder has the files of the installed copy
+	revByHead                  // nothing matched: HEAD of ref or the default branch
 )
 
 // lockRev resolves the commit of a lock entry: the newest commit on its
@@ -257,19 +262,19 @@ const (
 // deleted), the commit whose folder holds the files of the installed copy
 // at dir (when there is one), and at last the tip. tip names the branch
 // searched.
-func (e *scope) lockRev(cache, repo string, le lockEntry, dir string) (rev string, how int, tip string, err error) {
+func (e *scope) lockRev(cache, repo string, le lockEntry, dir string) (rev string, how revSource, tip string, err error) {
 	tip = "the default branch"
 	if le.Ref != "" {
 		tip = le.Ref
 	}
 	head, err := e.lockTip(cache, repo, le.Ref)
 	if err != nil {
-		return "", 0, tip, err
+		return "", revSourceUnknown, tip, err
 	}
 	folder := lockFolder(le.SkillPath)
 	commits, err := e.candidates(cache, head, folder, le)
 	if err != nil {
-		return "", 0, tip, err
+		return "", revSourceUnknown, tip, err
 	}
 	hash, _ := le.hash()
 	switch {
@@ -282,7 +287,7 @@ func (e *scope) lockRev(cache, repo string, le lockEntry, dir string) (rev strin
 	case folderHashRe.MatchString(hash):
 		c, err := e.matchFolderHash(cache, commits, folder, hash)
 		if err != nil {
-			return "", 0, tip, err
+			return "", revSourceUnknown, tip, err
 		}
 		if c != "" {
 			return c, revByHash, tip, nil

@@ -173,7 +173,7 @@ type imported struct {
 }
 
 // addVendor records the dependency v, found by how.
-func (r *imported) addVendor(v manifest.Dependency, how int, note string) {
+func (r *imported) addVendor(v manifest.Dependency, how revSource, note string) {
 	line := fmt.Sprintf("%s from %s (%s) at %.12s", v.Name, v.Repo, v.SkillDir, v.Commit)
 	if note != "" {
 		line += ": " + note
@@ -508,13 +508,13 @@ func (e *UserScope) ownOf(f found) (g *ownGroup, why string) {
 // lockVendor turns a lock entry into a dependency: how says how its commit
 // was found, and note why it is not an exact match. dir is the installed
 // copy, "" when there is none.
-func (e *scope) lockVendor(name string, le lockEntry, dir string) (v manifest.Dependency, how int, note string, err error) {
+func (e *scope) lockVendor(name string, le lockEntry, dir string) (v manifest.Dependency, how revSource, note string, err error) {
 	if err := manifest.ValidName(name); err != nil {
-		return v, 0, "", err
+		return v, revSourceUnknown, "", err
 	}
 	repo, err := lockRepo(le, e.hosts)
 	if err != nil {
-		return v, 0, "", err
+		return v, revSourceUnknown, "", err
 	}
 	// One fetch per repository, however many of its skills are installed.
 	if e.fetched == nil {
@@ -523,13 +523,13 @@ func (e *scope) lockVendor(name string, le lockEntry, dir string) (v manifest.De
 	cache, ok := e.fetched[repo]
 	if !ok {
 		if cache, err = e.ensureCache(repo, ""); err != nil {
-			return v, 0, "", err
+			return v, revSourceUnknown, "", err
 		}
 		e.fetched[repo] = cache
 	}
 	rev, how, tip, err := e.lockRev(cache, repo, le, dir)
 	if err != nil {
-		return v, 0, "", err
+		return v, revSourceUnknown, "", err
 	}
 	folder := lockFolder(le.SkillPath)
 	v = manifest.Dependency{Name: name, Repo: repo, SkillDir: vendorPath(folder), Commit: rev}
@@ -538,7 +538,7 @@ func (e *scope) lockVendor(name string, le lockEntry, dir string) (v manifest.De
 		file = folder + "/SKILL.md"
 	}
 	if !e.env.Git.OK(e.ctx, cache, "cat-file", "-e", rev+":"+file) {
-		return v, 0, "", fmt.Errorf("no %s in %s at %.12s", file, repo, rev)
+		return v, revSourceUnknown, "", fmt.Errorf("no %s in %s at %.12s", file, repo, rev)
 	}
 	hash, field := le.hash()
 	note = fmt.Sprintf("%s %.12s is not in the history of %s", field, hash, tip)
