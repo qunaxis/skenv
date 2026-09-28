@@ -12,7 +12,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/qunaxis/skenv/internal/harness"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
 )
 
@@ -162,11 +162,11 @@ func (e *UserScope) doctorOwn(add func(class, skill, p, detail string), warn fun
 			add(ClassWrongOrigin, "", dir, gitx.Mask(why)+"; its skills are not linked: fix checkout_dir or repo of checkout "+c.ID)
 			continue
 		}
-		switch v, ok, err := harness.Version(dir); {
+		switch v, ok, err := skenvfile.RepositoryVersion(dir); {
 		case err != nil:
 			warn("%s: %v", e.displayPath(dir), err)
-		case ok && harness.Compare(v, harness.Latest) < 0:
-			warn("%s: template_version %s is older than %s of this skenv; run `skenv repo upgrade` there", e.displayPath(dir), v, harness.Latest)
+		case ok && skenvfile.CompareVersions(v, skenvfile.LatestTemplates) < 0:
+			warn("%s: template_version %s is older than %s of this skenv; run `skenv repo upgrade` there", e.displayPath(dir), v, skenvfile.LatestTemplates)
 		}
 		if out, err := e.env.Git.Run(e.ctx, dir, "status", "--porcelain"); err == nil && out != "" {
 			n := len(strings.Split(out, "\n"))

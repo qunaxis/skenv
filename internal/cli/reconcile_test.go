@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qunaxis/skenv/internal/harness"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 )
 
 // The verification requirements of the declarative contract (issue #38,
@@ -116,7 +116,7 @@ func TestSyncNeverRewritesTheFile(t *testing.T) {
 			t.Errorf("skenv %s rewrote the skenv file:\n%s", strings.Join(args, " "), got)
 		}
 	}
-	if !strings.Contains(readFile(t, manifest), `template_version = "0.3.0"`) || strings.Contains(readFile(t, manifest), harness.Latest) {
+	if !strings.Contains(readFile(t, manifest), `template_version = "0.3.0"`) || strings.Contains(readFile(t, manifest), skenvfile.LatestTemplates) {
 		t.Error("the template version moved without repo upgrade")
 	}
 	if mk := readFile(t, w.path(".agents/skills/archify/.skenv")); strings.Contains(mk, w.git(filepath.Join(w.work, "ext__tools"), "rev-parse", "HEAD")) {

@@ -12,6 +12,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/schemas"
 )
@@ -45,19 +46,19 @@ func TestInitCheckApply(t *testing.T) {
 	if d, err := Check(root); err != nil || len(d) != 0 {
 		t.Fatalf("check after init: %v %v", d, err)
 	}
-	for _, it := range mustConfig(t, root).managed() {
+	for _, it := range managed(mustConfig(t, root)) {
 		lines := strings.SplitN(read(t, filepath.Join(root, it.Path)), "\n", 3)
 		switch {
 		case it.Comment == jsonHeader:
-			if lines[1] != `  "$comment": "managed by skenv `+Latest+` — do not edit; personal settings go to .claude/settings.local.json",` {
+			if lines[1] != `  "$comment": "managed by skenv `+skenvfile.LatestTemplates+` — do not edit; personal settings go to .claude/settings.local.json",` {
 				t.Errorf("%s header = %q", it.Path, lines[1])
 			}
-		case it.Kind == whole && lines[0] != it.Comment+" managed by skenv "+Latest+" — do not edit":
+		case it.Kind == whole && lines[0] != it.Comment+" managed by skenv "+skenvfile.LatestTemplates+" — do not edit":
 			t.Errorf("%s first line = %q", it.Path, lines[0])
 		}
 	}
 	agents := read(t, filepath.Join(root, "AGENTS.md"))
-	if !strings.HasPrefix(agents, "# Local\n\nKeep this text.\n\n<!-- skenv:begin managed by skenv "+Latest+" — do not edit -->\n") {
+	if !strings.HasPrefix(agents, "# Local\n\nKeep this text.\n\n<!-- skenv:begin managed by skenv "+skenvfile.LatestTemplates+" — do not edit -->\n") {
 		t.Errorf("AGENTS.md:\n%s", agents)
 	}
 	if !strings.HasPrefix(read(t, filepath.Join(root, ".gitignore")), "/local-only\n\n# skenv:begin") {
@@ -95,9 +96,9 @@ func TestInitCheckApply(t *testing.T) {
 	}
 }
 
-func mustConfig(t *testing.T, root string) *Config {
+func mustConfig(t *testing.T, root string) *skenvfile.Repository {
 	t.Helper()
-	c, err := LoadConfig(root)
+	c, err := skenvfile.LoadRepository(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,15 +142,15 @@ func TestMissingAndBrokenBlocks(t *testing.T) {
 }
 
 func TestWorkflowVisibility(t *testing.T) {
-	private, err := render(&Config{TemplateVersion: Latest, Visibility: "private", Runner: DefaultRunner}, items[1])
+	private, err := render(&skenvfile.Repository{TemplateVersion: skenvfile.LatestTemplates, Visibility: "private", Runner: skenvfile.DefaultRunner}, items[1])
 	if err != nil {
 		t.Fatal(err)
 	}
-	public, err := render(&Config{TemplateVersion: Latest, Visibility: "public"}, items[1])
+	public, err := render(&skenvfile.Repository{TemplateVersion: skenvfile.LatestTemplates, Visibility: "public"}, items[1])
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"runs-on: [self-hosted, linux, docker]", "UV_CACHE_DIR=$RUNNER_TOOL_CACHE/uv-cache", `version: "0.12.10"`, "node-version: 22", "enable-cache: false", `SKENV_VERSION: "` + Latest + `"`, "python: [\"3.9\", \"3.12\"]", "working-directory: skills/${{ matrix.skill }}"} {
+	for _, want := range []string{"runs-on: [self-hosted, linux, docker]", "UV_CACHE_DIR=$RUNNER_TOOL_CACHE/uv-cache", `version: "0.12.10"`, "node-version: 22", "enable-cache: false", `SKENV_VERSION: "` + skenvfile.LatestTemplates + `"`, "python: [\"3.9\", \"3.12\"]", "working-directory: skills/${{ matrix.skill }}"} {
 		if !strings.Contains(private, want) {
 			t.Errorf("private workflow lacks %q", want)
 		}
@@ -171,7 +172,7 @@ func TestWorkflowVisibility(t *testing.T) {
 			t.Errorf("missing pin %s", pin)
 		}
 	}
-	custom, _ := render(&Config{TemplateVersion: Latest, Visibility: "private", Runner: []string{"self-hosted", "macOS", "native"}}, items[1])
+	custom, _ := render(&skenvfile.Repository{TemplateVersion: skenvfile.LatestTemplates, Visibility: "private", Runner: []string{"self-hosted", "macOS", "native"}}, items[1])
 	if !strings.Contains(custom, "runs-on: [self-hosted, macOS, native]") {
 		t.Error("runner from skenv.toml not used")
 	}
@@ -179,39 +180,39 @@ func TestWorkflowVisibility(t *testing.T) {
 
 func TestConfig(t *testing.T) {
 	root := t.TempDir()
-	cfg := filepath.Join(root, ConfigFile)
+	cfg := filepath.Join(root, skenvfile.DefaultName)
 	write(t, cfg, "[repository]\ntemplate_version = \"9.9.9\"\nvisibility = \"private\"\n")
-	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "newer than") {
+	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "newer than") {
 		t.Errorf("newer harness: %v", err)
 	}
 	write(t, cfg, "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"internal\"\n")
-	if _, err := LoadConfig(root); err == nil {
+	if _, err := skenvfile.LoadRepository(root); err == nil {
 		t.Error("bad visibility accepted")
 	}
 	write(t, cfg, "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"public\"\nbranch = \"main\"\n")
-	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "repository.branch") {
+	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "repository.branch") {
 		t.Errorf("unknown key: %v", err)
 	}
 	// Top-level keys of the skenv.toml of older skenv versions are rejected.
 	write(t, cfg, "harness = \"0.3.0\"\nvisibility = \"public\"\n")
-	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "harness (top level) → under [repository]: template_version") {
+	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "harness (top level) → under [repository]: template_version") {
 		t.Errorf("old layout: %v", err)
 	}
 	write(t, cfg, "[user]\n")
-	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "no [repository] section") {
+	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "no [repository] section") {
 		t.Errorf("no [repository]: %v", err)
 	}
 	// Settings that would be ignored are errors.
 	write(t, cfg, "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"public\"\n[repository.ci.github]\nruns_on = [\"x\"]\n")
-	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "runs_on is for private repositories") {
+	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "runs_on is for private repositories") {
 		t.Errorf("runs_on of a public repository: %v", err)
 	}
 	write(t, cfg, "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"private\"\n[repository.ci.github]\n[repository.ci.gitlab]\n")
-	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "both github and gitlab") {
+	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "both github and gitlab") {
 		t.Errorf("two CI tables: %v", err)
 	}
 	write(t, cfg, "[repository]\ntemplate_version = \"0.4\"\nvisibility = \"public\"\n")
-	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "must be a version") {
+	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "must be a version") {
 		t.Errorf("bad version: %v", err)
 	}
 	// Update only touches the template_version line under [repository],
@@ -247,10 +248,10 @@ func TestInitNextToUser(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := read(t, filepath.Join(root, c.name))
-			if c.name == "skenv.toml" && !strings.HasPrefix(got, "#:schema "+schemas.URL(schemas.Skenv, Latest)+"\n"+c.content) {
+			if c.name == "skenv.toml" && !strings.HasPrefix(got, "#:schema "+schemas.URL(schemas.Skenv, skenvfile.LatestTemplates)+"\n"+c.content) {
 				t.Errorf("existing text not kept:\n%s", got)
 			}
-			if u, ok := docedit.Directive([]byte(got), filepath.Ext(c.name)); !ok || u != schemas.URL(schemas.Skenv, Latest) {
+			if u, ok := docedit.Directive([]byte(got), filepath.Ext(c.name)); !ok || u != schemas.URL(schemas.Skenv, skenvfile.LatestTemplates) {
 				t.Errorf("directive %q, %v:\n%s", u, ok, got)
 			}
 			if d, err := Check(root); err != nil || len(d) != 0 {
@@ -291,10 +292,10 @@ func TestOlderHarness(t *testing.T) {
 		t.Fatal(err)
 	}
 	d, _ := Check(root)
-	if len(d) != 1 || !strings.Contains(d[0].Reason, "template_version 0.3.0; this skenv generates "+Latest+": run `skenv repo upgrade`") {
+	if len(d) != 1 || !strings.Contains(d[0].Reason, "template_version 0.3.0; this skenv generates "+skenvfile.LatestTemplates+": run `skenv repo upgrade`") {
 		t.Fatalf("drift = %v", d)
 	}
-	if _, err := Update(root, Latest, false); err != nil {
+	if _, err := Update(root, skenvfile.LatestTemplates, false); err != nil {
 		t.Fatal(err)
 	}
 	if d, _ := Check(root); len(d) != 0 {
@@ -308,7 +309,7 @@ func TestCompare(t *testing.T) {
 		want int
 	}{{"0.2.0", "0.2.0", 0}, {"0.1.9", "0.2.0", -1}, {"v0.10.0", "0.9.9", 1}, {"0.2.0-dev+abc", "0.2.0", 0}}
 	for _, c := range cases {
-		if got := Compare(c.a, c.b); got != c.want {
+		if got := skenvfile.CompareVersions(c.a, c.b); got != c.want {
 			t.Errorf("Compare(%s, %s) = %d", c.a, c.b, got)
 		}
 	}
@@ -330,10 +331,10 @@ func TestApplyKeepsCRLFOutsideBlock(t *testing.T) {
 
 // Every rendered workflow and hook config must parse.
 func TestRenderedFilesParse(t *testing.T) {
-	for _, ci := range CIs {
+	for _, ci := range skenvfile.CIs {
 		for _, vis := range []string{"private", "public"} {
-			c := &Config{TemplateVersion: Latest, Visibility: vis, Provider: ci, Runner: DefaultRunner}
-			for _, it := range c.managed() {
+			c := &skenvfile.Repository{TemplateVersion: skenvfile.LatestTemplates, Visibility: vis, Provider: ci, Runner: skenvfile.DefaultRunner}
+			for _, it := range managed(c) {
 				text, err := render(c, it)
 				if err != nil {
 					t.Fatal(err)
@@ -354,8 +355,8 @@ func TestRenderedFilesParse(t *testing.T) {
 }
 
 func TestTemplates(t *testing.T) {
-	public, _ := render(&Config{TemplateVersion: Latest, Visibility: "public"}, items[1])
-	private, _ := render(&Config{TemplateVersion: Latest, Visibility: "private", Runner: DefaultRunner}, items[1])
+	public, _ := render(&skenvfile.Repository{TemplateVersion: skenvfile.LatestTemplates, Visibility: "public"}, items[1])
+	private, _ := render(&skenvfile.Repository{TemplateVersion: skenvfile.LatestTemplates, Visibility: "private", Runner: skenvfile.DefaultRunner}, items[1])
 	for _, want := range []string{"skenv lint --publish", "DENYLIST: ${{ secrets.SKENV_DENYLIST }}", "SKENV_DENYLIST=\"$list\" skenv lint --publish"} {
 		if !strings.Contains(public, want) {
 			t.Errorf("public workflow lacks %q", want)
@@ -364,8 +365,8 @@ func TestTemplates(t *testing.T) {
 	if strings.Contains(private, "--publish") || strings.Contains(private, "SKENV_DENYLIST") {
 		t.Error("private workflow must not run the publication check")
 	}
-	lhPublic, _ := render(&Config{TemplateVersion: Latest, Visibility: "public"}, items[0])
-	lhPrivate, _ := render(&Config{TemplateVersion: Latest, Visibility: "private", Runner: DefaultRunner}, items[0])
+	lhPublic, _ := render(&skenvfile.Repository{TemplateVersion: skenvfile.LatestTemplates, Visibility: "public"}, items[0])
+	lhPrivate, _ := render(&skenvfile.Repository{TemplateVersion: skenvfile.LatestTemplates, Visibility: "private", Runner: skenvfile.DefaultRunner}, items[0])
 	if !strings.Contains(lhPublic, "publish-check:\n      # Public") || !strings.Contains(lhPublic, "run: skenv lint --publish") {
 		t.Errorf("public lefthook lacks the pre-push publication check:\n%s", lhPublic)
 	}
@@ -376,7 +377,7 @@ func TestTemplates(t *testing.T) {
 	if strings.Contains(public, "echo \"$DENYLIST") || strings.Contains(public, "cat \"$list") {
 		t.Error("stop-list printed")
 	}
-	settings, err := render(&Config{TemplateVersion: Latest, Visibility: "private", Runner: DefaultRunner}, items[len(items)-1])
+	settings, err := render(&skenvfile.Repository{TemplateVersion: skenvfile.LatestTemplates, Visibility: "private", Runner: skenvfile.DefaultRunner}, items[len(items)-1])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +403,7 @@ func TestForeignFilesNeedForce(t *testing.T) {
 	if _, _, err := Init(root, "private", "", "", nil, false, false); err == nil || !strings.Contains(err.Error(), ".github/workflows/check.yml exist and are not managed") {
 		t.Fatalf("init over a hand-written workflow: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, ConfigFile)); err == nil {
+	if _, err := os.Stat(filepath.Join(root, skenvfile.DefaultName)); err == nil {
 		t.Fatal("refused init must not leave skenv.toml behind")
 	}
 	if _, _, err := Init(root, "private", "", "", nil, false, true); err != nil {
@@ -429,13 +430,13 @@ func TestForeignFilesNeedForce(t *testing.T) {
 // repo init and apply edit YAML and JSON in place: comments, the
 // directive, key order and formatting stay; [repository] goes to the top.
 func TestInitAndUpdateKeepYAMLAndJSON(t *testing.T) {
-	url := schemas.URL(schemas.Skenv, Latest)
+	url := schemas.URL(schemas.Skenv, skenvfile.LatestTemplates)
 	old := schemas.Base + "v0.3.9/" + schemas.Skenv
 	cases := []struct{ name, in, init, update string }{
 		{
 			name: "skenv.yaml",
 			in:   "# yaml-language-server: $schema=" + old + "\n# my manifest\nuser:\n  # where skills live\n  storage:\n    dir: ~/.skills\n\n  agents:\n    enabled: []\n",
-			init: "# yaml-language-server: $schema=" + url + "\nrepository:\n  template_version: " + Latest + "\n  visibility: private\n  ci:\n    github:\n      runs_on: [self-hosted, linux, docker]\n" +
+			init: "# yaml-language-server: $schema=" + url + "\nrepository:\n  template_version: " + skenvfile.LatestTemplates + "\n  visibility: private\n  ci:\n    github:\n      runs_on: [self-hosted, linux, docker]\n" +
 				"# my manifest\nuser:\n  # where skills live\n  storage:\n    dir: ~/.skills\n\n  agents:\n    enabled: []\n",
 			// 0.1.0 predates the schemas: the directive names the latest.
 			update: "# yaml-language-server: $schema=" + schemas.URL(schemas.Skenv, "") + "\nrepository:\n  template_version: 0.1.0\n  visibility: private\n  ci:\n    github:\n      runs_on: [self-hosted, linux, docker]\n" +
@@ -444,7 +445,7 @@ func TestInitAndUpdateKeepYAMLAndJSON(t *testing.T) {
 		{
 			name: "skenv.json",
 			in:   `{"user": {"dependencies": {}, "unmanaged": ["a<b>&*"]}}`,
-			init: "{\n  \"$schema\": \"" + url + "\",\n  \"repository\": {\n    \"template_version\": \"" + Latest + "\",\n    \"visibility\": \"private\",\n    \"ci\": {\n      \"github\": {\n        \"runs_on\": [\n          \"self-hosted\",\n          \"linux\",\n          \"docker\"\n        ]\n      }\n    }\n  },\n" +
+			init: "{\n  \"$schema\": \"" + url + "\",\n  \"repository\": {\n    \"template_version\": \"" + skenvfile.LatestTemplates + "\",\n    \"visibility\": \"private\",\n    \"ci\": {\n      \"github\": {\n        \"runs_on\": [\n          \"self-hosted\",\n          \"linux\",\n          \"docker\"\n        ]\n      }\n    }\n  },\n" +
 				"  \"user\": {\n    \"dependencies\": {},\n    \"unmanaged\": [\n      \"a<b>&*\"\n    ]\n  }\n}\n",
 		},
 	}
@@ -477,13 +478,13 @@ func TestInitAndUpdateKeepYAMLAndJSON(t *testing.T) {
 // format
 // that disagrees with an existing file is an error, and nothing is written.
 func TestInitFormat(t *testing.T) {
-	url := schemas.URL(schemas.Skenv, Latest)
-	toml := "#:schema " + url + "\n" + repoHeader + "[repository]\ntemplate_version = \"" + Latest + "\"\nvisibility       = \"public\"\n\n[repository.ci.github]\n"
+	url := schemas.URL(schemas.Skenv, skenvfile.LatestTemplates)
+	toml := "#:schema " + url + "\n" + repoHeader + "[repository]\ntemplate_version = \"" + skenvfile.LatestTemplates + "\"\nvisibility       = \"public\"\n\n[repository.ci.github]\n"
 	for format, want := range map[string]string{
 		"":     toml,
 		"toml": toml,
-		"yaml": "# yaml-language-server: $schema=" + url + "\n" + repoHeader + "repository:\n  template_version: " + Latest + "\n  visibility: public\n  ci:\n    github: {}\n",
-		"json": "{\n  \"$schema\": \"" + url + "\",\n  \"repository\": {\n    \"template_version\": \"" + Latest + "\",\n    \"visibility\": \"public\",\n    \"ci\": {\n      \"github\": {}\n    }\n  }\n}\n",
+		"yaml": "# yaml-language-server: $schema=" + url + "\n" + repoHeader + "repository:\n  template_version: " + skenvfile.LatestTemplates + "\n  visibility: public\n  ci:\n    github: {}\n",
+		"json": "{\n  \"$schema\": \"" + url + "\",\n  \"repository\": {\n    \"template_version\": \"" + skenvfile.LatestTemplates + "\",\n    \"visibility\": \"public\",\n    \"ci\": {\n      \"github\": {}\n    }\n  }\n}\n",
 	} {
 		t.Run("format="+format, func(t *testing.T) {
 			root := t.TempDir()
@@ -526,8 +527,8 @@ func TestInitFormat(t *testing.T) {
 func TestGitLabPipeline(t *testing.T) {
 	gitlab := func(visibility string, runner []string) (string, map[string]any) {
 		t.Helper()
-		c := &Config{TemplateVersion: Latest, Visibility: visibility, Provider: CIGitLab, Runner: runner}
-		it := c.managed()[1]
+		c := &skenvfile.Repository{TemplateVersion: skenvfile.LatestTemplates, Visibility: visibility, Provider: skenvfile.CIGitLab, Runner: runner}
+		it := managed(c)[1]
 		if it.Path != ".gitlab-ci.yml" {
 			t.Fatalf("managed()[1] = %s", it.Path)
 		}
@@ -564,7 +565,7 @@ func TestGitLabPipeline(t *testing.T) {
 			t.Errorf("jobs = %v", jobs)
 		}
 		vars := doc["variables"].(map[string]any)
-		if vars["SKENV_VERSION"] != Latest || vars["GIT_DEPTH"] != "0" {
+		if vars["SKENV_VERSION"] != skenvfile.LatestTemplates || vars["GIT_DEPTH"] != "0" {
 			t.Errorf("variables = %v", vars)
 		}
 		matrix := doc["skills"].(map[string]any)["parallel"].(map[string]any)["matrix"].([]any)
@@ -612,7 +613,7 @@ func TestGitLabChangedSkills(t *testing.T) {
 	if err != nil {
 		t.Skip("bash not found")
 	}
-	text, err := render(&Config{TemplateVersion: Latest, Visibility: "public", Provider: CIGitLab}, items[2])
+	text, err := render(&skenvfile.Repository{TemplateVersion: skenvfile.LatestTemplates, Visibility: "public", Provider: skenvfile.CIGitLab}, items[2])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -710,11 +711,11 @@ func TestGitLabChangedSkills(t *testing.T) {
 // other CI that skenv does not manage stays.
 func TestSwitchCI(t *testing.T) {
 	root := t.TempDir()
-	if _, _, err := Init(root, "private", CIGitHub, "", nil, false, false); err != nil {
+	if _, _, err := Init(root, "private", skenvfile.CIGitHub, "", nil, false, false); err != nil {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(root, ".github/dependabot.yml"), "version: 2\n")
-	cfg := filepath.Join(root, ConfigFile)
+	cfg := filepath.Join(root, skenvfile.DefaultName)
 	text := read(t, cfg)
 	github := "[repository.ci.github]\nruns_on = [\"self-hosted\", \"linux\", \"docker\"]  # runs-on of the CI jobs\n"
 	if !strings.Contains(text, github) {
@@ -779,28 +780,28 @@ func TestSwitchCI(t *testing.T) {
 
 func TestCIValue(t *testing.T) {
 	root := t.TempDir()
-	cfg := filepath.Join(root, ConfigFile)
-	write(t, cfg, "[repository]\ntemplate_version = \""+Latest+"\"\nvisibility = \"public\"\n")
-	if c, err := LoadConfig(root); err != nil || c.Provider != CIGitHub {
+	cfg := filepath.Join(root, skenvfile.DefaultName)
+	write(t, cfg, "[repository]\ntemplate_version = \""+skenvfile.LatestTemplates+"\"\nvisibility = \"public\"\n")
+	if c, err := skenvfile.LoadRepository(root); err != nil || c.Provider != skenvfile.CIGitHub {
 		t.Errorf("without ci: %+v %v", c, err)
 	}
-	write(t, cfg, "[repository]\ntemplate_version = \""+Latest+"\"\nvisibility = \"private\"\n[repository.ci.gitlab]\ntags = [\"t\"]\n")
-	if c, err := LoadConfig(root); err != nil || c.Provider != CIGitLab || strings.Join(c.Runner, ",") != "t" {
+	write(t, cfg, "[repository]\ntemplate_version = \""+skenvfile.LatestTemplates+"\"\nvisibility = \"private\"\n[repository.ci.gitlab]\ntags = [\"t\"]\n")
+	if c, err := skenvfile.LoadRepository(root); err != nil || c.Provider != skenvfile.CIGitLab || strings.Join(c.Runner, ",") != "t" {
 		t.Errorf("gitlab tags: %+v %v", c, err)
 	}
-	write(t, cfg, "[repository]\ntemplate_version = \""+Latest+"\"\nvisibility = \"public\"\n[repository.ci.jenkins]\n")
-	if _, err := LoadConfig(root); err == nil || !strings.Contains(err.Error(), "repository.ci.jenkins") {
+	write(t, cfg, "[repository]\ntemplate_version = \""+skenvfile.LatestTemplates+"\"\nvisibility = \"public\"\n[repository.ci.jenkins]\n")
+	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "repository.ci.jenkins") {
 		t.Errorf("bad ci: %v", err)
 	}
-	for host, want := range map[string]string{"gitlab": CIGitLab, "github": CIGitHub, "gitea": CIGitHub, "generic": CIGitHub, "": CIGitHub} {
+	for host, want := range map[string]string{"gitlab": skenvfile.CIGitLab, "github": skenvfile.CIGitHub, "gitea": skenvfile.CIGitHub, "generic": skenvfile.CIGitHub, "": skenvfile.CIGitHub} {
 		if got := DetectCI(host); got != want {
 			t.Errorf("DetectCI(%q) = %s", host, got)
 		}
 	}
 	// A private GitLab repository names its runner tags in the comment.
-	c := &Config{TemplateVersion: Latest, Visibility: "private", Provider: CIGitLab, Runner: DefaultRunner}
-	if !strings.Contains(string(c.encode()), "[repository.ci.gitlab]\n"+`tags = ["self-hosted", "linux", "docker"]  # runner tags of the CI jobs`) {
-		t.Errorf("encode:\n%s", c.encode())
+	c := &skenvfile.Repository{TemplateVersion: skenvfile.LatestTemplates, Visibility: "private", Provider: skenvfile.CIGitLab, Runner: skenvfile.DefaultRunner}
+	if !strings.Contains(string(encode(c)), "[repository.ci.gitlab]\n"+`tags = ["self-hosted", "linux", "docker"]  # runner tags of the CI jobs`) {
+		t.Errorf("encode:\n%s", encode(c))
 	}
 }
 
@@ -811,12 +812,12 @@ func TestDesiredVersusApplied(t *testing.T) {
 	if _, _, err := Init(root, "private", "", "", nil, false, false); err != nil {
 		t.Fatal(err)
 	}
-	cfg := filepath.Join(root, ConfigFile)
+	cfg := filepath.Join(root, skenvfile.DefaultName)
 	before := read(t, cfg)
 	lh := filepath.Join(root, "lefthook.yml")
-	write(t, lh, strings.Replace(read(t, lh), "managed by skenv "+Latest, "managed by skenv 0.5.0", 1))
+	write(t, lh, strings.Replace(read(t, lh), "managed by skenv "+skenvfile.LatestTemplates, "managed by skenv 0.5.0", 1))
 	agents := filepath.Join(root, "AGENTS.md")
-	write(t, agents, strings.Replace(read(t, agents), "managed by skenv "+Latest, "managed by skenv 0.5.0", 1))
+	write(t, agents, strings.Replace(read(t, agents), "managed by skenv "+skenvfile.LatestTemplates, "managed by skenv 0.5.0", 1))
 	d, err := Check(root)
 	if err != nil {
 		t.Fatal(err)
@@ -825,13 +826,13 @@ func TestDesiredVersusApplied(t *testing.T) {
 	for _, x := range d {
 		got[x.Path] = x.Reason
 	}
-	if len(d) != 2 || got["lefthook.yml"] != "generated by the 0.5.0 templates, template_version is "+Latest+": run `skenv repo apply`" ||
+	if len(d) != 2 || got["lefthook.yml"] != "generated by the 0.5.0 templates, template_version is "+skenvfile.LatestTemplates+": run `skenv repo apply`" ||
 		!strings.HasPrefix(got["AGENTS.md"], "managed block generated by the 0.5.0 templates") {
 		t.Fatalf("drift = %v", d)
 	}
 	// A file edited by hand is told apart from an older one.
 	write(t, lh, read(t, lh)+"# mine\n")
-	write(t, lh, strings.Replace(read(t, lh), "managed by skenv 0.5.0", "managed by skenv "+Latest, 1))
+	write(t, lh, strings.Replace(read(t, lh), "managed by skenv 0.5.0", "managed by skenv "+skenvfile.LatestTemplates, 1))
 	if d, _ := Check(root); len(d) != 2 || !strings.Contains(d[1].Reason+d[0].Reason, "edited by hand?") {
 		t.Errorf("hand edit: %v", d)
 	}

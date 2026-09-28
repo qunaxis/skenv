@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"github.com/qunaxis/skenv/internal/harness"
-
 	"crypto/rand"
 	"encoding/hex"
 	"os"
@@ -10,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 )
 
 func needTool(t *testing.T, tool string) {
@@ -121,7 +121,7 @@ func TestLintHook(t *testing.T) {
 
 func TestNewSkill(t *testing.T) {
 	w := newWorld(t)
-	w.standard("\n[repository]\ntemplate_version = \"" + harness.Latest + "\"\nvisibility = \"private\"\n")
+	w.standard("\n[repository]\ntemplate_version = \"" + skenvfile.LatestTemplates + "\"\nvisibility = \"private\"\n")
 	w.cloneSync("me/skills", "~/"+ownPath)
 
 	out, _ := w.mustRun(0, "new", "my-skill")
@@ -193,7 +193,7 @@ func TestNewSkillTarget(t *testing.T) {
 	if !strings.Contains(errOut, "no checkout of the manifest (me/skills, me/team) has visibility \"private\"") || !strings.Contains(errOut, "--dir") {
 		t.Errorf("new with two own repositories:\n%s", errOut)
 	}
-	writeFile(t, w.path("src/team/skenv.toml"), "[repository]\ntemplate_version = \""+harness.Latest+"\"\nvisibility = \"private\"\n")
+	writeFile(t, w.path("src/team/skenv.toml"), "[repository]\ntemplate_version = \""+skenvfile.LatestTemplates+"\"\nvisibility = \"private\"\n")
 	if out, _ = w.mustRun(0, "new", "second"); !strings.Contains(out, "created ~/src/team/skills/second") {
 		t.Errorf("new by visibility:\n%s", out)
 	}

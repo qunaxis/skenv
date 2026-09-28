@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/model/config"
 	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/docedit"
@@ -177,7 +176,7 @@ func homeShow(home string) func(string) string {
 // refusePublic refuses to add [user] to a skenv file whose [repository]
 // is public: the manifest is personal.
 func refusePublic(data []byte, ext, name string) error {
-	c, ok, err := harness.Parse(data, ext)
+	c, ok, err := skenvfile.ParseRepository(data, ext)
 	if err != nil {
 		return err
 	}

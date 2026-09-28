@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/qunaxis/skenv/internal/engine"
-	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/lint"
 	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/paths"
@@ -95,7 +94,7 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, visibil
 		root, skillsDir = d.Path, d.SkillsDir
 	}
 	// The repository's own [repository] section knows its visibility.
-	c, ok, err := harness.ReadRaw(root)
+	c, ok, err := skenvfile.ReadRepository(root)
 	if err != nil {
 		return engine.ExitFatal, err
 	}
@@ -194,7 +193,7 @@ func ownTarget(dirs []engine.CheckoutDir, visibility string) (engine.CheckoutDir
 	}
 	var matches []engine.CheckoutDir
 	for _, d := range cloned {
-		c, ok, err := harness.ReadRaw(d.Path)
+		c, ok, err := skenvfile.ReadRepository(d.Path)
 		if err != nil {
 			return engine.CheckoutDir{}, err
 		}

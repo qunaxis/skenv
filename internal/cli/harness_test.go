@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qunaxis/skenv/internal/harness"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -69,14 +69,14 @@ func TestRepoInitCheckApply(t *testing.T) {
 	// outdated directive is a warning of check (exit code unchanged) that
 	// upgrade fixes; apply never writes the skenv file.
 	cfg := filepath.Join(repo, "skenv.toml")
-	directive := "#:schema " + schemas.URL(schemas.Skenv, harness.Latest) + "\n"
+	directive := "#:schema " + schemas.URL(schemas.Skenv, skenvfile.LatestTemplates) + "\n"
 	text := readFile(t, cfg)
 	if !strings.HasPrefix(text, directive) {
 		t.Fatalf("skenv.toml has no directive:\n%s", text)
 	}
 	for _, c := range []struct{ content, warning string }{
 		{strings.TrimPrefix(text, directive), "no schema directive"},
-		{strings.Replace(text, harness.Latest+"/", "0.3.0/", 1), "the schema directive points at " + schemas.Base + "v0.3.0/" + schemas.Skenv},
+		{strings.Replace(text, skenvfile.LatestTemplates+"/", "0.3.0/", 1), "the schema directive points at " + schemas.Base + "v0.3.0/" + schemas.Skenv},
 	} {
 		writeFile(t, cfg, c.content)
 		_, errOut := w.mustRun(0, "repo", "check", "--dir", repo)
@@ -197,11 +197,11 @@ func TestRepoApplyOlderHarness(t *testing.T) {
 	writeFile(t, file, older)
 	writeFile(t, filepath.Join(repo, "ruff.toml"), "# hand-written\n")
 	_, errOut := w.mustRun(2, "repo", "apply", "--dir", repo, "--force")
-	if !strings.Contains(errOut, "template_version 0.3.0 is not the template set of this skenv ("+harness.Latest+"); run `skenv repo upgrade`") || readFile(t, file) != older {
+	if !strings.Contains(errOut, "template_version 0.3.0 is not the template set of this skenv ("+skenvfile.LatestTemplates+"); run `skenv repo upgrade`") || readFile(t, file) != older {
 		t.Fatalf("apply of an older version: %s", errOut)
 	}
 	out, _ := w.mustRun(1, "repo", "check", "--dir", repo)
-	if !strings.Contains(out, "template_version 0.3.0; this skenv generates "+harness.Latest+": run `skenv repo upgrade`") {
+	if !strings.Contains(out, "template_version 0.3.0; this skenv generates "+skenvfile.LatestTemplates+": run `skenv repo upgrade`") {
 		t.Errorf("check: %s", out)
 	}
 	_, errOut = w.mustRun(2, "repo", "upgrade", "--dir", repo)
@@ -209,15 +209,15 @@ func TestRepoApplyOlderHarness(t *testing.T) {
 		t.Fatalf("refused upgrade moved the version or did not refuse: %s", errOut)
 	}
 	out, _ = w.mustRun(0, "repo", "upgrade", "--dir", repo, "--force", "--dry-run")
-	if !strings.Contains(out, "would move template_version 0.3.0 → "+harness.Latest) || readFile(t, file) != older {
+	if !strings.Contains(out, "would move template_version 0.3.0 → "+skenvfile.LatestTemplates) || readFile(t, file) != older {
 		t.Fatalf("dry-run: %s", out)
 	}
 	w.mustRun(0, "repo", "upgrade", "--dir", repo, "--force")
-	if !strings.Contains(readFile(t, file), `template_version = "`+harness.Latest+`"`) {
+	if !strings.Contains(readFile(t, file), `template_version = "`+skenvfile.LatestTemplates+`"`) {
 		t.Errorf("upgrade:\n%s", readFile(t, file))
 	}
 	w.mustRun(0, "repo", "check", "--dir", repo)
-	if out, _ := w.mustRun(0, "repo", "upgrade", "--dir", repo); !strings.Contains(out, "template_version is "+harness.Latest+" already") {
+	if out, _ := w.mustRun(0, "repo", "upgrade", "--dir", repo); !strings.Contains(out, "template_version is "+skenvfile.LatestTemplates+" already") {
 		t.Errorf("second upgrade: %s", out)
 	}
 }
@@ -303,7 +303,7 @@ func TestRepoInitCI(t *testing.T) {
 	pipe := filepath.Join(other, ".gitlab-ci.yml")
 	writeFile(t, pipe, strings.Replace(readFile(t, pipe), "timeout: 30m", "timeout: 99m", 1))
 	out, _ := w.mustRun(1, "repo", "check", "--dir", other)
-	if !strings.Contains(out, ".gitlab-ci.yml: differs from the "+harness.Latest+" template") {
+	if !strings.Contains(out, ".gitlab-ci.yml: differs from the "+skenvfile.LatestTemplates+" template") {
 		t.Errorf("check:\n%s", out)
 	}
 	w.mustRun(0, "repo", "apply", "--dir", other)

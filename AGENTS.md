@@ -22,8 +22,8 @@ it would stop Claude Code from loading this file.
   TOML/YAML/JSON, parsing and in-place editing; `legacy.go`: errors for the keys before 0.6), `internal/model/skillname` (skill name validation),
   `internal/state`, `internal/tools/gendocs` (command reference generation tool),
   `internal/tools/genschemas` (schema generation tool).
-- One template set is embedded, version `harness.Latest`. A template change
-  bumps `harness.Latest` to the release that ships it; `skenv repo check`
+- One template set is embedded, version `skenvfile.LatestTemplates`. A template change
+  bumps `skenvfile.LatestTemplates` to the release that ships it; `skenv repo check`
   then reports older repositories and `skenv repo upgrade` moves them
   (`repository.template_version` is desired state: `repo apply` never
   edits it).

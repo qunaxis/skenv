@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/qunaxis/skenv/internal/engine"
-	"github.com/qunaxis/skenv/internal/harness"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -585,7 +585,7 @@ func TestDoctorWarnsAboutOldHarness(t *testing.T) {
 	w.standard("\n[repository]\ntemplate_version = \"0.1.0\"\nvisibility = \"private\"\n")
 	w.cloneSync("me/skills", "~/"+ownPath)
 	_, errOut := w.mustRun(0, "doctor")
-	if !strings.Contains(errOut, "template_version 0.1.0 is older than "+harness.Latest) {
+	if !strings.Contains(errOut, "template_version 0.1.0 is older than "+skenvfile.LatestTemplates) {
 		t.Errorf("stderr = %q", errOut)
 	}
 	out, _ := w.mustRun(0, "doctor", "--json")

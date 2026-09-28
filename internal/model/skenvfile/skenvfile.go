@@ -36,7 +36,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -293,15 +292,13 @@ func (d *Doc) TemplateVersion() string {
 	return v
 }
 
-var versionRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
-
 // SchemaVersion is the skenv release whose schema the directive of this
 // file names: repository.template_version in a repository with templates,
 // because that is the skenv its CI installs (`skenv repo check` compares
 // with it); the running skenv otherwise ("" for a development build: the
 // latest schema).
 func (d *Doc) SchemaVersion() string {
-	if h := d.TemplateVersion(); versionRe.MatchString(h) {
+	if h := d.TemplateVersion(); VersionRe.MatchString(h) {
 		return h
 	}
 	return schemas.Running()

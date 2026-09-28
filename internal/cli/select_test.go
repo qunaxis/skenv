@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qunaxis/skenv/internal/harness"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 )
 
 // selectManifest is the manifest of the standard world with selection
@@ -218,7 +218,7 @@ func TestNewSkillNotSelected(t *testing.T) {
 	w := newWorld(t)
 	rev := w.push("ext/tools", map[string]string{"tools/archify/SKILL.md": skillMD("archify", "")}, "feat: archify")
 	w.push("me/skills", map[string]string{
-		"skenv.toml":            selectManifest(rev, "include = [\"alpha\"]\n", "\n[repository]\ntemplate_version = \""+harness.Latest+"\"\nvisibility = \"private\"\n"),
+		"skenv.toml":            selectManifest(rev, "include = [\"alpha\"]\n", "\n[repository]\ntemplate_version = \""+skenvfile.LatestTemplates+"\"\nvisibility = \"private\"\n"),
 		"skills/alpha/SKILL.md": skillMD("alpha", ""),
 	}, "feat: allowlist")
 	w.cloneSync("me/skills", "~/"+ownPath)
@@ -227,7 +227,7 @@ func TestNewSkillNotSelected(t *testing.T) {
 		t.Errorf("new without the hint:\n%s", out)
 	}
 	// Excluded by a pattern: adding it to include would not help.
-	writeFile(t, w.path(ownPath+"/skenv.toml"), selectManifest(rev, "exclude = [\"exp-*\"]\n", "\n[repository]\ntemplate_version = \""+harness.Latest+"\"\nvisibility = \"private\"\n"))
+	writeFile(t, w.path(ownPath+"/skenv.toml"), selectManifest(rev, "exclude = [\"exp-*\"]\n", "\n[repository]\ntemplate_version = \""+skenvfile.LatestTemplates+"\"\nvisibility = \"private\"\n"))
 	out, _ = w.mustRun(0, "new", "exp-one")
 	if !strings.Contains(out, "exp-one matches exclude") || strings.Contains(out, "add it there") {
 		t.Errorf("new of an excluded name:\n%s", out)

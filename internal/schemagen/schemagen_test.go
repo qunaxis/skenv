@@ -16,7 +16,6 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/mdscan"
 	"github.com/qunaxis/skenv/internal/model/config"
 	"github.com/qunaxis/skenv/internal/model/skenvfile"
@@ -105,7 +104,7 @@ func instance(t *testing.T, text, ext string) any {
 // parseSkenv is everything skenv checks in a skenv file without the file
 // system: the top level, [repository], [user] and [project].
 func parseSkenv(text, ext string) error {
-	if _, _, err := harness.Parse([]byte(text), ext); err != nil {
+	if _, _, err := skenvfile.ParseRepository([]byte(text), ext); err != nil {
 		return err
 	}
 	if strings.Contains(text, "user") {

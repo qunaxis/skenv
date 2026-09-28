@@ -1,6 +1,6 @@
 // Package schemagen generates the JSON Schemas in schemas/ from the Go
-// types that parse the files: harness.Config ([repo]), skenvfile.Manifest
-// ([environment]) and config.Config (the tool config).
+// types that parse the files: skenvfile.Repository ([repository]),
+// skenvfile.Manifest ([environment]) and config.Config (the tool config).
 //
 // Property names and types come from the json tags, descriptions from the
 // doc comments of the types and fields, and the constraints the parser
@@ -22,7 +22,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/model/agents"
 	"github.com/qunaxis/skenv/internal/model/config"
 	"github.com/qunaxis/skenv/internal/model/skenvfile"
@@ -131,7 +130,7 @@ func marshal(v any) ([]byte, error) {
 // for the unversioned URL, which the committed files carry). root is the
 // module root: the doc comments are read from the sources.
 func Generate(root, version string) (map[string][]byte, error) {
-	docs, err := readDocs(root, "internal/model/skenvfile", "internal/harness", "internal/model/config")
+	docs, err := readDocs(root, "internal/model/skenvfile", "internal/model/config")
 	if err != nil {
 		return nil, err
 	}
@@ -166,10 +165,10 @@ func (g *gen) skenv() *Schema {
 	agentsDef := g.object(reflect.TypeFor[skenvfile.Agents]())
 	storage := g.object(reflect.TypeFor[skenvfile.Storage]())
 	gitHost := g.object(reflect.TypeFor[skenvfile.GitHost]())
-	repo := g.object(reflect.TypeFor[harness.Config]())
-	ci := g.object(reflect.TypeFor[harness.CIConfig]())
-	github := g.object(reflect.TypeFor[harness.GitHubCI]())
-	gitlab := g.object(reflect.TypeFor[harness.GitLabCI]())
+	repo := g.object(reflect.TypeFor[skenvfile.Repository]())
+	ci := g.object(reflect.TypeFor[skenvfile.CIConfig]())
+	github := g.object(reflect.TypeFor[skenvfile.GitHubCI]())
+	gitlab := g.object(reflect.TypeFor[skenvfile.GitLabCI]())
 	project := g.object(reflect.TypeFor[skenvfile.Project]())
 	from := g.object(reflect.TypeFor[skenvfile.From]())
 
@@ -290,14 +289,14 @@ func (g *gen) skenv() *Schema {
 
 	repo.Required = []string{"template_version", "visibility"}
 	h := repo.Properties.get("template_version")
-	h.Pattern = harness.VersionPattern
-	h.PatternErrorMessage = "A version such as " + harness.Latest + "."
-	h.Examples = []any{harness.Latest}
+	h.Pattern = skenvfile.VersionPattern
+	h.PatternErrorMessage = "A version such as " + skenvfile.LatestTemplates + "."
+	h.Examples = []any{skenvfile.LatestTemplates}
 	repo.Properties.get("visibility").Enum = []string{"private", "public"}
-	ci.Not = &Schema{Required: []string{harness.CIGitHub, harness.CIGitLab}, ErrorMessage: "Keep one CI table: github or gitlab."}
+	ci.Not = &Schema{Required: []string{skenvfile.CIGitHub, skenvfile.CIGitLab}, ErrorMessage: "Keep one CI table: github or gitlab."}
 	runner := func(s *Schema, key string) {
 		p := s.Properties.get(key)
-		p.Default = harness.DefaultRunner
+		p.Default = skenvfile.DefaultRunner
 		p.Items.Pattern = `^[A-Za-z0-9._:/-]+$`
 		p.Items.PatternErrorMessage = "A runner label: letters, digits and . _ : / -"
 	}

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/model/config"
 	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/docedit"
@@ -191,7 +190,7 @@ func TestWritesKeepFormat(t *testing.T) {
 				{"repo init", func() {
 					w.mustRun(0, "repo", "init", "--visibility", "private", "--dir", own)
 				}, own, "skenv", comments(format), func(data []byte, ext string) error {
-					if _, ok, err := harness.Parse(data, ext); err != nil || !ok {
+					if _, ok, err := skenvfile.ParseRepository(data, ext); err != nil || !ok {
 						return &mismatch{"[repository]", "missing", "present"}
 					}
 					return vendorsAre("archify")(data, ext)
@@ -199,7 +198,7 @@ func TestWritesKeepFormat(t *testing.T) {
 				{"repo upgrade", func() {
 					file := filepath.Join(own, "skenv."+format)
 					text := readFile(t, file)
-					older := strings.NewReplacer(`"`+harness.Latest+`"`, `"0.3.0"`, "template_version: "+harness.Latest, "template_version: 0.3.0").Replace(text)
+					older := strings.NewReplacer(`"`+skenvfile.LatestTemplates+`"`, `"0.3.0"`, "template_version: "+skenvfile.LatestTemplates, "template_version: 0.3.0").Replace(text)
 					if older == text {
 						t.Fatalf("no template_version to move back in:\n%s", text)
 					}
@@ -217,8 +216,8 @@ func TestWritesKeepFormat(t *testing.T) {
 					if err != nil {
 						return err
 					}
-					if doc.TemplateVersion() != harness.Latest {
-						return &mismatch{"repository.template_version", doc.TemplateVersion(), harness.Latest}
+					if doc.TemplateVersion() != skenvfile.LatestTemplates {
+						return &mismatch{"repository.template_version", doc.TemplateVersion(), skenvfile.LatestTemplates}
 					}
 					return vendorsAre("archify")(data, ext)
 				}},
@@ -247,10 +246,10 @@ func TestWritesKeepFormat(t *testing.T) {
 			mustMkdir(t, fresh)
 			w.git(fresh, "init", "--quiet", "-b", "main")
 			repoText := map[string]string{
-				"toml": "# my repo\n[repository]\ntemplate_version = \"" + harness.Latest + "\"\nvisibility       = \"private\"\n",
-				"yaml": "# my repo\nrepository:\n  template_version: " + harness.Latest + "\n  visibility: private\n",
-				"yml":  "# my repo\nrepository:\n  template_version: " + harness.Latest + "\n  visibility: private\n",
-				"json": `{"repository": {"template_version": "` + harness.Latest + `", "visibility": "private"}}`,
+				"toml": "# my repo\n[repository]\ntemplate_version = \"" + skenvfile.LatestTemplates + "\"\nvisibility       = \"private\"\n",
+				"yaml": "# my repo\nrepository:\n  template_version: " + skenvfile.LatestTemplates + "\n  visibility: private\n",
+				"yml":  "# my repo\nrepository:\n  template_version: " + skenvfile.LatestTemplates + "\n  visibility: private\n",
+				"json": `{"repository": {"template_version": "` + skenvfile.LatestTemplates + `", "visibility": "private"}}`,
 			}[format]
 			writeFile(t, filepath.Join(fresh, "skenv."+format), repoText)
 			var keep []string
@@ -325,7 +324,7 @@ func TestRepoInitFormat(t *testing.T) {
 			w, repo := harnessRepo(t)
 			w.mustRun(0, "repo", "init", "--visibility", "private", "--format", format, "--dir", repo)
 			parse := func(data []byte, ext string) error {
-				_, ok, err := harness.Parse(data, ext)
+				_, ok, err := skenvfile.ParseRepository(data, ext)
 				if err == nil && !ok {
 					return &mismatch{"[repository]", "missing", "present"}
 				}
@@ -481,7 +480,7 @@ func TestInitStartsManifestInExistingFile(t *testing.T) {
 	mustMkdir(t, pub)
 	w.git(pub, "init", "--quiet", "-b", "main")
 	w.mustRun(0, "repo", "init", "--visibility", "public", "--dir", pub)
-	writeFile(t, filepath.Join(w.home, "yaml/skenv.yaml"), "repository:\n  template_version: "+harness.Latest+"\n  visibility: private\n")
+	writeFile(t, filepath.Join(w.home, "yaml/skenv.yaml"), "repository:\n  template_version: "+skenvfile.LatestTemplates+"\n  visibility: private\n")
 	w.git(w.path("yaml"), "init", "--quiet", "-b", "main")
 	before := snapshot(t, w.home)
 	for args, want := range map[string]string{
