@@ -106,14 +106,15 @@ func getAgentsPackages(t *testing.T) []string {
 	matches := re.FindAllStringSubmatch(string(data), -1)
 
 	seen := make(map[string]bool)
+	actualPkgs := getInternalPackages(t)
+	actualPkgsMap := make(map[string]bool)
+	for _, pkg := range actualPkgs {
+		actualPkgsMap[pkg] = true
+	}
 	for _, m := range matches {
 		if len(m) > 1 {
 			path := m[1]
-			// Extract package name: keep only the first component of a path
-			// e.g., "internal/tools/gendocs" -> "internal/tools"
-			//       "internal/cli/new.go" -> "internal/cli"
-			//       "internal/cli" -> "internal/cli"
-			pkg := extractPackageName(path)
+			pkg := extractPackageName(path, actualPkgsMap)
 			if pkg != "" {
 				seen[pkg] = true
 			}
@@ -130,25 +131,27 @@ func getAgentsPackages(t *testing.T) []string {
 }
 
 // extractPackageName extracts the Go package path from a reference that may
-// include files or subdirectories. Returns empty string if the reference is
-// not a valid package path.
-func extractPackageName(ref string) string {
+// include files or subdirectories. It resolves references to actual packages
+// by checking if the reference or its parent directories are packages.
+// Returns empty string if the reference is not a valid package or inside one.
+func extractPackageName(ref string, actualPkgs map[string]bool) string {
 	if !strings.HasPrefix(ref, "internal/") {
 		return ""
 	}
 
-	// Split by /
+	// If ref itself is a package, return it
+	if actualPkgs[ref] {
+		return ref
+	}
+
+	// Otherwise, find the longest parent that is a package
 	parts := strings.Split(ref, "/")
-	if len(parts) < 2 {
-		return ""
+	for i := len(parts) - 1; i >= 2; i-- {
+		candidate := strings.Join(parts[:i], "/")
+		if actualPkgs[candidate] {
+			return candidate
+		}
 	}
 
-	// If the first component after "internal/" is "tools", include it
-	if parts[1] == "tools" && len(parts) >= 3 {
-		// internal/tools/gendocs or internal/tools/genschemas
-		return strings.Join(parts[:3], "/")
-	}
-
-	// For others, include only up to the first component
-	return strings.Join(parts[:2], "/")
+	return ""
 }
