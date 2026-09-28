@@ -1,4 +1,4 @@
-package manifest
+package skenvfile
 
 import (
 	"os"
@@ -184,7 +184,7 @@ func TestAccessHint(t *testing.T) {
 }
 
 func TestParseHosts(t *testing.T) {
-	m, err := Parse([]byte(`[user.git_hosts.work]
+	m, err := ParseManifest([]byte(`[user.git_hosts.work]
 base_url = "https://git.example.com"
 provider = "gitlab"
 
@@ -233,7 +233,7 @@ commit = "`+strings.Repeat("a", 40)+`"
 		"[user.checkouts.x]\nrepo = \"acme:g/r\"\ncheckout_dir = \"~/x\"\n":                          `user.checkouts.x: repo "acme:g/r": unknown host prefix`,
 		"[user.dependencies.t]\nrepo = \"gitlab:r\"\ncommit = \"" + strings.Repeat("a", 40) + "\"\n": `user.dependencies.t: repo "gitlab:r"`,
 	} {
-		_, err := Parse([]byte(body), ".toml")
+		_, err := ParseManifest([]byte(body), ".toml")
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Parse(%q) = %v, want an error with %q", body, err, want)
 		}
@@ -251,7 +251,7 @@ func TestResolveIn(t *testing.T) {
 	if r, err := Hosts(nil).ResolveIn("/m", "~/src/skills"); err != nil || r.URL != filepath.Join(home, "src/skills") {
 		t.Errorf("~ in a local repo: %+v, %v", r, err)
 	}
-	m, err := ParseIn([]byte("[user.dependencies.x]\nrepo = \"./r\"\ncommit = \""+strings.Repeat("a", 40)+"\"\n"), ".toml", "/m/dir")
+	m, err := ParseManifestIn([]byte("[user.dependencies.x]\nrepo = \"./r\"\ncommit = \""+strings.Repeat("a", 40)+"\"\n"), ".toml", "/m/dir")
 	if err != nil {
 		t.Fatal(err)
 	}

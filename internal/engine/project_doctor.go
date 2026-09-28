@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 )
 
 // ProjectReport is the result of ProjectScope.Doctor.
@@ -78,7 +78,7 @@ func (e *ProjectScope) Doctor(asJSON bool) (int, error) {
 }
 
 // doctorCopy checks the copy of s in dir.
-func (e *ProjectScope) doctorCopy(s manifest.ProjectSkill, p string, add func(class, skill, p, detail string)) {
+func (e *ProjectScope) doctorCopy(s skenvfile.ProjectSkill, p string, add func(class, skill, p, detail string)) {
 	fi, err := os.Lstat(p)
 	if errors.Is(err, fs.ErrNotExist) {
 		add(ClassMissing, s.Name, p, "not copied yet; run `skenv sync`")
@@ -108,7 +108,7 @@ func (e *ProjectScope) doctorCopy(s manifest.ProjectSkill, p string, add func(cl
 
 // doctorMirror checks the mirror mdir against the skills of dir.
 func (e *ProjectScope) doctorMirror(mdir string, names []string, add func(class, skill, p, detail string)) {
-	copyMode := e.project.MirrorsMode == manifest.MirrorCopy
+	copyMode := e.project.MirrorsMode == skenvfile.MirrorCopy
 	in := map[string]bool{}
 	for _, name := range names {
 		in[name] = true

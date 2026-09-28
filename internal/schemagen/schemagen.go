@@ -1,5 +1,5 @@
 // Package schemagen generates the JSON Schemas in schemas/ from the Go
-// types that parse the files: harness.Config ([repo]), manifest.Manifest
+// types that parse the files: harness.Config ([repo]), skenvfile.Manifest
 // ([environment]) and config.Config (the tool config).
 //
 // Property names and types come from the json tags, descriptions from the
@@ -22,11 +22,11 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/qunaxis/skenv/internal/agents"
-	"github.com/qunaxis/skenv/internal/config"
 	"github.com/qunaxis/skenv/internal/harness"
-	"github.com/qunaxis/skenv/internal/manifest"
-	"github.com/qunaxis/skenv/internal/skillname"
+	"github.com/qunaxis/skenv/internal/model/agents"
+	"github.com/qunaxis/skenv/internal/model/config"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
+	"github.com/qunaxis/skenv/internal/model/skillname"
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -131,7 +131,7 @@ func marshal(v any) ([]byte, error) {
 // for the unversioned URL, which the committed files carry). root is the
 // module root: the doc comments are read from the sources.
 func Generate(root, version string) (map[string][]byte, error) {
-	docs, err := readDocs(root, "internal/manifest", "internal/harness", "internal/config")
+	docs, err := readDocs(root, "internal/model/skenvfile", "internal/harness", "internal/model/config")
 	if err != nil {
 		return nil, err
 	}
@@ -159,21 +159,21 @@ type gen struct {
 }
 
 func (g *gen) skenv() *Schema {
-	user := g.object(reflect.TypeFor[manifest.Manifest]())
-	checkout := g.object(reflect.TypeFor[manifest.Checkout]())
-	dependency := g.object(reflect.TypeFor[manifest.Dependency]())
-	machine := g.object(reflect.TypeFor[manifest.Machine]())
-	agentsDef := g.object(reflect.TypeFor[manifest.Agents]())
-	storage := g.object(reflect.TypeFor[manifest.Storage]())
-	gitHost := g.object(reflect.TypeFor[manifest.GitHost]())
+	user := g.object(reflect.TypeFor[skenvfile.Manifest]())
+	checkout := g.object(reflect.TypeFor[skenvfile.Checkout]())
+	dependency := g.object(reflect.TypeFor[skenvfile.Dependency]())
+	machine := g.object(reflect.TypeFor[skenvfile.Machine]())
+	agentsDef := g.object(reflect.TypeFor[skenvfile.Agents]())
+	storage := g.object(reflect.TypeFor[skenvfile.Storage]())
+	gitHost := g.object(reflect.TypeFor[skenvfile.GitHost]())
 	repo := g.object(reflect.TypeFor[harness.Config]())
 	ci := g.object(reflect.TypeFor[harness.CIConfig]())
 	github := g.object(reflect.TypeFor[harness.GitHubCI]())
 	gitlab := g.object(reflect.TypeFor[harness.GitLabCI]())
-	project := g.object(reflect.TypeFor[manifest.Project]())
-	from := g.object(reflect.TypeFor[manifest.From]())
+	project := g.object(reflect.TypeFor[skenvfile.Project]())
+	from := g.object(reflect.TypeFor[skenvfile.From]())
 
-	idNames := &Schema{Pattern: manifest.IDPattern, PatternErrorMessage: `An ID is lowercase letters, digits, "-" and "_", starting with a letter or digit.`}
+	idNames := &Schema{Pattern: skenvfile.IDPattern, PatternErrorMessage: `An ID is lowercase letters, digits, "-" and "_", starting with a letter or digit.`}
 	skillNames := skillName()
 	skillNames.Type = ""
 
@@ -190,9 +190,9 @@ func (g *gen) skenv() *Schema {
 	hosts := user.Properties.get("git_hosts")
 	hosts.AdditionalProperties = &Schema{Ref: "#/$defs/gitHost"}
 	hosts.PropertyNames = &Schema{
-		Pattern:             manifest.AliasPattern,
+		Pattern:             skenvfile.AliasPattern,
 		PatternErrorMessage: `An alias is lowercase letters, digits and "-", starting with a letter.`,
-		Not:                 &Schema{Enum: manifest.ReservedAliases, ErrorMessage: "This prefix is built in and cannot be declared."},
+		Not:                 &Schema{Enum: skenvfile.ReservedAliases, ErrorMessage: "This prefix is built in and cannot be declared."},
 	}
 
 	gitHost.Required = []string{"base_url"}
@@ -201,8 +201,8 @@ func (g *gen) skenv() *Schema {
 	hostURL.PatternErrorMessage = `A base URL such as "https://git.example.com" (no credentials) or "ssh://git@git.example.com".`
 	hostURL.Examples = []any{"https://git.example.com", "ssh://git@git.example.com"}
 	provider := gitHost.Properties.get("provider")
-	provider.Enum = manifest.HostTypes
-	provider.Default = manifest.TypeGeneric
+	provider.Enum = skenvfile.HostTypes
+	provider.Default = skenvfile.TypeGeneric
 
 	storage.Properties.get("dir").Examples = []any{"~/.agents/skills", "~/.local/share/skenv/skills"}
 	enabled := agentsDef.Properties.get("enabled")
@@ -229,7 +229,7 @@ func (g *gen) skenv() *Schema {
 	machineDirs.PropertyNames = idNames
 
 	branch := checkout.Properties.get("branch")
-	branch.Pattern = manifest.BranchPattern
+	branch.Pattern = skenvfile.BranchPattern
 	branch.PatternErrorMessage = "A git branch name."
 	branch.Examples = []any{"main"}
 	checkout.Required = []string{"repo", "checkout_dir"}
@@ -238,7 +238,7 @@ func (g *gen) skenv() *Schema {
 	skillsDir := checkout.Properties.get("skills_dir")
 	skillsDir.Pattern = RelPathPattern
 	skillsDir.PatternErrorMessage = relPathMessage
-	skillsDir.Default = manifest.DefaultSkillsDir
+	skillsDir.Default = skenvfile.DefaultSkillsDir
 
 	dependency.Required = []string{"repo", "commit"}
 	dependency.Properties.get("repo").MinLength = 1
@@ -247,7 +247,7 @@ func (g *gen) skenv() *Schema {
 	skillDir.PatternErrorMessage = relPathMessage
 	skillDir.Default = "."
 	commit := dependency.Properties.get("commit")
-	commit.Pattern = manifest.RevPattern
+	commit.Pattern = skenvfile.RevPattern
 	commit.PatternErrorMessage = "A full 40-character lowercase commit SHA; branches, tags and short SHAs are not allowed."
 
 	projectHosts := project.Properties.get("git_hosts")
@@ -263,7 +263,7 @@ func (g *gen) skenv() *Schema {
 	dir.Pattern = RelPathPattern
 	dir.PatternErrorMessage = relPathMessage
 	dir.Not = &Schema{Const: ".", ErrorMessage: `dir must be a directory inside the repository, not its root.`}
-	dir.Default = manifest.DefaultProjectDir
+	dir.Default = skenvfile.DefaultProjectDir
 	mirrors := project.Properties.get("mirrors")
 	mirrors.UniqueItems = true
 	mirrors.Items.MinLength = 1
@@ -272,15 +272,15 @@ func (g *gen) skenv() *Schema {
 	mirrors.Items.Not = &Schema{Const: ".", ErrorMessage: `A mirror is a directory inside the repository, not its root.`}
 	mirrors.Items.Examples = []any{".claude/skills"}
 	mode := project.Properties.get("mirrors_mode")
-	mode.Enum = manifest.MirrorModes
-	mode.Default = manifest.MirrorSymlink
+	mode.Enum = skenvfile.MirrorModes
+	mode.Default = skenvfile.MirrorSymlink
 
 	from.Required = []string{"repo", "skills", "commit"}
 	from.Properties.get("repo").MinLength = 1
 	fromDir := from.Properties.get("skills_dir")
 	fromDir.Pattern = RelPathPattern
 	fromDir.PatternErrorMessage = relPathMessage
-	fromDir.Default = manifest.DefaultSkillsDir
+	fromDir.Default = skenvfile.DefaultSkillsDir
 	fromSkills := from.Properties.get("skills")
 	fromSkills.MinItems = 1
 	fromSkills.UniqueItems = true
@@ -356,8 +356,8 @@ func skillName() *Schema {
 		Pattern:             skillname.Pattern,
 		MaxLength:           skillname.MaxLen,
 		PatternErrorMessage: "A skill name is " + skillname.Rule + ".",
-		Not: &Schema{Const: manifest.Reserved, ErrorMessage: `"` + manifest.Reserved + `" is reserved: ~/.claude/skills/` +
-			manifest.Reserved + ` is managed by Claude.`},
+		Not: &Schema{Const: skenvfile.Reserved, ErrorMessage: `"` + skenvfile.Reserved + `" is reserved: ~/.claude/skills/` +
+			skenvfile.Reserved + ` is managed by Claude.`},
 	}
 }
 

@@ -24,17 +24,17 @@ func TestParseFormats(t *testing.T) {
 		var repo struct {
 			TemplateVersion string `toml:"template_version" yaml:"template_version" json:"template_version"`
 		}
-		if err := d.Decode(Repository, &repo); err != nil || repo.TemplateVersion != "0.4.0" {
+		if err := d.Decode(SectionRepository, &repo); err != nil || repo.TemplateVersion != "0.4.0" {
 			t.Errorf("%s: repository = %+v, %v", ext, repo, err)
 		}
-		if !d.Has(User) || !d.IsDefined(User, "agents", "enabled") || d.IsDefined(User, "agents", "paths") {
+		if !d.Has(SectionUser) || !d.IsDefined(SectionUser, "agents", "enabled") || d.IsDefined(SectionUser, "agents", "paths") {
 			t.Errorf("%s: Has/IsDefined wrong", ext)
 		}
 		// Unknown keys inside a section are errors in every format.
 		var strict struct {
 			Other string `toml:"other" yaml:"other" json:"other"`
 		}
-		if err := d.Decode(Repository, &strict); err == nil || !strings.Contains(err.Error(), "template_version") {
+		if err := d.Decode(SectionRepository, &strict); err == nil || !strings.Contains(err.Error(), "template_version") {
 			t.Errorf("%s: unknown key accepted: %v", ext, err)
 		}
 	}
@@ -56,7 +56,7 @@ func TestParseErrors(t *testing.T) {
 		}
 	}
 	for _, ext := range []string{".toml", ".yaml", ".json"} {
-		if d, err := Parse(nil, ext); err != nil || d.Has(Repository) {
+		if d, err := Parse(nil, ext); err != nil || d.Has(SectionRepository) {
 			t.Errorf("empty %s: %v", ext, err)
 		}
 	}
@@ -98,7 +98,7 @@ func TestSchemaKey(t *testing.T) {
 		".toml": "\"$schema\" = \"x\"\n[user]\n",
 	} {
 		d, err := Parse([]byte(text), ext)
-		if err != nil || !d.Has(User) {
+		if err != nil || !d.Has(SectionUser) {
 			t.Errorf("%s: %v", ext, err)
 		}
 	}
@@ -139,7 +139,7 @@ func TestJSONKeysAreCaseSensitive(t *testing.T) {
 	var repo struct {
 		TemplateVersion string `yaml:"template_version" json:"template_version"`
 	}
-	if err := d.Decode(Repository, &repo); err == nil {
+	if err := d.Decode(SectionRepository, &repo); err == nil {
 		t.Errorf("Template_version accepted as template_version: %+v", repo)
 	}
 }

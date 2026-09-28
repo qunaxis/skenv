@@ -1,4 +1,4 @@
-package manifest
+package skenvfile
 
 import (
 	"bytes"
@@ -8,7 +8,6 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/qunaxis/skenv/internal/platform/docedit"
-	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
 // Comments of the [user] section that `skenv init` adds. The TOML
@@ -50,12 +49,12 @@ func AddUser(data []byte, ext string, c *Checkout) ([]byte, error) {
 	} else {
 		section += checkoutExample
 	}
-	out, err := addSection(data, ext, skenvfile.User, section+"\n"+dependencyExample, user, userLead+userYAMLHint)
+	out, err := addSection(data, ext, SectionUser, section+"\n"+dependencyExample, user, userLead+userYAMLHint)
 	if err != nil {
 		return nil, err
 	}
 	// The result must read back as a manifest.
-	if _, err := Parse(out, ext); err != nil {
+	if _, err := ParseManifest(out, ext); err != nil {
 		return nil, fmt.Errorf("adding [user] would make the file invalid: %w", err)
 	}
 	return out, nil
@@ -82,7 +81,7 @@ func AddProject(data []byte, ext string, mirrors []string) ([]byte, error) {
 		section += fmt.Sprintf("mirrors = [%s]\n", strings.Join(q, ", "))
 		value = append(value, docedit.Field{Key: "mirrors", Value: mirrors})
 	}
-	out, err := addSection(data, ext, skenvfile.Project, section, value, projectLead)
+	out, err := addSection(data, ext, SectionProject, section, value, projectLead)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +96,7 @@ func AddProject(data []byte, ext string, mirrors []string) ([]byte, error) {
 // the key with value, and in YAML lead as a comment above it. Added lines
 // take the line endings of the file.
 func addSection(data []byte, ext, section, toml string, value docedit.Map, lead string) ([]byte, error) {
-	doc, err := skenvfile.Parse(data, ext)
+	doc, err := Parse(data, ext)
 	if err != nil {
 		return nil, err
 	}

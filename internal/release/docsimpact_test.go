@@ -75,29 +75,29 @@ func TestDocsImpact(t *testing.T) {
 		{
 			name: "multiple user-facing paths",
 			changes: map[string]bool{
-				"internal/cli/cli.go":     true,
-				"internal/skenvfile/x.go": true,
+				"internal/cli/cli.go":           true,
+				"internal/model/skenvfile/x.go": true,
 			},
 			wantFail: true,
 		},
 		{
 			name: "skenv file change without docs",
 			changes: map[string]bool{
-				"internal/skenvfile/legacy.go": true,
+				"internal/model/skenvfile/legacy.go": true,
 			},
 			wantFail: true,
 		},
 		{
 			name: "manifest change without docs",
 			changes: map[string]bool{
-				"internal/manifest/x.go": true,
+				"internal/model/skenvfile/manifest.go": true,
 			},
 			wantFail: true,
 		},
 		{
 			name: "config change without docs",
 			changes: map[string]bool{
-				"internal/config/x.go": true,
+				"internal/model/config/x.go": true,
 			},
 			wantFail: true,
 		},

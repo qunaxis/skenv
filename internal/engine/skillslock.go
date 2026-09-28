@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/atomicfile"
 )
 
@@ -194,13 +194,13 @@ func (l *skillsLock) without(names []string) error {
 // lockRepo is the repo value of a lock entry: owner/repo for GitHub; for
 // other git hosts the short form on a built-in host or one of hosts
 // ("gitlab:group/repo", "<alias>:path"), else the clone URL.
-func lockRepo(le lockEntry, hosts manifest.Hosts) (string, error) {
+func lockRepo(le lockEntry, hosts skenvfile.Hosts) (string, error) {
 	switch le.SourceType {
 	case "github":
-		if manifest.IsShortRepo(le.Source) {
+		if skenvfile.IsShortRepo(le.Source) {
 			return le.Source, nil
 		}
-		if repo, ok := manifest.Hosts(nil).ShortForm(le.SourceURL); ok && manifest.IsShortRepo(repo) {
+		if repo, ok := skenvfile.Hosts(nil).ShortForm(le.SourceURL); ok && skenvfile.IsShortRepo(repo) {
 			return repo, nil
 		}
 	case "git", "gitlab":

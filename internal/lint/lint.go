@@ -18,12 +18,11 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/qunaxis/skenv/internal/skillname"
+	"github.com/qunaxis/skenv/internal/model/skillname"
 )
 
 // Limits from the Agent Skills specification (agentskills.io).
 const (
-	MaxNameLen        = skillname.MaxLen
 	MaxDescriptionLen = 1024
 	MaxFileSize       = 10 << 20 // L5
 )
@@ -157,8 +156,8 @@ func checkFrontmatter(dir string, add addFunc) {
 		if !skillname.Matches(name) {
 			add("L2", "SKILL.md", "name %q must be %s", name, skillname.Rule)
 		}
-		if n := utf8.RuneCountInString(name); n > MaxNameLen {
-			add("L3", "SKILL.md", "name is %d characters, the limit is %d", n, MaxNameLen)
+		if n := utf8.RuneCountInString(name); n > skillname.MaxLen {
+			add("L3", "SKILL.md", "name is %d characters, the limit is %d", n, skillname.MaxLen)
 		}
 	}
 	if descOK {

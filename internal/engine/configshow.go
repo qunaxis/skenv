@@ -9,9 +9,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/qunaxis/skenv/internal/agents"
-	"github.com/qunaxis/skenv/internal/config"
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/agents"
+	"github.com/qunaxis/skenv/internal/model/config"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
 	"github.com/qunaxis/skenv/internal/platform/paths"
 )
@@ -88,7 +88,7 @@ func ManifestSource(ctx context.Context, env Env, flag string) (path, source str
 	if m == "" {
 		return "", "", noManifest(ctx, env)
 	}
-	file, err := manifest.Locate(paths.Expand(env.Home, m))
+	file, err := skenvfile.Locate(paths.Expand(env.Home, m))
 	if err != nil {
 		return "", "", err
 	}
@@ -234,7 +234,7 @@ func firstMatch(pats []string, name string) string {
 }
 
 // targetBranchLocal is targetBranch without asking the remote.
-func (e *UserScope) targetBranchLocal(dir string, c *manifest.Checkout) (string, error) {
+func (e *UserScope) targetBranchLocal(dir string, c *skenvfile.Checkout) (string, error) {
 	if c.Branch != "" {
 		return c.Branch, nil
 	}

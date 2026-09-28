@@ -18,7 +18,7 @@ import (
 
 	"github.com/qunaxis/skenv/internal/autostart"
 	"github.com/qunaxis/skenv/internal/engine"
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/buildinfo"
 	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
@@ -1019,7 +1019,7 @@ are different: they are linked from editable git working copies
 // pinnedNames are the names of the skills pinned in the manifest, or in the
 // [project] section of the current repository.
 func pinnedNames(ctx context.Context, env engine.Env, project bool, manifestFlag string) ([]string, error) {
-	var deps []*manifest.Dependency
+	var deps []*skenvfile.Dependency
 	if project {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -1029,7 +1029,7 @@ func pinnedNames(ctx context.Context, env engine.Env, project bool, manifestFlag
 		if err != nil || file == "" {
 			return nil, err
 		}
-		p, err := manifest.LoadProject(file)
+		p, err := skenvfile.LoadProject(file)
 		if err != nil {
 			return nil, err
 		}
@@ -1039,7 +1039,7 @@ func pinnedNames(ctx context.Context, env engine.Env, project bool, manifestFlag
 		if err != nil {
 			return nil, err
 		}
-		m, err := manifest.Load(file)
+		m, err := skenvfile.LoadManifest(file)
 		if err != nil {
 			return nil, err
 		}

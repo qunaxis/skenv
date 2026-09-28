@@ -1,4 +1,4 @@
-package manifest
+package skenvfile
 
 import (
 	"errors"
@@ -113,7 +113,7 @@ func TestAppendProjectDependency(t *testing.T) {
 	if err != nil || len(p.Dependencies) != 1 {
 		t.Fatalf("parse: %v", err)
 	}
-	if _, err := Parse(out, ".toml"); err != nil {
+	if _, err := ParseManifest(out, ".toml"); err != nil {
 		t.Errorf("[user] broken: %v", err)
 	}
 	next := strings.Repeat("b", 40)

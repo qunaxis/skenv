@@ -16,12 +16,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qunaxis/skenv/internal/agents"
-	"github.com/qunaxis/skenv/internal/config"
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/agents"
+	"github.com/qunaxis/skenv/internal/model/config"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
 	"github.com/qunaxis/skenv/internal/platform/paths"
-	"github.com/qunaxis/skenv/internal/skenvfile"
 	"github.com/qunaxis/skenv/internal/state"
 )
 
@@ -68,7 +67,7 @@ type scope struct {
 	// hosts resolve the repo values of the skenv file: the declared hosts
 	// of the manifest, or of [project]; a relative local path resolves
 	// against hostsDir, the directory of the skenv file.
-	hosts    manifest.Hosts
+	hosts    skenvfile.Hosts
 	hostsDir string
 	// pending is the edited skenv file under --dry-run, which is never
 	// written: the next edit of the same command builds on it.
@@ -109,14 +108,14 @@ func (e *scope) writeSkenvFile(file string, data []byte) error {
 		e.pending = data
 		return nil
 	}
-	return manifest.WriteFile(file, data)
+	return skenvfile.WriteFile(file, data)
 }
 
 // UserScope is one command invocation over a loaded manifest and state.
 type UserScope struct {
 	scope
 	manifestPath string
-	manifest     *manifest.Manifest
+	manifest     *skenvfile.Manifest
 	store        string
 	targets      []string
 	state        *state.State
@@ -126,7 +125,7 @@ type UserScope struct {
 	// from, and rules its user.machines entry (hasRules false: none).
 	machine     string
 	machineFrom string
-	rules       manifest.Machine
+	rules       skenvfile.Machine
 	hasRules    bool
 
 	// checkoutUnavailable is set when a checkout could not be listed or is
@@ -161,7 +160,7 @@ func ResolveManifest(ctx context.Context, env Env, flag string) (string, error) 
 	if m == "" {
 		return "", noManifest(ctx, env)
 	}
-	return manifest.Locate(paths.Expand(env.Home, m))
+	return skenvfile.Locate(paths.Expand(env.Home, m))
 }
 
 // noManifest is ErrNoManifest, pointing at `skenv use .` when the git
@@ -180,7 +179,7 @@ func noManifest(ctx context.Context, env Env) error {
 	if err != nil || file == "" {
 		return ErrNoManifest
 	}
-	if doc, err := skenvfile.Read(file); err != nil || !doc.Has(skenvfile.User) {
+	if doc, err := skenvfile.Read(file); err != nil || !doc.Has(skenvfile.SectionUser) {
 		return ErrNoManifest
 	}
 	return fmt.Errorf("%w\nthis repository has a manifest (%s): run `skenv use .` to use it on this machine", ErrNoManifest, filepath.Base(file))
@@ -195,7 +194,7 @@ func OpenUser(ctx context.Context, env Env, opts Options) (*UserScope, error) {
 	if err != nil {
 		return nil, err
 	}
-	m, err := manifest.Load(mp)
+	m, err := skenvfile.LoadManifest(mp)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +203,7 @@ func OpenUser(ctx context.Context, env Env, opts Options) (*UserScope, error) {
 
 // open takes the lock and loads the state for the manifest m of the skenv
 // file mp, which need not exist yet (`init --import`).
-func open(ctx context.Context, env Env, opts Options, mp string, m *manifest.Manifest) (*UserScope, error) {
+func open(ctx context.Context, env Env, opts Options, mp string, m *skenvfile.Manifest) (*UserScope, error) {
 	e := &UserScope{scope: newBase(ctx, env, opts), manifestPath: mp}
 	if !opts.ReadOnly && !opts.DryRun {
 		if err := e.acquireLock(); err != nil {
@@ -227,7 +226,7 @@ func open(ctx context.Context, env Env, opts Options, mp string, m *manifest.Man
 
 // setManifest resolves m on this machine: the machine and its rules, the
 // store and the agent directories.
-func (e *UserScope) setManifest(m *manifest.Manifest) error {
+func (e *UserScope) setManifest(m *skenvfile.Manifest) error {
 	e.manifest = m
 	e.hosts = m.GitHosts
 	e.hostsDir = m.Dir
@@ -266,14 +265,14 @@ func (e *UserScope) resolveMachine() error {
 // machine is the machine of a run and its rules.
 type machine struct {
 	name, from string
-	rules      manifest.Machine
+	rules      skenvfile.Machine
 	has        bool
 }
 
 // machineOf picks the name of this machine and its rules in m: the tool
 // config `machine` (or $SKENV_MACHINE), which m must know; otherwise the
 // rules of the full hostname, else of the short hostname, never both.
-func machineOf(env Env, m *manifest.Manifest) (machine, error) {
+func machineOf(env Env, m *skenvfile.Manifest) (machine, error) {
 	name, src, err := config.Resolve(env.Home, env.Getenv, "machine", "", "")
 	if err != nil {
 		return machine{}, err
@@ -311,8 +310,8 @@ func machineOf(env Env, m *manifest.Manifest) (machine, error) {
 // checkoutPathOf returns the resolved working copy path of a checkout of
 // m on this machine: its checkout_dir, or the override of the machine's
 // rules.
-func checkoutPathOf(env Env, m *manifest.Manifest, mc machine) func(*manifest.Checkout) string {
-	return func(c *manifest.Checkout) string {
+func checkoutPathOf(env Env, m *skenvfile.Manifest, mc machine) func(*skenvfile.Checkout) string {
+	return func(c *skenvfile.Checkout) string {
 		if p, ok := mc.rules.CheckoutDirs[c.ID]; ok && mc.has {
 			return m.Path(env.Home, p)
 		}
@@ -324,19 +323,19 @@ func checkoutPathOf(env Env, m *manifest.Manifest, mc machine) func(*manifest.Ch
 // and CheckoutDir for a skill of a checkout, Dependency for a pinned one.
 type Skill struct {
 	Name        string
-	Checkout    *manifest.Checkout
+	Checkout    *skenvfile.Checkout
 	CheckoutDir string // <checkout_dir>/<skills_dir>/<name>
-	Dependency  *manifest.Dependency
+	Dependency  *skenvfile.Dependency
 }
 
 // checkoutPath is the resolved working copy path of c: its checkout_dir,
 // or the override of this machine.
-func (e *UserScope) checkoutPath(c *manifest.Checkout) string {
+func (e *UserScope) checkoutPath(c *skenvfile.Checkout) string {
 	return checkoutPathOf(e.env, e.manifest, machine{name: e.machine, rules: e.rules, has: e.hasRules})(c)
 }
 
 // checkoutSkillsDir is <checkout path>/<skills_dir> of c.
-func (e *UserScope) checkoutSkillsDir(c *manifest.Checkout) string {
+func (e *UserScope) checkoutSkillsDir(c *skenvfile.Checkout) string {
 	return filepath.Join(e.checkoutPath(c), filepath.FromSlash(c.SkillsDir))
 }
 
@@ -364,7 +363,7 @@ func checkoutFound(dir string) ([]string, error) {
 // checkoutSkills lists the skills of the checkout c. A working copy
 // without its skills directory has no skills yet; only a working copy that
 // is missing (not cloned yet) or unreadable is an error.
-func (e *UserScope) checkoutSkills(c *manifest.Checkout) ([]string, error) {
+func (e *UserScope) checkoutSkills(c *skenvfile.Checkout) ([]string, error) {
 	found, err := checkoutFound(e.checkoutSkillsDir(c))
 	if errors.Is(err, fs.ErrNotExist) {
 		if fi, serr := os.Stat(e.checkoutPath(c)); serr == nil && fi.IsDir() {
@@ -412,7 +411,7 @@ func (e *UserScope) skills() ([]Skill, error) {
 			return nil, fmt.Errorf("manifest %s: %w", e.displayPath(e.manifestPath), err)
 		}
 		for _, name := range sel {
-			if err := manifest.ValidName(name); err != nil {
+			if err := skenvfile.ValidName(name); err != nil {
 				e.warnf("skipping %s: %v", e.displayPath(filepath.Join(dir, name)), err)
 				continue
 			}
@@ -582,7 +581,7 @@ type CheckoutDir struct {
 	Repo      string
 	Path      string // resolved working copy path
 	SkillsDir string
-	Checkout  manifest.Checkout
+	Checkout  skenvfile.Checkout
 }
 
 // CheckoutDirs lists the checkouts of the manifest.
@@ -599,7 +598,7 @@ func (e *UserScope) CheckoutDirs() []CheckoutDir {
 // is not a git working copy, one without an origin, or one whose origin is
 // another repository. Its skills are then not used, and nothing in it is
 // changed.
-func (e *UserScope) checkoutBlocked(c *manifest.Checkout) string {
+func (e *UserScope) checkoutBlocked(c *skenvfile.Checkout) string {
 	if why, ok := e.blocked[c.ID]; ok {
 		return why
 	}
@@ -616,7 +615,7 @@ func (e *UserScope) checkoutBlocked(c *manifest.Checkout) string {
 // repo of c: the same after NormalizeURL, as written or after
 // url.<base>.insteadOf (git ls-remote --get-url, which does not touch the
 // network).
-func (e *UserScope) originMismatch(dir string, c *manifest.Checkout) string {
+func (e *UserScope) originMismatch(dir string, c *skenvfile.Checkout) string {
 	if !e.env.Git.OK(e.ctx, dir, "rev-parse", "--is-inside-work-tree") {
 		return "exists but is not a git working copy"
 	}
@@ -625,7 +624,7 @@ func (e *UserScope) originMismatch(dir string, c *manifest.Checkout) string {
 	if err != nil || strings.TrimSpace(origin) == "" {
 		return fmt.Sprintf("has no origin remote, and the manifest names %s", remote.URL)
 	}
-	if manifest.NormalizeURL(origin) == manifest.NormalizeURL(remote.URL) {
+	if skenvfile.NormalizeURL(origin) == skenvfile.NormalizeURL(remote.URL) {
 		return ""
 	}
 	// The ssh and https forms of a repository on a known host.
@@ -636,7 +635,7 @@ func (e *UserScope) originMismatch(dir string, c *manifest.Checkout) string {
 	}
 	a, errA := e.env.Git.Run(e.ctx, dir, "ls-remote", "--get-url", origin)
 	b, errB := e.env.Git.Run(e.ctx, dir, "ls-remote", "--get-url", remote.URL)
-	if errA == nil && errB == nil && manifest.NormalizeURL(a) == manifest.NormalizeURL(b) {
+	if errA == nil && errB == nil && skenvfile.NormalizeURL(a) == skenvfile.NormalizeURL(b) {
 		return ""
 	}
 	return fmt.Sprintf("is a working copy of %s, not of %s (repo of checkout %s)", origin, remote.URL, c.ID)
@@ -645,7 +644,7 @@ func (e *UserScope) originMismatch(dir string, c *manifest.Checkout) string {
 // targetBranch is the branch sync keeps the working copy at dir on: the
 // branch of c, else the default branch of origin (origin/HEAD, else asked
 // from the remote).
-func (e *UserScope) targetBranch(dir string, c *manifest.Checkout) (string, error) {
+func (e *UserScope) targetBranch(dir string, c *skenvfile.Checkout) (string, error) {
 	if c.Branch != "" {
 		return c.Branch, nil
 	}

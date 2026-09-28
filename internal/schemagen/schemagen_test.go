@@ -16,10 +16,10 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/qunaxis/skenv/internal/config"
 	"github.com/qunaxis/skenv/internal/harness"
-	"github.com/qunaxis/skenv/internal/manifest"
 	"github.com/qunaxis/skenv/internal/mdscan"
+	"github.com/qunaxis/skenv/internal/model/config"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -109,11 +109,11 @@ func parseSkenv(text, ext string) error {
 		return err
 	}
 	if strings.Contains(text, "user") {
-		if _, err := manifest.Parse([]byte(text), ext); err != nil && !strings.Contains(err.Error(), "no [user] section") {
+		if _, err := skenvfile.ParseManifest([]byte(text), ext); err != nil && !strings.Contains(err.Error(), "no [user] section") {
 			return err
 		}
 	}
-	if _, err := manifest.ParseProject([]byte(text), ext); err != nil && !errors.Is(err, manifest.ErrNoProject) {
+	if _, err := skenvfile.ParseProject([]byte(text), ext); err != nil && !errors.Is(err, skenvfile.ErrNoProject) {
 		return err
 	}
 	return nil
@@ -382,7 +382,7 @@ func TestRelPathPattern(t *testing.T) {
 	slices.Sort(paths)
 	for _, p := range paths {
 		text := "[user.dependencies.x]\nrepo = \"a/b\"\ncommit = \"" + sha + "\"\nskill_dir = " + fmt.Sprintf("%q", p) + "\n"
-		_, err := manifest.Parse([]byte(text), ".toml")
+		_, err := skenvfile.ParseManifest([]byte(text), ".toml")
 		if (err == nil) != re.MatchString(p) {
 			t.Errorf("path %q: parser error %v, pattern match %v", p, err, re.MatchString(p))
 		}

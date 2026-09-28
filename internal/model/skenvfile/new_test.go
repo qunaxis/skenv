@@ -1,4 +1,4 @@
-package manifest
+package skenvfile
 
 import (
 	"strings"
@@ -38,7 +38,7 @@ func TestAddUser(t *testing.T) {
 			if c.want != "" && string(out) != c.want {
 				t.Errorf("got:\n%s\nwant:\n%s", out, c.want)
 			}
-			m, err := Parse(out, c.ext)
+			m, err := ParseManifest(out, c.ext)
 			if err != nil {
 				t.Fatalf("%v\n%s", err, out)
 			}

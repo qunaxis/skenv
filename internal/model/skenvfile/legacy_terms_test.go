@@ -19,7 +19,7 @@ import (
 // migration section, for example) in a <!-- docs-check: legacy -->
 // ... <!-- /docs-check --> block to exempt it.
 func TestNoRetiredTerms(t *testing.T) {
-	root, err := filepath.Abs(filepath.Join("..", ".."))
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,14 +81,14 @@ func TestNoRetiredTermsDetection(t *testing.T) {
 
 	got := scanRetiredTerms(t, root)
 	want := []string{
-		`README.md:5: retired skenv-file key "environment" (see internal/skenvfile.LegacyKeys)`,
-		`README.md:7: retired skenv-file key "environment.vendor" (see internal/skenvfile.LegacyKeys)`,
+		`README.md:5: retired skenv-file key "environment" (see internal/model/skenvfile.LegacyKeys)`,
+		`README.md:7: retired skenv-file key "environment.vendor" (see internal/model/skenvfile.LegacyKeys)`,
 		`README.md:9: retired term "harness" (see docs/retired-terms.txt)`,
-		`README.md:13: retired skenv-file key "environment" (see internal/skenvfile.LegacyKeys)`,
-		`README.md:17: retired skenv-file key "environment.vendor" (see internal/skenvfile.LegacyKeys)`,
-		`README.md:21: retired skenv-file key "project.from" (see internal/skenvfile.LegacyKeys)`,
-		`README.md:28: retired skenv-file key "environment" (see internal/skenvfile.LegacyKeys)`,
-		`README.md:32: retired skenv-file key "repo.runner" (see internal/skenvfile.LegacyKeys)`,
+		`README.md:13: retired skenv-file key "environment" (see internal/model/skenvfile.LegacyKeys)`,
+		`README.md:17: retired skenv-file key "environment.vendor" (see internal/model/skenvfile.LegacyKeys)`,
+		`README.md:21: retired skenv-file key "project.from" (see internal/model/skenvfile.LegacyKeys)`,
+		`README.md:28: retired skenv-file key "environment" (see internal/model/skenvfile.LegacyKeys)`,
+		`README.md:32: retired skenv-file key "repo.runner" (see internal/model/skenvfile.LegacyKeys)`,
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("violations =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -174,7 +174,7 @@ func scanRetiredTerms(t *testing.T, root string) []string {
 			lineNo := i + 1
 			for _, k := range keys {
 				if keyMatchesLine(k, line, trimmed) {
-					violations = append(violations, fmtViolation(rel, lineNo, "retired skenv-file key %q (see internal/skenvfile.LegacyKeys)", k))
+					violations = append(violations, fmtViolation(rel, lineNo, "retired skenv-file key %q (see internal/model/skenvfile.LegacyKeys)", k))
 				}
 			}
 			for _, term := range terms {

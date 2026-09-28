@@ -1,4 +1,4 @@
-package manifest
+package skenvfile
 
 import (
 	"errors"

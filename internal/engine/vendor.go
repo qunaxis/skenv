@@ -7,8 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/manifest"
-	"github.com/qunaxis/skenv/internal/skenvfile"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 )
 
 // VendorAddOptions are the arguments of `skenv vendor add`.
@@ -29,7 +28,7 @@ func (e *UserScope) VendorAdd(o VendorAddOptions) (int, error) {
 		return ExitFatal, fmt.Errorf("dependency %q is already in the manifest; use `skenv vendor update %s`", d.Name, d.Name)
 	}
 	if err := e.editManifest(func(data []byte) ([]byte, error) {
-		return manifest.AppendDependency(data, filepath.Ext(e.manifestPath), skenvfile.User, d)
+		return skenvfile.AppendDependency(data, filepath.Ext(e.manifestPath), skenvfile.SectionUser, d)
 	}); err != nil {
 		return ExitFatal, err
 	}
@@ -43,41 +42,41 @@ func (e *UserScope) VendorAdd(o VendorAddOptions) (int, error) {
 // element of the path unless o.Name). A relative local path in o.Repo is
 // made absolute against the working directory: the skenv file does not
 // live there.
-func (e *scope) resolveDependency(o VendorAddOptions) (manifest.Dependency, error) {
+func (e *scope) resolveDependency(o VendorAddOptions) (skenvfile.Dependency, error) {
 	if o.Repo == "" {
-		return manifest.Dependency{}, fmt.Errorf("usage: skenv vendor add <repo> [--path P] [--name N] [--rev SHA]")
+		return skenvfile.Dependency{}, fmt.Errorf("usage: skenv vendor add <repo> [--path P] [--name N] [--rev SHA]")
 	}
 	remote, err := e.hosts.Resolve(o.Repo)
 	if err != nil {
-		return manifest.Dependency{}, err
+		return skenvfile.Dependency{}, err
 	}
 	if isLocalPath(o.Repo) && !filepath.IsAbs(o.Repo) {
 		o.Repo = remote.URL
 	}
 	cache, err := e.ensureCache(o.Repo, "")
 	if err != nil {
-		return manifest.Dependency{}, err
+		return skenvfile.Dependency{}, err
 	}
 	rev, err := e.resolveRev(cache, o.Repo, o.Rev)
 	if err != nil {
-		return manifest.Dependency{}, err
+		return skenvfile.Dependency{}, err
 	}
 	skillPath, err := e.findSkillPath(cache, rev, o.Path)
 	if err != nil {
-		return manifest.Dependency{}, err
+		return skenvfile.Dependency{}, err
 	}
 	name := o.Name
 	if name == "" {
 		name = path.Base(skillPath)
 		if skillPath == "." {
-			name = manifest.RepoName(remote.URL)
+			name = skenvfile.RepoName(remote.URL)
 		}
 		name = strings.ToLower(name)
 	}
-	if err := manifest.ValidName(name); err != nil {
-		return manifest.Dependency{}, fmt.Errorf("%w; pass --name", err)
+	if err := skenvfile.ValidName(name); err != nil {
+		return skenvfile.Dependency{}, fmt.Errorf("%w; pass --name", err)
 	}
-	return manifest.Dependency{Name: name, Repo: o.Repo, SkillDir: skillPath, Commit: rev}, nil
+	return skenvfile.Dependency{Name: name, Repo: o.Repo, SkillDir: skillPath, Commit: rev}, nil
 }
 
 // isLocalPath reports whether a repo value is a local path rather than a
@@ -138,7 +137,7 @@ func (e *UserScope) updateRev(name, rev string) (string, error) {
 	}
 	old := d.Commit
 	if err := e.editManifest(func(data []byte) ([]byte, error) {
-		return manifest.SetDependencyCommit(data, filepath.Ext(e.manifestPath), skenvfile.User, name, newRev)
+		return skenvfile.SetDependencyCommit(data, filepath.Ext(e.manifestPath), skenvfile.SectionUser, name, newRev)
 	}); err != nil {
 		return "", err
 	}
@@ -184,7 +183,7 @@ func (e *UserScope) VendorRemove(name string) (int, error) {
 		return ExitFatal, fmt.Errorf("dependency %q is not in the manifest %s", name, e.displayPath(e.manifestPath))
 	}
 	if err := e.editManifest(func(data []byte) ([]byte, error) {
-		return manifest.RemoveDependency(data, filepath.Ext(e.manifestPath), skenvfile.User, name)
+		return skenvfile.RemoveDependency(data, filepath.Ext(e.manifestPath), skenvfile.SectionUser, name)
 	}); err != nil {
 		return ExitFatal, err
 	}
@@ -213,7 +212,7 @@ func (e *UserScope) editManifest(edit func([]byte) ([]byte, error)) error {
 	if out, err = skenvfile.Stamp(out, filepath.Ext(e.manifestPath), false); err != nil {
 		return err
 	}
-	m, err := manifest.ParseIn(out, filepath.Ext(e.manifestPath), filepath.Dir(e.manifestPath))
+	m, err := skenvfile.ParseManifestIn(out, filepath.Ext(e.manifestPath), filepath.Dir(e.manifestPath))
 	if err != nil {
 		return err
 	}

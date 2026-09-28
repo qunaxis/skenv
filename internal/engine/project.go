@@ -10,9 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
-	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
 // ProjectScope runs a command on the [project] section of a repository:
@@ -24,7 +23,7 @@ type ProjectScope struct {
 	scope
 	root    string // the repository root
 	file    string // its skenv file
-	project *manifest.Project
+	project *skenvfile.Project
 
 	// removed are the copies sync removes (or would, under --dry-run), so
 	// that mirrors follow the plan.
@@ -55,7 +54,7 @@ func FindProject(ctx context.Context, env Env, dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !doc.Has(skenvfile.Project) {
+	if !doc.Has(skenvfile.SectionProject) {
 		return "", nil
 	}
 	return file, nil
@@ -68,7 +67,7 @@ func OpenProject(ctx context.Context, env Env, opts Options, file string) (*Proj
 	if err := gitx.Available(); err != nil {
 		return nil, err
 	}
-	p, err := manifest.LoadProject(file)
+	p, err := skenvfile.LoadProject(file)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +90,7 @@ func OpenProject(ctx context.Context, env Env, opts Options, file string) (*Proj
 
 // checkDirs rejects a dir or mirror that leads out of the repository, or
 // onto dir or another mirror, through a symlink: the checks of
-// manifest.Project.Validate on the paths as the file system resolves them.
+// skenvfile.Project.Validate on the paths as the file system resolves them.
 // sync would otherwise replace the skills of dir through a mirror.
 func (e *ProjectScope) checkDirs() error {
 	root, err := filepath.EvalSymlinks(e.root)
@@ -251,7 +250,7 @@ func (e *ProjectScope) modified(p string, mk marker) (bool, error) {
 // syncCopy makes dst the copy of s at its rev. A directory without a marker
 // (a project-own skill) and a copy edited locally are replaced only with
 // --adopt, after a backup.
-func (e *ProjectScope) syncCopy(s manifest.ProjectSkill, dst string) {
+func (e *ProjectScope) syncCopy(s skenvfile.ProjectSkill, dst string) {
 	from := fmt.Sprintf("%s@%.12s (%s)", s.Repo, s.Commit, s.Path)
 	fi, err := os.Lstat(dst)
 	switch {
@@ -325,7 +324,7 @@ func (e *ProjectScope) syncCopy(s manifest.ProjectSkill, dst string) {
 // hasPinnedFiles reports whether the unmarked copy dir has the files of
 // s at its commit, as the skills CLI installs them: a copy that sync
 // --adopt only takes over.
-func (e *ProjectScope) hasPinnedFiles(s manifest.ProjectSkill, dir string) bool {
+func (e *ProjectScope) hasPinnedFiles(s skenvfile.ProjectSkill, dir string) bool {
 	cache, err := e.ensureCache(s.Repo, s.Commit)
 	if err != nil {
 		return false
@@ -434,7 +433,7 @@ func (e *ProjectScope) isMirrorEntry(p, name string) bool {
 func (e *ProjectScope) syncMirror(mdir, name string) {
 	p := filepath.Join(mdir, name)
 	src := e.abs(e.project.Dir, name)
-	copyMode := e.project.MirrorsMode == manifest.MirrorCopy
+	copyMode := e.project.MirrorsMode == skenvfile.MirrorCopy
 	fi, err := os.Lstat(p)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):

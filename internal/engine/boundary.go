@@ -9,8 +9,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/agents"
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/agents"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
 )
 
@@ -32,7 +32,7 @@ func userDirs(ctx context.Context, env Env) []string {
 		fmt.Fprintf(env.Stderr, "warning: the manifest is not read (%v); the project is checked against the default user directories only\n", gitx.Mask(err.Error()))
 	}
 	if err == nil {
-		m, err := manifest.Load(mp)
+		m, err := skenvfile.LoadManifest(mp)
 		if err != nil {
 			fmt.Fprintf(env.Stderr, "warning: %s; the project is checked against the default user directories only\n", gitx.Mask(err.Error()))
 		} else {

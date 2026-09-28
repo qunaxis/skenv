@@ -8,11 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qunaxis/skenv/internal/config"
 	"github.com/qunaxis/skenv/internal/harness"
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/config"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/docedit"
-	"github.com/qunaxis/skenv/internal/skenvfile"
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -98,7 +97,7 @@ func assertKept(t *testing.T, dir, base, format string, keep []string, parse fun
 // the manifest.
 func vendorsAre(names ...string) func([]byte, string) error {
 	return func(data []byte, ext string) error {
-		m, err := manifest.Parse(data, ext)
+		m, err := skenvfile.ParseManifest(data, ext)
 		if err != nil {
 			return err
 		}

@@ -9,13 +9,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/config"
 	"github.com/qunaxis/skenv/internal/harness"
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/config"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
 	"github.com/qunaxis/skenv/internal/platform/paths"
-	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
 // NewManifest starts a manifest in the git repository that contains dir
@@ -67,7 +66,7 @@ type manifestPlan struct {
 	existing bool   // the file exists (without [user])
 	data     []byte // its content, empty for a new file
 	// own is the repository itself: from origin, or from --remote.
-	own       *manifest.Checkout
+	own       *skenvfile.Checkout
 	cfgFormat string // format of a new tool config, "" to keep the existing one
 	cfgPath   string
 	replaced  string // the manifest the config named before, if another one
@@ -110,7 +109,7 @@ func planManifest(ctx context.Context, env Env, dir, format, remote string) (*ma
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", show(existing), err)
 		}
-		if doc.Has(skenvfile.User) {
+		if doc.Has(skenvfile.SectionUser) {
 			return nil, fmt.Errorf("%s has [user] already; `skenv init` only starts a new manifest "+
 				"(to use this one on this machine: `skenv use %s`)", show(existing), show(root))
 		}
@@ -133,10 +132,10 @@ func planManifest(ctx context.Context, env Env, dir, format, remote string) (*ma
 		if err != nil {
 			return nil, err
 		}
-		p.own = &manifest.Checkout{ID: manifest.NewID(repo, nil), Repo: repo, CheckoutDir: "."}
+		p.own = &skenvfile.Checkout{ID: skenvfile.NewID(repo, nil), Repo: repo, CheckoutDir: "."}
 	case hasOrigin:
 		if repo, ok := ownRepo(origin); ok {
-			p.own = &manifest.Checkout{ID: manifest.NewID(repo, nil), Repo: repo, CheckoutDir: "."}
+			p.own = &skenvfile.Checkout{ID: skenvfile.NewID(repo, nil), Repo: repo, CheckoutDir: "."}
 		}
 	}
 
@@ -191,15 +190,15 @@ func refusePublic(data []byte, ext, name string) error {
 
 // build returns the skenv file with [user] added, own as its first
 // checkout when not nil.
-func (p *manifestPlan) build(own *manifest.Checkout) ([]byte, error) {
-	out, err := manifest.AddUser(p.data, filepath.Ext(p.file), own)
+func (p *manifestPlan) build(own *skenvfile.Checkout) ([]byte, error) {
+	out, err := skenvfile.AddUser(p.data, filepath.Ext(p.file), own)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", p.show(p.file), err)
 	}
 	return skenvfile.Stamp(out, filepath.Ext(p.file), true)
 }
 
-func (p *manifestPlan) message(own *manifest.Checkout) string {
+func (p *manifestPlan) message(own *skenvfile.Checkout) string {
 	msg := "create " + p.show(p.file) + " with [user]"
 	if p.existing {
 		msg = "add [user] to " + p.show(p.file)
@@ -210,7 +209,7 @@ func (p *manifestPlan) message(own *manifest.Checkout) string {
 	return msg
 }
 
-func (p *manifestPlan) printPlan(env Env, own *manifest.Checkout) {
+func (p *manifestPlan) printPlan(env Env, own *skenvfile.Checkout) {
 	fmt.Fprintf(env.Stdout, "would %s\n", p.message(own))
 	fmt.Fprintf(env.Stdout, "would record %s in %s\n", p.show(p.file), p.show(p.cfgPath))
 	if p.replaced != "" {
@@ -220,8 +219,8 @@ func (p *manifestPlan) printPlan(env Env, own *manifest.Checkout) {
 
 // write writes the skenv file and records it as "manifest" in the tool
 // config.
-func (p *manifestPlan) write(env Env, out []byte, own *manifest.Checkout) error {
-	if err := manifest.WriteFile(p.file, out); err != nil {
+func (p *manifestPlan) write(env Env, out []byte, own *skenvfile.Checkout) error {
+	if err := skenvfile.WriteFile(p.file, out); err != nil {
 		return err
 	}
 	fmt.Fprintln(env.Stdout, p.message(own))
@@ -241,7 +240,7 @@ func (p *manifestPlan) write(env Env, out []byte, own *manifest.Checkout) error 
 // manifest declares no hosts yet). Like an origin, it is written in the
 // short form on a built-in host and without credentials otherwise.
 func remoteRepo(value string) (string, error) {
-	r, err := manifest.Hosts(nil).Resolve(value)
+	r, err := skenvfile.Hosts(nil).Resolve(value)
 	if err != nil {
 		return "", fmt.Errorf("--remote: %w", err)
 	}
@@ -258,10 +257,10 @@ func remoteRepo(value string) (string, error) {
 // manifest declares no hosts yet.
 func ownRepo(remote string) (string, bool) {
 	remote = strings.TrimSpace(remote)
-	if repo, ok := manifest.Hosts(nil).ShortForm(remote); ok {
+	if repo, ok := skenvfile.Hosts(nil).ShortForm(remote); ok {
 		return repo, true
 	}
-	if strings.HasPrefix(manifest.NormalizeURL(remote), "/") {
+	if strings.HasPrefix(skenvfile.NormalizeURL(remote), "/") {
 		return "", false
 	}
 	if strings.Contains(remote, "://") {

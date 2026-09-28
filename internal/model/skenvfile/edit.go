@@ -1,4 +1,4 @@
-package manifest
+package skenvfile
 
 import (
 	"bytes"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/qunaxis/skenv/internal/platform/atomicfile"
 	"github.com/qunaxis/skenv/internal/platform/docedit"
-	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
 // The editing helpers below work on the TOML text rather than on the
@@ -100,11 +99,11 @@ func AppendCheckout(data []byte, ext string, c Checkout) ([]byte, error) {
 		if c.Include != nil {
 			item = append(item, docedit.Field{Key: "include", Value: c.Include})
 		}
-		return editDoc(data, ext, skenvfile.User, func(d docedit.Doc) error {
-			return d.Put([]string{skenvfile.User, "checkouts"}, c.ID, item, false)
+		return editDoc(data, ext, SectionUser, func(d docedit.Doc) error {
+			return d.Put([]string{SectionUser, "checkouts"}, c.ID, item, false)
 		})
 	}
-	return checked(insertTable(data, skenvfile.User, checkoutTable(c)), ext, skenvfile.User)
+	return checked(insertTable(data, SectionUser, checkoutTable(c)), ext, SectionUser)
 }
 
 // checkoutTable is the TOML table of a new checkout.
@@ -193,16 +192,16 @@ func SetDependencyCommit(data []byte, ext, section, name, commit string) ([]byte
 // replaced.
 func SetFromCommit(data []byte, ext, id, commit string) ([]byte, error) {
 	if ext != ".toml" {
-		return editDoc(data, ext, skenvfile.Project, func(d docedit.Doc) error {
-			return d.SetString([]any{skenvfile.Project, "from", id, "commit"}, commit)
+		return editDoc(data, ext, SectionProject, func(d docedit.Doc) error {
+			return d.SetString([]any{SectionProject, "from", id, "commit"}, commit)
 		})
 	}
 	lines := splitLines(data)
-	blk, err := namedBlock(lines, skenvfile.Project, "from", id)
+	blk, err := namedBlock(lines, SectionProject, "from", id)
 	if err != nil {
 		return nil, err
 	}
-	return setCommit(lines, blk, ext, skenvfile.Project, "project.from."+id, commit)
+	return setCommit(lines, blk, ext, SectionProject, "project.from."+id, commit)
 }
 
 // setCommit replaces the value of the commit line of blk.
@@ -260,11 +259,11 @@ func editDoc(data []byte, ext, section string, edit func(docedit.Doc) error) ([]
 
 // parseSection parses section ("user" or "project") of an edited file.
 func parseSection(data []byte, ext, section string) error {
-	if section == skenvfile.Project {
+	if section == SectionProject {
 		_, err := ParseProject(data, ext)
 		return err
 	}
-	_, err := Parse(data, ext)
+	_, err := ParseManifest(data, ext)
 	return err
 }
 

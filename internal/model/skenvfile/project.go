@@ -1,4 +1,4 @@
-package manifest
+package skenvfile
 
 import (
 	"errors"
@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-
-	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
 // Defaults of the [project] section.
@@ -112,15 +110,15 @@ var ErrNoProject = errors.New("no [project] section")
 // ParseProject decodes and validates the [project] section of a skenv file
 // in the format of ext.
 func ParseProject(data []byte, ext string) (*Project, error) {
-	doc, err := skenvfile.Parse(data, ext)
+	doc, err := Parse(data, ext)
 	if err != nil {
 		return nil, err
 	}
-	if !doc.Has(skenvfile.Project) {
+	if !doc.Has(SectionProject) {
 		return nil, ErrNoProject
 	}
 	var p Project
-	if err := doc.Decode(skenvfile.Project, &p); err != nil {
+	if err := doc.Decode(SectionProject, &p); err != nil {
 		return nil, err
 	}
 	if p.Dir == "" {

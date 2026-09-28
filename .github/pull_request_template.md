@@ -1,6 +1,6 @@
 # User-facing changes require docs updates
 
-PRs that change user-facing code (`internal/cli/**`, `internal/skenvfile/**`, `internal/manifest/**`, `internal/config/**`, `schemas/**`, `internal/harness/templates/**`) must either:
+PRs that change user-facing code (`internal/cli/**`, `internal/model/skenvfile/**`, `internal/model/config/**`, `schemas/**`, `internal/harness/templates/**`) must either:
 - Update docs (`README.md`, `docs/**`, `AGENTS.md`, `skills/skenv/**`), or
 - Add label `docs:none`, or
 - Add one line to the body: `Docs: none — <reason>` (reason ≥10 characters)

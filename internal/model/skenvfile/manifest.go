@@ -1,8 +1,4 @@
-// Package manifest parses and validates the manifest: the [user] section
-// of a skenv file (skenv.toml), the declarative set of skills that skenv
-// keeps in sync for the agents of the current OS user; and the [project]
-// section, the skills a project repository carries.
-package manifest
+package skenvfile
 
 import (
 	"errors"
@@ -16,11 +12,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/agents"
+	"github.com/qunaxis/skenv/internal/model/agents"
+	"github.com/qunaxis/skenv/internal/model/skillname"
 	"github.com/qunaxis/skenv/internal/platform/paths"
-	"github.com/qunaxis/skenv/internal/skenvfile"
-	"github.com/qunaxis/skenv/internal/skillname"
 )
+
+// The manifest: the [user] section of a skenv file, the declarative set of
+// skills that skenv keeps in sync for the agents of the current OS user.
 
 // DefaultSkillsDir is used when a checkout does not set skills_dir.
 const DefaultSkillsDir = "skills"
@@ -190,55 +188,56 @@ const Reserved = "synced"
 // file in path when it is a directory.
 func Locate(path string) (string, error) {
 	if filepath.Base(path) == "env.toml" {
-		return "", skenvfile.OldManifestError(path)
+		return "", OldManifestError(path)
 	}
 	fi, err := os.Stat(path)
 	if err != nil || !fi.IsDir() {
-		return path, nil //nolint:nilerr // Load reports a missing file
+		return path, nil //nolint:nilerr // LoadManifest reports a missing file
 	}
-	file, err := skenvfile.Find(path)
+	file, err := Find(path)
 	if err != nil {
 		return "", err
 	}
 	if file == "" {
-		return "", fmt.Errorf("no skenv file (%s) in %s", strings.Join(skenvfile.Names, ", "), path)
+		return "", fmt.Errorf("no skenv file (%s) in %s", strings.Join(Names, ", "), path)
 	}
 	return file, nil
 }
 
-// Load reads and validates the manifest in the skenv file at file.
-func Load(file string) (*Manifest, error) {
+// LoadManifest reads and validates the manifest in the skenv file at file.
+func LoadManifest(file string) (*Manifest, error) {
 	data, err := os.ReadFile(file)
 	if err != nil {
 		return nil, fmt.Errorf("read manifest %s: %w (set --manifest, $SKENV_MANIFEST or run `skenv use <path>`)", file, err)
 	}
-	m, err := ParseIn(data, filepath.Ext(file), filepath.Dir(file))
+	m, err := ParseManifestIn(data, filepath.Ext(file), filepath.Dir(file))
 	if err != nil {
 		return nil, fmt.Errorf("manifest %s: %w", file, err)
 	}
 	return m, nil
 }
 
-// Parse decodes and validates the [user] section of a skenv file in the
-// format of ext (".toml", ".yaml", ".yml", ".json"). Relative paths resolve
-// against the working directory; ParseIn names the file's directory.
-func Parse(data []byte, ext string) (*Manifest, error) { return ParseIn(data, ext, "") }
+// ParseManifest decodes and validates the [user] section of a skenv file
+// in the format of ext (".toml", ".yaml", ".yml", ".json"). Relative
+// paths resolve against the working directory; ParseManifestIn names the
+// file's directory.
+func ParseManifest(data []byte, ext string) (*Manifest, error) { return ParseManifestIn(data, ext, "") }
 
-// ParseIn is Parse for a skenv file in dir.
-func ParseIn(data []byte, ext, dir string) (*Manifest, error) {
-	doc, err := skenvfile.Parse(data, ext)
+// ParseManifestIn is ParseManifest for a skenv file in dir.
+func ParseManifestIn(data []byte, ext, dir string) (*Manifest, error) {
+	doc, err := Parse(data, ext)
 	if err != nil {
 		return nil, err
 	}
-	if !doc.Has(skenvfile.User) {
+	if !doc.Has(SectionUser) {
 		return nil, errors.New("no [user] section: this skenv file is not a manifest")
 	}
 	var m Manifest
-	if err := doc.Decode(skenvfile.User, &m); err != nil {
+	if err := doc.Decode(SectionUser, &m); err != nil {
 		return nil, err
 	}
 	m.Dir = dir
-	u := skenvfile.User
+	u := SectionUser
 	if doc.IsDefined(u, "agents", "enabled") && m.Agents.Enabled == nil {
 		m.Agents.Enabled = []string{}
 	}

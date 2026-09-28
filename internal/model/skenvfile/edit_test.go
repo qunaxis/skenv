@@ -1,4 +1,4 @@
-package manifest
+package skenvfile
 
 import (
 	"strings"
@@ -32,7 +32,7 @@ func TestAppendDependency(t *testing.T) {
 	if !strings.HasSuffix(s, "\n[user.dependencies.b]\nrepo      = \"x/b\"\nskill_dir = \"skills/b\"\ncommit    = \""+sha+"\"\n") {
 		t.Errorf("appended:\n%s", s)
 	}
-	m, _ := Parse(out, ".toml")
+	m, _ := ParseManifest(out, ".toml")
 	if len(m.Dependencies) != 2 || len(m.Machines) != 1 {
 		t.Error("appended table breaks the structure")
 	}
@@ -78,7 +78,7 @@ func TestRemoveDependency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m, _ := Parse(out, ".toml"); len(m.Dependencies) != 0 {
+	if m, _ := ParseManifest(out, ".toml"); len(m.Dependencies) != 0 {
 		t.Error("dependency b not removed")
 	}
 }
@@ -107,7 +107,7 @@ func TestEditOtherFormats(t *testing.T) {
 			if out, err = RemoveDependency(out, ext, "user", "b"); err != nil {
 				t.Fatal(err)
 			}
-			m, err := Parse(out, ext)
+			m, err := ParseManifest(out, ext)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -124,7 +124,7 @@ func TestEditOtherFormats(t *testing.T) {
 			if out, err = RemoveDependency(out, ext, "user", "a"); err != nil {
 				t.Fatal(err)
 			}
-			if m, err := Parse(out, ext); err != nil || len(m.Dependencies) != 0 {
+			if m, err := ParseManifest(out, ext); err != nil || len(m.Dependencies) != 0 {
 				t.Errorf("last removed: %v\n%s", err, out)
 			}
 		})
@@ -132,7 +132,7 @@ func TestEditOtherFormats(t *testing.T) {
 }
 
 func TestParseNeedsUser(t *testing.T) {
-	if _, err := Parse([]byte("[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"public\"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "no [user] section") {
+	if _, err := ParseManifest([]byte("[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"public\"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "no [user] section") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -165,7 +165,7 @@ func TestAppendCheckout(t *testing.T) {
 	if !strings.HasPrefix(s, base) || !strings.HasSuffix(s, "\n[user.checkouts.more]\nrepo         = \"me/more\"\ncheckout_dir = \"~/src/more\"\nskills_dir   = \"agent/skills\"\ninclude      = [\"a2\", \"b2\"]\n") {
 		t.Errorf("appended:\n%s", s)
 	}
-	m, _ := Parse(out, ".toml")
+	m, _ := ParseManifest(out, ".toml")
 	if len(m.Checkouts) != 2 || len(m.Dependencies) != 1 || len(m.Machines) != 1 || m.Checkouts["more"].SkillsDir != "agent/skills" {
 		t.Errorf("appended table breaks the structure: %+v", m)
 	}
@@ -177,7 +177,7 @@ func TestAppendCheckout(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", ext, err)
 		}
-		m, err := Parse(out, ext)
+		m, err := ParseManifest(out, ext)
 		if err != nil {
 			t.Fatalf("%s: %v", ext, err)
 		}
@@ -203,7 +203,7 @@ func TestAppendDependencyKeepsTrailingComments(t *testing.T) {
 		t.Fatalf("the dependency table splits the checkout from its commented keys:\n%s", s)
 	}
 	uncommented := strings.Replace(s, `# exclude = ["experimental-*"]`, `exclude = ["experimental-*"]`, 1)
-	m, err := Parse([]byte(uncommented), ".toml")
+	m, err := ParseManifest([]byte(uncommented), ".toml")
 	if err != nil {
 		t.Fatalf("uncommented exclude: %v\n%s", err, uncommented)
 	}

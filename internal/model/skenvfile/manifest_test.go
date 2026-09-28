@@ -1,4 +1,4 @@
-package manifest
+package skenvfile
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 const sha = "9e35d2b0b39b0000000000000000000000000000"
 
 func TestParseFull(t *testing.T) {
-	m, err := ParseIn([]byte(`
+	m, err := ParseManifestIn([]byte(`
 [user]
 unmanaged = ["peon-*"]
 
@@ -68,7 +68,7 @@ mine = "~/elsewhere"
 }
 
 func TestEnabledUnsetVsEmpty(t *testing.T) {
-	m, err := Parse([]byte("[user]\n"), ".toml")
+	m, err := ParseManifest([]byte("[user]\n"), ".toml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestEnabledUnsetVsEmpty(t *testing.T) {
 		".yaml": "user:\n  agents: {enabled: []}\n  checkouts: {a: {repo: a/b, checkout_dir: x, include: []}}\n  machines: {m: {include: []}}\n",
 		".json": `{"user": {"agents": {"enabled": []}, "checkouts": {"a": {"repo": "a/b", "checkout_dir": "x", "include": []}}, "machines": {"m": {"include": []}}}}`,
 	} {
-		m, err := Parse([]byte(text), ext)
+		m, err := ParseManifest([]byte(text), ext)
 		if err != nil {
 			t.Fatalf("%s: %v", ext, err)
 		}
@@ -106,7 +106,7 @@ func dependency(name, commit string) string {
 	return "[user.dependencies." + name + "]\nrepo = \"a/b\"\ncommit = \"" + commit + "\"\n"
 }
 
-func TestParseErrors(t *testing.T) {
+func TestParseManifestErrors(t *testing.T) {
 	cases := map[string]struct{ src, want string }{
 		"M2 short commit":          {dependency("x", "9e35d2b"), "full 40-character"},
 		"M2 branch commit":         {dependency("x", "main"), "full 40-character"},
@@ -136,7 +136,7 @@ func TestParseErrors(t *testing.T) {
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := Parse([]byte(c.src), ".toml")
+			_, err := ParseManifest([]byte(c.src), ".toml")
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("err = %v, want %q", err, c.want)
 			}
@@ -146,7 +146,7 @@ func TestParseErrors(t *testing.T) {
 
 // M1 across the skills of checkouts and dependencies.
 func TestCheckNames(t *testing.T) {
-	m, err := Parse([]byte(`
+	m, err := ParseManifest([]byte(`
 [user.checkouts.a]
 repo = "me/a"
 checkout_dir = "~/a"
@@ -189,7 +189,7 @@ func TestReorderingInvariance(t *testing.T) {
 		for _, i := range order {
 			b.WriteString(blocks[i])
 		}
-		m, err := Parse([]byte(b.String()), ".toml")
+		m, err := ParseManifest([]byte(b.String()), ".toml")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -223,8 +223,8 @@ func TestReorderingInvariance(t *testing.T) {
 		}
 	}
 	// Reordering list values (include, exclude) changes nothing either.
-	m1, _ := Parse([]byte(checkout("include = [\"b*\", \"a\"]\nexclude = [\"bz\", \"ba\"]\n")), ".toml")
-	m2, _ := Parse([]byte(checkout("include = [\"a\", \"b*\"]\nexclude = [\"ba\", \"bz\"]\n")), ".toml")
+	m1, _ := ParseManifest([]byte(checkout("include = [\"b*\", \"a\"]\nexclude = [\"bz\", \"ba\"]\n")), ".toml")
+	m2, _ := ParseManifest([]byte(checkout("include = [\"a\", \"b*\"]\nexclude = [\"ba\", \"bz\"]\n")), ".toml")
 	c1, c2 := m1.Checkouts["a"], m2.Checkouts["a"]
 	found := []string{"a", "ba", "bb", "bz", "c"}
 	s1, _ := c1.Select(found, "~/x/skills")
@@ -314,7 +314,7 @@ func TestCacheKey(t *testing.T) {
 }
 
 func TestUnmanaged(t *testing.T) {
-	m, err := Parse([]byte("[user]\nunmanaged = [\"peon-ping-*\", \"tmp?\"]\n"), ".toml")
+	m, err := ParseManifest([]byte("[user]\nunmanaged = [\"peon-ping-*\", \"tmp?\"]\n"), ".toml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,15 +324,15 @@ func TestUnmanaged(t *testing.T) {
 		}
 	}
 	// Other tools' entries need not be skill names.
-	if _, err := Parse([]byte("[user]\nunmanaged = [\"My_Tool\", \".hidden*\"]\n"), ".toml"); err != nil {
+	if _, err := ParseManifest([]byte("[user]\nunmanaged = [\"My_Tool\", \".hidden*\"]\n"), ".toml"); err != nil {
 		t.Errorf("unmanaged entry names: %v", err)
 	}
 	for _, bad := range []string{`unmanaged = ["[x"]`, `unmanaged = ["a/b"]`, `unmanaged = [""]`} {
-		if _, err := Parse([]byte("[user]\n"+bad+"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "user.unmanaged") {
+		if _, err := ParseManifest([]byte("[user]\n"+bad+"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "user.unmanaged") {
 			t.Errorf("%s: err = %v", bad, err)
 		}
 	}
-	m, _ = Parse([]byte("[user]\nunmanaged = [\"peon-*\"]\n"+dependency("peon-x", sha)), ".toml")
+	m, _ = ParseManifest([]byte("[user]\nunmanaged = [\"peon-*\"]\n"+dependency("peon-x", sha)), ".toml")
 	if _, err := m.CheckNames(nil); err == nil || !strings.Contains(err.Error(), "matches user.unmanaged") {
 		t.Errorf("skill matching unmanaged: %v", err)
 	}
@@ -357,7 +357,7 @@ func TestCheckoutSelect(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			m, err := Parse([]byte(checkout(c.lines+"\n")), ".toml")
+			m, err := ParseManifest([]byte(checkout(c.lines+"\n")), ".toml")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -377,7 +377,7 @@ func TestCheckoutSelect(t *testing.T) {
 		".yaml": "user:\n  checkouts:\n    a:\n      repo: a/b\n      checkout_dir: ~/x\n      include: [alpha]\n      exclude: [\"exp-*\"]\n",
 		".json": `{"user": {"checkouts": {"a": {"repo": "a/b", "checkout_dir": "~/x", "include": ["alpha"], "exclude": ["exp-*"]}}}}`,
 	} {
-		m, err := Parse([]byte(text), ext)
+		m, err := ParseManifest([]byte(text), ext)
 		if err != nil || len(m.Checkouts["a"].Include) != 1 || len(m.Checkouts["a"].Exclude) != 1 {
 			t.Errorf("%s: %+v %v", ext, m, err)
 		}

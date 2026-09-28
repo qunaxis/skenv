@@ -7,8 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/manifest"
-	"github.com/qunaxis/skenv/internal/skenvfile"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 )
 
 // VendorAdd pins a third-party skill in [project] and syncs the project.
@@ -28,7 +27,7 @@ func (e *ProjectScope) VendorAdd(o VendorAddOptions) (int, error) {
 		}
 	}
 	if err := e.edit(func(data []byte, ext string) ([]byte, error) {
-		return manifest.AppendDependency(data, ext, skenvfile.Project, v)
+		return skenvfile.AppendDependency(data, ext, skenvfile.SectionProject, v)
 	}); err != nil {
 		return ExitFatal, err
 	}
@@ -75,7 +74,7 @@ func (e *ProjectScope) VendorUpdate(names []string, rev string) (int, error) {
 		newRev, err := e.nextRev("dependency "+name, name, s.Repo, s.Path, s.Commit, rev)
 		if err == nil && newRev != "" {
 			err = e.edit(func(data []byte, ext string) ([]byte, error) {
-				return manifest.SetDependencyCommit(data, ext, skenvfile.Project, name, newRev)
+				return skenvfile.SetDependencyCommit(data, ext, skenvfile.SectionProject, name, newRev)
 			})
 		}
 		switch {
@@ -93,7 +92,7 @@ func (e *ProjectScope) VendorUpdate(names []string, rev string) (int, error) {
 		newRev, err := e.nextRev(what, f.Repo, f.Repo, f.SkillsDir, f.Commit, rev)
 		if err == nil && newRev != "" {
 			err = e.edit(func(data []byte, ext string) ([]byte, error) {
-				return manifest.SetFromCommit(data, ext, id, newRev)
+				return skenvfile.SetFromCommit(data, ext, id, newRev)
 			})
 		}
 		switch {
@@ -123,7 +122,7 @@ func (e *ProjectScope) VendorRemove(name string) (int, error) {
 			"(or the entry) in %s, then run `skenv sync`", name, s.From.ID, s.Repo, e.displayPath(e.file))
 	}
 	if err := e.edit(func(data []byte, ext string) ([]byte, error) {
-		return manifest.RemoveDependency(data, ext, skenvfile.Project, name)
+		return skenvfile.RemoveDependency(data, ext, skenvfile.SectionProject, name)
 	}); err != nil {
 		return ExitFatal, err
 	}
@@ -146,7 +145,7 @@ func (e *ProjectScope) edit(fn func(data []byte, ext string) ([]byte, error)) er
 	if out, err = skenvfile.Stamp(out, ext, false); err != nil {
 		return err
 	}
-	p, err := manifest.ParseProject(out, ext)
+	p, err := skenvfile.ParseProject(out, ext)
 	if err != nil {
 		return err
 	}

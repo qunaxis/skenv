@@ -13,7 +13,7 @@ import (
 	"github.com/qunaxis/skenv/internal/engine"
 	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/lint"
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/paths"
 )
 
@@ -56,7 +56,7 @@ skenv new release-checklist`,
 }
 
 func runNew(ctx context.Context, env engine.Env, o engine.Options, name, visibility string, visibilitySet bool, dir string) (int, error) {
-	if err := manifest.ValidName(name); err != nil {
+	if err := skenvfile.ValidName(name); err != nil {
 		return engine.ExitFatal, fmt.Errorf("skill %w", err)
 	}
 	if visibility != "private" && visibility != "public" {
@@ -155,7 +155,7 @@ func availability(env engine.Env, name, root string, target *engine.CheckoutDir,
 	case target == nil:
 		return fmt.Sprintf("%s is not a checkout of the manifest, so no agent sees the skill yet: "+
 			"add it under [user.checkouts.<id>] and run `skenv sync`", paths.Collapse(env.Home, root))
-	case !manifest.Selected(nil, target.Checkout.Exclude, name):
+	case !skenvfile.Selected(nil, target.Checkout.Exclude, name):
 		return fmt.Sprintf("%s matches exclude of checkout %s in the manifest, so it is not installed; "+
 			"change the pattern to install it", name, target.ID)
 	case !target.Checkout.Selects(name):

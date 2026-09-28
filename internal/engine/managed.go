@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/qunaxis/skenv/internal/agents"
+	"github.com/qunaxis/skenv/internal/model/agents"
 	"github.com/qunaxis/skenv/internal/state"
 )
 

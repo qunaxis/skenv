@@ -10,10 +10,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/agents"
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/agents"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
-	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
 // Import runs `skenv import`: it adds the skills installed on this machine
@@ -44,17 +43,17 @@ func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) 
 	if err != nil {
 		return ExitFatal, fmt.Errorf("manifest %s: %w", mp, err)
 	}
-	start, fresh := data, !doc.Has(skenvfile.User)
+	start, fresh := data, !doc.Has(skenvfile.SectionUser)
 	if fresh {
 		// `skenv init` semantics: the same skeleton and the same refusal.
 		if err := refusePublic(data, ext, mp); err != nil {
 			return ExitFatal, err
 		}
-		if start, err = manifest.AddUser(data, ext, nil); err != nil {
+		if start, err = skenvfile.AddUser(data, ext, nil); err != nil {
 			return ExitFatal, fmt.Errorf("manifest %s: %w", mp, err)
 		}
 	}
-	m, err := manifest.ParseIn(start, ext, filepath.Dir(mp))
+	m, err := skenvfile.ParseManifestIn(start, ext, filepath.Dir(mp))
 	if err != nil {
 		return ExitFatal, fmt.Errorf("manifest %s: %w", mp, err)
 	}
@@ -71,7 +70,7 @@ func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) 
 		if fresh {
 			e.infof("add [user] to %s", e.displayPath(mp))
 		}
-		if err := manifest.WriteFile(mp, r.out); err != nil {
+		if err := skenvfile.WriteFile(mp, r.out); err != nil {
 			return ExitFatal, fmt.Errorf("write manifest %s: %w", e.displayPath(mp), err)
 		}
 	}
@@ -93,11 +92,11 @@ func InitImport(ctx context.Context, env Env, dir, format, remote string, dryRun
 		return ExitFatal, err
 	}
 	ext := filepath.Ext(p.file)
-	start, err := manifest.AddUser(p.data, ext, nil)
+	start, err := skenvfile.AddUser(p.data, ext, nil)
 	if err != nil {
 		return ExitFatal, fmt.Errorf("%s: %w", p.show(p.file), err)
 	}
-	m, err := manifest.ParseIn(start, ext, filepath.Dir(p.file))
+	m, err := skenvfile.ParseManifestIn(start, ext, filepath.Dir(p.file))
 	if err != nil {
 		return ExitFatal, err
 	}
@@ -173,7 +172,7 @@ type imported struct {
 }
 
 // addVendor records the dependency v, found by how.
-func (r *imported) addVendor(v manifest.Dependency, how revSource, note string) {
+func (r *imported) addVendor(v skenvfile.Dependency, how revSource, note string) {
 	line := fmt.Sprintf("%s from %s (%s) at %.12s", v.Name, v.Repo, v.SkillDir, v.Commit)
 	if note != "" {
 		line += ": " + note
@@ -213,7 +212,7 @@ type found struct {
 // ownGroup is the skills linked from one skills directory of a working
 // copy.
 type ownGroup struct {
-	own   manifest.Checkout
+	own   skenvfile.Checkout
 	top   string // the working copy
 	names []string
 }
@@ -223,7 +222,7 @@ type ownGroup struct {
 // report and the manifest diff, and returns the new text and the lock
 // entries to remove. extraOwn is added as a checkout unless the import
 // adds its working copy already.
-func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *manifest.Checkout) (*imported, error) {
+func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *skenvfile.Checkout) (*imported, error) {
 	r := &imported{before: before, out: start}
 	lock, err := readSkillsLock(e.skillsLockPath(), skillsLockVersion)
 	if err != nil {
@@ -325,11 +324,11 @@ func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *manif
 		if len(g.names) < len(all) {
 			g.own.Include = g.names
 		}
-		g.own.ID = manifest.NewID(g.own.Repo, taken)
+		g.own.ID = skenvfile.NewID(g.own.Repo, taken)
 		taken[g.own.ID] = true
 		own = append(own, *g)
 	}
-	var vend []manifest.Dependency
+	var vend []skenvfile.Dependency
 	for _, name := range sortedKeys(vendors) {
 		v, how, note, err := e.lockVendor(name, lock.entries[name], vendors[name].resolved)
 		if err != nil {
@@ -360,23 +359,23 @@ func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *manif
 	out := start
 	for _, g := range own {
 		var err error
-		if out, err = manifest.AppendCheckout(out, ext, g.own); err != nil {
+		if out, err = skenvfile.AppendCheckout(out, ext, g.own); err != nil {
 			return nil, err
 		}
 		r.entries++
 	}
 	for _, v := range vend {
 		var err error
-		if out, err = manifest.AppendDependency(out, ext, skenvfile.User, v); err != nil {
+		if out, err = skenvfile.AppendDependency(out, ext, skenvfile.SectionUser, v); err != nil {
 			return nil, err
 		}
 		r.entries++
 	}
-	resolved := func(c manifest.Checkout) string { return e.manifest.Path(e.env.Home, c.CheckoutDir) }
+	resolved := func(c skenvfile.Checkout) string { return e.manifest.Path(e.env.Home, c.CheckoutDir) }
 	if extraOwn != nil && !slices.ContainsFunc(own, func(g ownGroup) bool { return samePath(resolved(g.own), resolved(*extraOwn)) }) {
 		extra := *extraOwn
-		extra.ID = manifest.NewID(extra.Repo, taken)
-		withExtra, err := manifest.AppendCheckout(out, ext, extra)
+		extra.ID = skenvfile.NewID(extra.Repo, taken)
+		withExtra, err := skenvfile.AppendCheckout(out, ext, extra)
 		if err == nil {
 			err = e.checkManifest(withExtra)
 		}
@@ -418,7 +417,7 @@ func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *manif
 // checkManifest parses the manifest text and makes it the engine's
 // manifest when its skills, checkouts listed, are valid.
 func (e *UserScope) checkManifest(data []byte) error {
-	m, err := manifest.ParseIn(data, filepath.Ext(e.manifestPath), filepath.Dir(e.manifestPath))
+	m, err := skenvfile.ParseManifestIn(data, filepath.Ext(e.manifestPath), filepath.Dir(e.manifestPath))
 	if err != nil {
 		return err
 	}
@@ -476,7 +475,7 @@ func (e *UserScope) ownOf(f found) (g *ownGroup, why string) {
 	if !fileExists(filepath.Join(f.resolved, "SKILL.md")) {
 		return nil, where + " without SKILL.md"
 	}
-	if err := manifest.ValidName(f.name); err != nil {
+	if err := skenvfile.ValidName(f.name); err != nil {
 		return nil, fmt.Sprintf("%s: %v", where, err)
 	}
 	remote, err := e.env.Git.Run(e.ctx, top, "config", "--get", "remote.origin.url")
@@ -500,7 +499,7 @@ func (e *UserScope) ownOf(f found) (g *ownGroup, why string) {
 		dir = "." // the repository of the manifest, wherever it is cloned
 	}
 	return &ownGroup{
-		own: manifest.Checkout{Repo: repo, CheckoutDir: dir, SkillsDir: filepath.ToSlash(filepath.Dir(rel))},
+		own: skenvfile.Checkout{Repo: repo, CheckoutDir: dir, SkillsDir: filepath.ToSlash(filepath.Dir(rel))},
 		top: top,
 	}, ""
 }
@@ -508,8 +507,8 @@ func (e *UserScope) ownOf(f found) (g *ownGroup, why string) {
 // lockVendor turns a lock entry into a dependency: how says how its commit
 // was found, and note why it is not an exact match. dir is the installed
 // copy, "" when there is none.
-func (e *scope) lockVendor(name string, le lockEntry, dir string) (v manifest.Dependency, how revSource, note string, err error) {
-	if err := manifest.ValidName(name); err != nil {
+func (e *scope) lockVendor(name string, le lockEntry, dir string) (v skenvfile.Dependency, how revSource, note string, err error) {
+	if err := skenvfile.ValidName(name); err != nil {
 		return v, revSourceUnknown, "", err
 	}
 	repo, err := lockRepo(le, e.hosts)
@@ -532,7 +531,7 @@ func (e *scope) lockVendor(name string, le lockEntry, dir string) (v manifest.De
 		return v, revSourceUnknown, "", err
 	}
 	folder := lockFolder(le.SkillPath)
-	v = manifest.Dependency{Name: name, Repo: repo, SkillDir: vendorPath(folder), Commit: rev}
+	v = skenvfile.Dependency{Name: name, Repo: repo, SkillDir: vendorPath(folder), Commit: rev}
 	file := "SKILL.md"
 	if folder != "" {
 		file = folder + "/SKILL.md"

@@ -6,13 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qunaxis/skenv/internal/config"
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/config"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 )
 
-func machineManifest(t *testing.T, machines string) *manifest.Manifest {
+func machineManifest(t *testing.T, machines string) *skenvfile.Manifest {
 	t.Helper()
-	m, err := manifest.ParseIn([]byte("[user.checkouts.skills]\nrepo = \"me/skills\"\ncheckout_dir = \"~/src/skills\"\n"+machines), ".toml", "/m")
+	m, err := skenvfile.ParseManifestIn([]byte("[user.checkouts.skills]\nrepo = \"me/skills\"\ncheckout_dir = \"~/src/skills\"\n"+machines), ".toml", "/m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestMachineOf(t *testing.T) {
 func TestCheckoutPathOf(t *testing.T) {
 	home := t.TempDir()
 	env := Env{Home: home, Hostname: "h", Getenv: func(string) string { return "" }}
-	m, err := manifest.ParseIn([]byte(`[user.checkouts.here]
+	m, err := skenvfile.ParseManifestIn([]byte(`[user.checkouts.here]
 repo = "me/a"
 checkout_dir = "."
 [user.checkouts.sibling]

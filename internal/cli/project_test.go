@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/schemas"
 )
@@ -445,7 +445,7 @@ func TestProjectWritesKeepFormat(t *testing.T) {
 			t.Chdir(dir)
 			vendors := func(names ...string) func([]byte, string) error {
 				return func(data []byte, ext string) error {
-					p, err := manifest.ParseProject(data, ext)
+					p, err := skenvfile.ParseProject(data, ext)
 					if err != nil {
 						return err
 					}

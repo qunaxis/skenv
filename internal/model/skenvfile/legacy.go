@@ -88,13 +88,13 @@ func (l *legacy) check(raw map[string]any) {
 		l.add("["+legacyRepoTable+"]", "[repository]")
 		l.repository(legacyRepoTable, repo)
 	}
-	l.repository(Repository, raw[Repository])
+	l.repository(SectionRepository, raw[SectionRepository])
 	if env, ok := raw[legacyEnvironmentTable]; ok {
 		l.add("["+legacyEnvironmentTable+"]", "[user]")
 		l.user(legacyEnvironmentTable, env)
 	}
-	l.user(User, raw[User])
-	l.project(raw[Project])
+	l.user(SectionUser, raw[SectionUser])
+	l.project(raw[SectionProject])
 }
 
 // repositoryKey is the replacement of a key of [repo].

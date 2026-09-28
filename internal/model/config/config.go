@@ -8,7 +8,7 @@
 //
 // The skenv file of a repository (skenv.toml with [repository], [user] and
 // [project]) is not configuration of the tool and is read by
-// internal/skenvfile.
+// internal/model/skenvfile.
 //
 // Unknown keys are errors; "$schema" is allowed for editors. `skenv init`,
 // `skenv clone` and `skenv use` edit the file in place: comments, other keys and their order stay.

@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/qunaxis/skenv/internal/config"
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/config"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
 	"github.com/qunaxis/skenv/internal/platform/paths"
 )
@@ -26,13 +26,13 @@ func Clone(ctx context.Context, env Env, repo, dir, format string, dryRun bool) 
 	}
 	// The manifest, with its declared hosts, is not cloned yet: only the
 	// built-in forms resolve here.
-	remote, err := manifest.Hosts(nil).Resolve(repo)
+	remote, err := skenvfile.Hosts(nil).Resolve(repo)
 	if err != nil {
 		return ExitFatal, fmt.Errorf("%w; a host declared in the manifest is not known before it is cloned, so pass the full URL", err)
 	}
 	defaultDir := dir == ""
 	if defaultDir {
-		dir = manifest.RepoName(remote.URL)
+		dir = skenvfile.RepoName(remote.URL)
 	}
 	// The config must hold an absolute path: skenv runs from any directory.
 	dir, err = filepath.Abs(paths.Expand(env.Home, dir))
@@ -77,11 +77,11 @@ func Clone(ctx context.Context, env Env, repo, dir, format string, dryRun bool) 
 // nothing is there yet: sync keeps that path up to date, so the manifest
 // must live in it. It returns where the clone is now.
 func moveToOwnPath(ctx context.Context, env Env, dir string) string {
-	file, err := manifest.Locate(dir)
+	file, err := skenvfile.Locate(dir)
 	if err != nil {
 		return dir
 	}
-	m, err := manifest.Load(file)
+	m, err := skenvfile.LoadManifest(file)
 	if err != nil {
 		return dir
 	}
@@ -113,14 +113,14 @@ func isEmptyDir(dir string) bool {
 
 // checkoutOf refuses dir unless it is the root of a git working copy whose
 // origin is remote.
-func checkoutOf(ctx context.Context, env Env, dir string, remote manifest.Remote) error {
+func checkoutOf(ctx context.Context, env Env, dir string, remote skenvfile.Remote) error {
 	show := homeShow(env.Home)
 	root, err := env.Git.Run(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil || !samePath(root, dir) {
 		return fmt.Errorf("%s exists and is not a git working copy; pass another <dir>", show(dir))
 	}
 	origin, err := env.Git.Run(ctx, dir, "config", "--get", "remote.origin.url")
-	if err != nil || manifest.NormalizeURL(origin) != manifest.NormalizeURL(remote.URL) {
+	if err != nil || skenvfile.NormalizeURL(origin) != skenvfile.NormalizeURL(remote.URL) {
 		return fmt.Errorf("%s exists and is a working copy of another repository (origin %q); pass another <dir>", show(dir), gitx.Mask(origin))
 	}
 	return nil
@@ -142,11 +142,11 @@ func Use(ctx context.Context, env Env, path, format string, dryRun bool) (int, e
 
 func use(ctx context.Context, env Env, path, format string, dryRun bool) (int, error) {
 	show := homeShow(env.Home)
-	file, err := manifest.Locate(path)
+	file, err := skenvfile.Locate(path)
 	if err != nil {
 		return ExitFatal, err
 	}
-	m, err := manifest.Load(file)
+	m, err := skenvfile.LoadManifest(file)
 	if err != nil {
 		return ExitFatal, err
 	}
@@ -160,7 +160,7 @@ func use(ctx context.Context, env Env, path, format string, dryRun bool) (int, e
 	}
 	replaced := ""
 	if prev, ok, _ := cfg.String("manifest"); ok {
-		if p, err := manifest.Locate(paths.Expand(env.Home, prev)); err != nil || !samePath(p, file) {
+		if p, err := skenvfile.Locate(paths.Expand(env.Home, prev)); err != nil || !samePath(p, file) {
 			replaced = prev
 		}
 	}
@@ -191,7 +191,7 @@ func use(ctx context.Context, env Env, path, format string, dryRun bool) (int, e
 // and the root of that checkout. sync then keeps a second working copy at
 // that path up to date and never pulls the checkout at dir, which holds
 // the manifest: changes pushed from other machines would not arrive.
-func ownElsewhere(ctx context.Context, env Env, m *manifest.Manifest, dir string) (root string, elsewhere []string, own []string) {
+func ownElsewhere(ctx context.Context, env Env, m *skenvfile.Manifest, dir string) (root string, elsewhere []string, own []string) {
 	root, err := env.Git.Run(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", nil, nil
@@ -208,7 +208,7 @@ func ownElsewhere(ctx context.Context, env Env, m *manifest.Manifest, dir string
 	pathOf := checkoutPathOf(env, m, mc)
 	for _, c := range m.CheckoutList() {
 		r, err := m.Remote(c.Repo)
-		if err != nil || manifest.NormalizeURL(r.URL) != manifest.NormalizeURL(origin) {
+		if err != nil || skenvfile.NormalizeURL(r.URL) != skenvfile.NormalizeURL(origin) {
 			continue
 		}
 		if p := pathOf(c); !samePath(p, root) {
@@ -232,7 +232,7 @@ func elsewhereAdvice(env Env, repo, p string) string {
 
 // warnOwnPath warns when the manifest checkout at dir is not the working
 // copy that its checkout names.
-func warnOwnPath(ctx context.Context, env Env, m *manifest.Manifest, dir string) {
+func warnOwnPath(ctx context.Context, env Env, m *skenvfile.Manifest, dir string) {
 	root, elsewhere, own := ownElsewhere(ctx, env, m, dir)
 	show := homeShow(env.Home)
 	for i, p := range elsewhere {

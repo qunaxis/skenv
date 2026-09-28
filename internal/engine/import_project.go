@@ -9,15 +9,14 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
-	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
 // agentDirs are the project directories of agents that the `skills` CLI
 // installs into (dir first) and project-own skills are looked for in, besides dir and
 // the mirrors of [project].
-var agentDirs = []string{manifest.DefaultProjectDir, ".claude/skills", ".pi/skills"}
+var agentDirs = []string{skenvfile.DefaultProjectDir, ".claude/skills", ".pi/skills"}
 
 // ImportProject runs `skenv import --project` in the git repository of
 // dir: it pins every skill of the project's skills-lock.json (the `skills`
@@ -50,7 +49,7 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 	if err != nil {
 		return ExitFatal, fmt.Errorf("%s: %w", homeShow(env.Home)(file), err)
 	}
-	start, fresh := data, !doc.Has(skenvfile.Project)
+	start, fresh := data, !doc.Has(skenvfile.SectionProject)
 	if fresh {
 		// The skills CLI links its copies into the other agent directories:
 		// mirrors.
@@ -60,11 +59,11 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 				mirrors = append(mirrors, d)
 			}
 		}
-		if start, err = manifest.AddProject(data, ext, mirrors); err != nil {
+		if start, err = skenvfile.AddProject(data, ext, mirrors); err != nil {
 			return ExitFatal, fmt.Errorf("%s: %w", homeShow(env.Home)(file), err)
 		}
 	}
-	p, err := manifest.ParseProject(start, ext)
+	p, err := skenvfile.ParseProject(start, ext)
 	if err != nil {
 		return ExitFatal, fmt.Errorf("%s: %w", homeShow(env.Home)(file), err)
 	}
@@ -92,7 +91,7 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 		if fresh {
 			e.infof("add [project] to %s", e.displayPath(file))
 		}
-		if err := manifest.WriteFile(file, r.out); err != nil {
+		if err := skenvfile.WriteFile(file, r.out); err != nil {
 			return ExitFatal, fmt.Errorf("write %s: %w", e.displayPath(file), err)
 		}
 	}
@@ -162,7 +161,7 @@ func (e *ProjectScope) importLock(before, start []byte, fresh bool) (*projectImp
 			continue
 		}
 		r.addVendor(v, how, note)
-		if out, err = manifest.AppendDependency(out, ext, skenvfile.Project, v); err != nil {
+		if out, err = skenvfile.AppendDependency(out, ext, skenvfile.SectionProject, v); err != nil {
 			return nil, err
 		}
 		r.entries++
@@ -173,7 +172,7 @@ func (e *ProjectScope) importLock(before, start []byte, fresh bool) (*projectImp
 			return nil, err
 		}
 	}
-	p, err := manifest.ParseProject(out, ext)
+	p, err := skenvfile.ParseProject(out, ext)
 	if err != nil {
 		return nil, fmt.Errorf("the imported [project] is invalid, nothing was written: %w", err)
 	}

@@ -21,10 +21,9 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/atomicfile"
 	"github.com/qunaxis/skenv/internal/platform/docedit"
-	"github.com/qunaxis/skenv/internal/skenvfile"
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -56,10 +55,10 @@ const (
 var CIs = []string{CIGitHub, CIGitLab}
 
 // DetectCI is the default CI system for a repository whose origin is on a
-// host of hostType (manifest.TypeGitLab, ...): GitLab CI on GitLab,
+// host of hostType (skenvfile.TypeGitLab, ...): GitLab CI on GitLab,
 // GitHub Actions on any other host.
 func DetectCI(hostType string) string {
-	if hostType == manifest.TypeGitLab {
+	if hostType == skenvfile.TypeGitLab {
 		return CIGitLab
 	}
 	return CIGitHub
@@ -134,12 +133,12 @@ type GitLabCI struct {
 // decode reads the [repository] section of doc into c and records which
 // CI tables it has.
 func (c *Config) decode(doc *skenvfile.Doc) error {
-	if err := doc.Decode(skenvfile.Repository, c); err != nil {
+	if err := doc.Decode(skenvfile.SectionRepository, c); err != nil {
 		return err
 	}
 	c.tables = nil
 	for _, ci := range CIs {
-		if doc.IsDefined(skenvfile.Repository, "ci", ci) {
+		if doc.IsDefined(skenvfile.SectionRepository, "ci", ci) {
 			c.tables = append(c.tables, ci)
 		}
 	}
@@ -161,10 +160,10 @@ func ReadRaw(root string) (*Config, bool, error) {
 	if err != nil {
 		return nil, true, err
 	}
-	if !doc.Has(skenvfile.Repository) {
+	if !doc.Has(skenvfile.SectionRepository) {
 		return nil, false, nil
 	}
-	c := &Config{File: file, HasUser: doc.Has(skenvfile.User)}
+	c := &Config{File: file, HasUser: doc.Has(skenvfile.SectionUser)}
 	if err := c.decode(doc); err != nil {
 		return nil, true, fmt.Errorf("%s: %w", file, err)
 	}
@@ -205,10 +204,10 @@ var VersionRe = regexp.MustCompile(VersionPattern)
 // [user]. ok is false when there is no [repository].
 func Parse(data []byte, ext string) (c *Config, ok bool, err error) {
 	doc, err := skenvfile.Parse(data, ext)
-	if err != nil || !doc.Has(skenvfile.Repository) {
+	if err != nil || !doc.Has(skenvfile.SectionRepository) {
 		return nil, false, err
 	}
-	c = &Config{File: ConfigFile, HasUser: doc.Has(skenvfile.User)}
+	c = &Config{File: ConfigFile, HasUser: doc.Has(skenvfile.SectionUser)}
 	if err := c.decode(doc); err != nil {
 		return nil, true, err
 	}
@@ -720,10 +719,10 @@ func Init(root, visibility, ci, format string, runner []string, dryRun, force bo
 		if err != nil {
 			return nil, nil, err
 		}
-		if doc.Has(skenvfile.Repository) {
+		if doc.Has(skenvfile.SectionRepository) {
 			return nil, nil, fmt.Errorf("%s already has [repository]; use `skenv repo apply` to regenerate the managed files", filepath.Base(file))
 		}
-		c.HasUser = doc.Has(skenvfile.User)
+		c.HasUser = doc.Has(skenvfile.SectionUser)
 		if data, err = os.ReadFile(file); err != nil {
 			return nil, nil, err
 		}
@@ -783,7 +782,7 @@ func addRepo(data []byte, ext string, c *Config) ([]byte, error) {
 		return nil, err
 	}
 	repo := docedit.Map{{Key: "template_version", Value: c.TemplateVersion}, {Key: "visibility", Value: c.Visibility}, {Key: "ci", Value: c.ciMap()}}
-	if err := d.Put(nil, skenvfile.Repository, repo, true); err != nil {
+	if err := d.Put(nil, skenvfile.SectionRepository, repo, true); err != nil {
 		return nil, err
 	}
 	out := d.Bytes()
@@ -847,7 +846,7 @@ func setHarness(data []byte, ext, version string) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := d.SetString([]any{skenvfile.Repository, "template_version"}, version); err != nil {
+		if err := d.SetString([]any{skenvfile.SectionRepository, "template_version"}, version); err != nil {
 			return nil, err
 		}
 		return d.Bytes(), nil

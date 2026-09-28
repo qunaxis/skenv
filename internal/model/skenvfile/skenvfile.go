@@ -1,5 +1,6 @@
-// Package skenvfile reads the skenv file of a repository:
-// skenv.toml (or skenv.yaml, skenv.yml, skenv.json) in its root.
+// Package skenvfile reads, validates and edits the skenv file of a
+// repository: skenv.toml (or skenv.yaml, skenv.yml, skenv.json) in its
+// root.
 //
 // The file has three optional top-level sections, independent of each
 // other (docs/adr/0002-config-format.md):
@@ -9,10 +10,11 @@
 //     init|upgrade`;
 //   - [user]: the manifest, the skills of the current OS user's agents
 //     (checkouts, dependencies, machines, agents, storage, git_hosts,
-//     unmanaged), edited by `skenv vendor add|update|remove`;
+//     unmanaged), edited by `skenv vendor add|update|remove`
+//     (Manifest, manifest.go; git_hosts: hosts.go);
 //   - [project]: the skills a project repository carries (dir, mirrors,
 //     mirrors_mode, git_hosts, dependencies, from), edited by `skenv
-//     vendor ... --project`.
+//     vendor ... --project` (Project, project.go).
 //
 // Keys of the format before skenv 0.6 are errors that name their
 // replacement (legacy.go); there is no legacy reading.
@@ -51,13 +53,13 @@ var Names = []string{"skenv.toml", "skenv.yaml", "skenv.yml", "skenv.json"}
 
 // Sections of the file.
 const (
-	Repository = "repository"
-	User       = "user"
-	Project    = "project"
+	SectionRepository = "repository"
+	SectionUser       = "user"
+	SectionProject    = "project"
 )
 
 // Sections lists the sections in the order the docs present them.
-var Sections = []string{Repository, User, Project}
+var Sections = []string{SectionRepository, SectionUser, SectionProject}
 
 // oldManifest is the manifest file of skenv before 0.4.
 const oldManifest = "env.toml"
@@ -286,7 +288,7 @@ func (d *Doc) IsDefined(keys ...string) bool {
 // TemplateVersion returns repository.template_version as written, "" when
 // it is missing or not a string.
 func (d *Doc) TemplateVersion() string {
-	r, _ := d.raw[Repository].(map[string]any)
+	r, _ := d.raw[SectionRepository].(map[string]any)
 	v, _ := r["template_version"].(string)
 	return v
 }

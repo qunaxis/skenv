@@ -17,10 +17,9 @@ import (
 	"github.com/qunaxis/skenv/internal/engine"
 	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/lint"
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
-	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
 func lintCmd(a *app) *cobra.Command {
@@ -401,7 +400,7 @@ func detectCI(ctx context.Context, env engine.Env, root string) (ci, why string)
 	if ci == harness.CIGitLab {
 		return ci, "detected from origin, on a GitLab host"
 	}
-	if r.Type == manifest.TypeGitHub {
+	if r.Type == skenvfile.TypeGitHub {
 		return ci, "detected from origin, on GitHub"
 	}
 	return ci, "the default, origin is not on a GitLab host"
@@ -409,11 +408,11 @@ func detectCI(ctx context.Context, env engine.Env, root string) (ci, why string)
 
 // declaredHosts are the hosts of the manifest that applies to root, nil
 // when there is none or it does not load.
-func declaredHosts(ctx context.Context, env engine.Env, root string) manifest.Hosts {
+func declaredHosts(ctx context.Context, env engine.Env, root string) skenvfile.Hosts {
 	file, err := skenvfile.Find(root)
 	if err == nil && file != "" {
-		if doc, err := skenvfile.Read(file); err == nil && doc.Has(skenvfile.User) {
-			m, err := manifest.Load(file)
+		if doc, err := skenvfile.Read(file); err == nil && doc.Has(skenvfile.SectionUser) {
+			m, err := skenvfile.LoadManifest(file)
 			if err != nil {
 				fmt.Fprintf(env.Stderr, "warning: hosts of %s not read, CI detection ignores them: %v\n", filepath.Base(file), err)
 				return nil
@@ -425,7 +424,7 @@ func declaredHosts(ctx context.Context, env engine.Env, root string) manifest.Ho
 	if err != nil {
 		return nil
 	}
-	m, err := manifest.Load(file)
+	m, err := skenvfile.LoadManifest(file)
 	if err != nil {
 		fmt.Fprintf(env.Stderr, "warning: hosts of the manifest not read, CI detection ignores them: %v\n", err)
 		return nil

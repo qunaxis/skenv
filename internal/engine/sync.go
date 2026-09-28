@@ -10,7 +10,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
 	"github.com/qunaxis/skenv/internal/state"
 )
@@ -20,7 +20,7 @@ const markerName = ".skenv"
 // marker is the content of the .skenv file in a directory skenv copied:
 // a dependency in the store or in a project (repo, path, rev; hash in a
 // project), or a copy in a project mirror (mirror, hash). Repo is the
-// canonical clone URL (manifest.Remote.URL), not the value written in the
+// canonical clone URL (skenvfile.Remote.URL), not the value written in the
 // skenv file. The marker is observed state, so its keys keep their names.
 type marker struct {
 	Repo   string `toml:"repo,omitempty"`
@@ -32,13 +32,13 @@ type marker struct {
 
 // matches reports whether the marker records the directory path of the
 // repository remote at rev.
-func (mk marker) matches(remote manifest.Remote, path, rev string) bool {
-	return manifest.NormalizeURL(mk.Repo) == manifest.NormalizeURL(remote.URL) && mk.Path == path && mk.Rev == rev
+func (mk marker) matches(remote skenvfile.Remote, path, rev string) bool {
+	return skenvfile.NormalizeURL(mk.Repo) == skenvfile.NormalizeURL(remote.URL) && mk.Path == path && mk.Rev == rev
 }
 
 // showRepo is how output names a repository: the value of the skenv file,
 // followed by its canonical URL when that differs, credentials masked.
-func (e *UserScope) showRepo(repo string, remote manifest.Remote) string {
+func (e *UserScope) showRepo(repo string, remote skenvfile.Remote) string {
 	if remote.URL == "" || remote.URL == repo {
 		return gitx.Mask(repo)
 	}
@@ -82,7 +82,7 @@ func writeMarker(dir string, mk marker) error {
 func (e *UserScope) Sync() (int, error) {
 	e.syncCheckouts()
 	// The manifest usually lives in a checkout that was just pulled.
-	m, err := manifest.Load(e.manifestPath)
+	m, err := skenvfile.LoadManifest(e.manifestPath)
 	if err != nil {
 		return ExitFatal, err
 	}
@@ -233,7 +233,7 @@ func (e *scope) ensureCache(repo, rev string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(root, manifest.CacheKey(resolved))
+	dir := filepath.Join(root, skenvfile.CacheKey(resolved))
 	if !e.cacheIsFor(dir, resolved) {
 		if err := e.cloneCache(git, url, dir); err != nil {
 			return "", fmt.Errorf("%w (%s)", err, remote.AccessHint())
@@ -254,14 +254,14 @@ func (e *scope) ensureCache(repo, rev string) (string, error) {
 }
 
 // cacheIsFor reports whether dir is a clone whose origin is resolved,
-// compared after manifest.NormalizeURL. A clone of another repository is
+// compared after skenvfile.NormalizeURL. A clone of another repository is
 // reported (credentials masked) so the caller clones again.
 func (e *scope) cacheIsFor(dir, resolved string) bool {
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 		return false
 	}
 	origin, err := e.env.Git.Run(e.ctx, dir, "remote", "get-url", "origin")
-	if err == nil && manifest.NormalizeURL(origin) == manifest.NormalizeURL(resolved) {
+	if err == nil && skenvfile.NormalizeURL(origin) == skenvfile.NormalizeURL(resolved) {
 		return true
 	}
 	if err != nil {
