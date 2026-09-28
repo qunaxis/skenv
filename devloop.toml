@@ -1,0 +1,51 @@
+# Config of the devloop-* agent skills (devloop-board, devloop-next,
+# devloop-orchestrate, devloop-status). The skills live in the owner's private
+# skills repository; key reference: devloop-board/references/config.md.
+# Check: python3 ~/.agents/skills/devloop-board/scripts/pm.py config
+# The process itself: .devloop/process.md
+
+[project]
+name = "skenv"
+repo = "qunaxis/skenv"
+instructions = "AGENTS.md"
+
+[board]
+number = 3                      # https://github.com/users/qunaxis/projects/3
+epic_prefix = "Epic"
+dependency_markers = ["Blocked by", "Depends on"]
+types = ["feature", "bug", "refactor", "docs", "test", "ci", "chore"]
+default_type = "refactor"
+phases = ["Harness", "Wave 0", "Wave 1", "Wave 2", "Wave 3"]
+# Executor model per task: label model:haiku|sonnet|opus (see .devloop/process.md)
+models = ["haiku", "sonnet", "opus"]
+model_label_prefix = "model:"
+
+# Areas: values of the Area field and labels area:<name>; skills are loaded by
+# the executor before touching code.
+[areas.code]
+skills = ["golang-refactoring", "golang-naming", "anti-slop-code"]
+description = "Go code and its tests"
+
+[areas.docs]
+skills = ["no-ai-slop"]
+description = "README, docs/, AGENTS.md, skills/skenv"
+
+[areas.ci]
+skills = []
+description = "GitHub Actions, Makefile, scripts, lint config"
+
+# docs/ is the published VitePress site: devloop notes live in .devloop/.
+[docs]
+status = ".devloop/status.md"
+process = ".devloop/process.md"
+# No per-task journal or decision files: the PR carries the result and
+# tactical decisions; lasting ones go into a why-comment or docs/adr/.
+journal = ""
+decisions = ""
+
+[orchestrate]
+worker_model = "sonnet"
+max_workers = 3
+reviewers = ["pr-review-toolkit:code-reviewer"]
+risk_reviewers = ["pr-review-toolkit:silent-failure-hunter", "pr-review-toolkit:pr-test-analyzer"]
+brief_rules = "Public repository: no secrets, tokens, private paths or internal data. Tests use a temporary $HOME and local bare repositories; never run sync, link, init, clone, use or autostart against the real home (the only exception is written in the issue itself). make check before every push."
