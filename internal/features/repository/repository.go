@@ -604,7 +604,7 @@ func setTemplateVersion(data []byte, ext, version string) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := d.SetString([]any{skenvfile.SectionRepository, "template_version"}, version); err != nil {
+		if err := d.SetString([]string{skenvfile.SectionRepository, "template_version"}, version); err != nil {
 			return nil, err
 		}
 		return d.Bytes(), nil

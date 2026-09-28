@@ -177,7 +177,7 @@ func isBlankOrComment(line string) bool {
 func SetDependencyCommit(data []byte, ext, section, name, commit string) ([]byte, error) {
 	if ext != ".toml" {
 		return editDoc(data, ext, section, func(d docedit.Doc) error {
-			return d.SetString([]any{section, "dependencies", name, "commit"}, commit)
+			return d.SetString([]string{section, "dependencies", name, "commit"}, commit)
 		})
 	}
 	lines := splitLines(data)
@@ -193,7 +193,7 @@ func SetDependencyCommit(data []byte, ext, section, name, commit string) ([]byte
 func SetFromCommit(data []byte, ext, id, commit string) ([]byte, error) {
 	if ext != ".toml" {
 		return editDoc(data, ext, SectionProject, func(d docedit.Doc) error {
-			return d.SetString([]any{SectionProject, "from", id, "commit"}, commit)
+			return d.SetString([]string{SectionProject, "from", id, "commit"}, commit)
 		})
 	}
 	lines := splitLines(data)
@@ -222,7 +222,7 @@ func setCommit(lines []string, blk block, ext, section, what, commit string) ([]
 func RemoveDependency(data []byte, ext, section, name string) ([]byte, error) {
 	if ext != ".toml" {
 		return editDoc(data, ext, section, func(d docedit.Doc) error {
-			return d.Remove([]any{section, "dependencies", name})
+			return d.Remove([]string{section, "dependencies", name})
 		})
 	}
 	lines := splitLines(data)
