@@ -63,7 +63,7 @@ func runNew(ctx context.Context, env engine.Env, o engine.Options, name, visibil
 		return engine.ExitFatal, usageError{fmt.Sprintf("new: --visibility must be private or public, got %q", visibility)}
 	}
 	o.ReadOnly = true
-	e, openErr := engine.Open(ctx, env, o)
+	e, openErr := engine.OpenUser(ctx, env, o)
 	if openErr == nil {
 		defer e.Close()
 	}

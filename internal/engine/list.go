@@ -56,32 +56,32 @@ type ListReport struct {
 // List prints every skill of the manifest with its source and whether it
 // is installed for the agents on this machine. It reads the file system
 // only: no fetch, no lock, no writes.
-func (e *Engine) List(asJSON bool) (int, error) {
+func (e *UserScope) List(asJSON bool) (int, error) {
 	skills, err := e.skills()
 	if err != nil {
 		return ExitFatal, err
 	}
-	r := &ListReport{Manifest: e.show(e.manifestPath), Store: e.show(e.store), Targets: []string{}, Skills: []ListEntry{}, NotCloned: []string{}, NoSkills: []string{}, Blocked: []string{}}
+	r := &ListReport{Manifest: e.displayPath(e.manifestPath), Store: e.displayPath(e.store), Targets: []string{}, Skills: []ListEntry{}, NotCloned: []string{}, NoSkills: []string{}, Blocked: []string{}}
 	for _, t := range e.targets {
-		r.Targets = append(r.Targets, e.show(t))
+		r.Targets = append(r.Targets, e.displayPath(t))
 	}
 	for _, s := range skills {
 		r.Skills = append(r.Skills, e.listEntry(s, e.installState(s)))
 	}
 	// The skills of the manifest that are not installed here: e.unselected
 	// holds them once skills() ran.
-	for _, c := range e.m.CheckoutList() {
+	for _, c := range e.manifest.CheckoutList() {
 		if why := e.checkoutBlocked(c); why != "" {
-			r.Blocked = append(r.Blocked, fmt.Sprintf("%s: %s %s", c.ID, e.show(e.checkoutPath(c)), gitx.Mask(why)))
+			r.Blocked = append(r.Blocked, fmt.Sprintf("%s: %s %s", c.ID, e.displayPath(e.checkoutPath(c)), gitx.Mask(why)))
 			continue
 		}
 		found, err := e.checkoutSkills(c)
 		if err != nil {
-			r.NotCloned = append(r.NotCloned, fmt.Sprintf("%s: %s (%s)", c.ID, gitx.Mask(c.Repo), e.show(e.checkoutPath(c))))
+			r.NotCloned = append(r.NotCloned, fmt.Sprintf("%s: %s (%s)", c.ID, gitx.Mask(c.Repo), e.displayPath(e.checkoutPath(c))))
 			continue
 		}
 		if len(found) == 0 {
-			r.NoSkills = append(r.NoSkills, fmt.Sprintf("%s: %s (%s)", c.ID, gitx.Mask(c.Repo), e.show(e.checkoutSkillsDir(c))))
+			r.NoSkills = append(r.NoSkills, fmt.Sprintf("%s: %s (%s)", c.ID, gitx.Mask(c.Repo), e.displayPath(e.checkoutSkillsDir(c))))
 		}
 		for _, name := range found {
 			if _, ok := e.unselected[name]; !ok {
@@ -94,7 +94,7 @@ func (e *Engine) List(asJSON bool) (int, error) {
 			r.Skills = append(r.Skills, e.listEntry(Skill{Name: name, Checkout: c}, state))
 		}
 	}
-	for _, d := range e.m.DependencyList() {
+	for _, d := range e.manifest.DependencyList() {
 		if e.unselected[d.Name] != "" {
 			r.Skills = append(r.Skills, e.listEntry(Skill{Name: d.Name, Dependency: d}, StateSkipped))
 		}
@@ -109,18 +109,18 @@ func (e *Engine) List(asJSON bool) (int, error) {
 	return ExitOK, e.printList(r)
 }
 
-func (e *Engine) listEntry(s Skill, state string) ListEntry {
+func (e *UserScope) listEntry(s Skill, state string) ListEntry {
 	if s.Dependency != nil {
 		return ListEntry{Name: s.Name, Kind: KindPinned, Source: gitx.Mask(s.Dependency.Repo), Version: s.Dependency.Commit, State: state}
 	}
-	return ListEntry{Name: s.Name, Kind: KindEditable, Source: gitx.Mask(s.Checkout.Repo), Checkout: s.Checkout.ID, Version: e.show(e.checkoutPath(s.Checkout)), State: state}
+	return ListEntry{Name: s.Name, Kind: KindEditable, Source: gitx.Mask(s.Checkout.Repo), Checkout: s.Checkout.ID, Version: e.displayPath(e.checkoutPath(s.Checkout)), State: state}
 }
 
 // installState is StateInstalled when the store entry of s and its link in
 // every agent directory are as sync leaves them, StateConflict when an
 // unmanaged path is in the way, StateNotSynced otherwise. It runs the
 // checks of doctor.
-func (e *Engine) installState(s Skill) string {
+func (e *UserScope) installState(s Skill) string {
 	var classes []string
 	add := func(class, _, _, _ string) { classes = append(classes, class) }
 	e.doctorStore(s, add)
@@ -141,7 +141,7 @@ func (e *Engine) installState(s Skill) string {
 	return StateInstalled
 }
 
-func (e *Engine) printList(r *ListReport) error {
+func (e *UserScope) printList(r *ListReport) error {
 	out := e.env.Stdout
 	fmt.Fprintf(out, "manifest  %s\nstore     %s\nagents    %s\n\n", r.Manifest, r.Store, strings.Join(r.Targets, ", "))
 	if len(r.Skills) == 0 {

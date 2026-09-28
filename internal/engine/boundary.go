@@ -54,14 +54,14 @@ func userDirs(ctx context.Context, env Env) []string {
 // inside a directory of the user scope: both would manage the same
 // entries. A home directory that is itself a git repository with
 // [project] and dir ".agents/skills" is the usual case.
-func (e *ProjectEngine) checkScope(user []string) error {
-	for _, rel := range append([]string{e.p.Dir}, e.p.Mirrors...) {
+func (e *ProjectScope) checkScope(user []string) error {
+	for _, rel := range append([]string{e.project.Dir}, e.project.Mirrors...) {
 		p := resolveExisting(e.abs(rel))
 		for _, u := range user {
 			ru := resolveExisting(u)
 			if p == ru || strings.HasPrefix(p, ru+string(filepath.Separator)) || strings.HasPrefix(ru, p+string(filepath.Separator)) {
 				return fmt.Errorf("[project] %s is the user-level skills directory %s, or overlaps it: the project and the user scope "+
-					"would manage the same entries; choose another dir or mirror in [project]", rel, e.show(u))
+					"would manage the same entries; choose another dir or mirror in [project]", rel, e.displayPath(u))
 			}
 		}
 	}
@@ -70,14 +70,14 @@ func (e *ProjectEngine) checkScope(user []string) error {
 
 // shadowed describes each skill of the project that is also installed for
 // the user: skenv installs both, and the agent decides which it uses.
-func (e *ProjectEngine) shadowed(user []string) []string {
+func (e *ProjectScope) shadowed(user []string) []string {
 	var out []string
 	for _, name := range e.skillNames() {
 		for _, u := range user {
 			p := filepath.Join(u, name)
 			if _, err := os.Lstat(p); err == nil {
 				out = append(out, fmt.Sprintf("skill %q is also installed for your user (%s); skenv keeps both, "+
-					"and the agent decides which one it uses", name, e.show(p)))
+					"and the agent decides which one it uses", name, e.displayPath(p)))
 				break
 			}
 		}

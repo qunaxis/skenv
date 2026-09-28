@@ -87,7 +87,7 @@ func TestMatchFolderHash(t *testing.T) {
 	git("commit", "--quiet", "-m", "fixture")
 	commit := git("rev-parse", "HEAD")
 
-	e := &base{env: Env{Git: gitx.Git{}}, ctx: context.Background()}
+	e := &scope{env: Env{Git: gitx.Git{}}, ctx: context.Background()}
 	for hash, want := range map[string]string{fixtureHash: commit, fixtureSnapshotHash: commit, strings.Repeat("0", 64): ""} {
 		got, err := e.matchFolderHash(repo, []string{commit}, "skills/fixture", hash)
 		if err != nil || got != want {

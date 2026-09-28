@@ -20,12 +20,12 @@ type VendorAddOptions struct {
 }
 
 // VendorAdd pins a third-party skill in the manifest and syncs it.
-func (e *Engine) VendorAdd(o VendorAddOptions) (int, error) {
+func (e *UserScope) VendorAdd(o VendorAddOptions) (int, error) {
 	d, err := e.resolveDependency(o)
 	if err != nil {
 		return ExitFatal, err
 	}
-	if _, ok := e.m.Dependencies[d.Name]; ok {
+	if _, ok := e.manifest.Dependencies[d.Name]; ok {
 		return ExitFatal, fmt.Errorf("dependency %q is already in the manifest; use `skenv vendor update %s`", d.Name, d.Name)
 	}
 	if err := e.editManifest(func(data []byte) ([]byte, error) {
@@ -33,7 +33,7 @@ func (e *Engine) VendorAdd(o VendorAddOptions) (int, error) {
 	}); err != nil {
 		return ExitFatal, err
 	}
-	e.changef("add dependency %s (%s@%.12s, %s) to %s", d.Name, d.Repo, d.Commit, d.SkillDir, e.show(e.manifestPath))
+	e.changef("add dependency %s (%s@%.12s, %s) to %s", d.Name, d.Repo, d.Commit, d.SkillDir, e.displayPath(e.manifestPath))
 	return e.syncNames([]string{d.Name}, fmt.Sprintf("add dependency %s", d.Name))
 }
 
@@ -43,7 +43,7 @@ func (e *Engine) VendorAdd(o VendorAddOptions) (int, error) {
 // element of the path unless o.Name). A relative local path in o.Repo is
 // made absolute against the working directory: the skenv file does not
 // live there.
-func (e *base) resolveDependency(o VendorAddOptions) (manifest.Dependency, error) {
+func (e *scope) resolveDependency(o VendorAddOptions) (manifest.Dependency, error) {
 	if o.Repo == "" {
 		return manifest.Dependency{}, fmt.Errorf("usage: skenv vendor add <repo> [--path P] [--name N] [--rev SHA]")
 	}
@@ -89,19 +89,19 @@ func isLocalPath(repo string) bool {
 // VendorUpdate moves dependencies to a new commit and syncs them: the
 // named ones, or every dependency when names is empty. Each goes to HEAD
 // of its default branch; rev pins a single named skill instead.
-func (e *Engine) VendorUpdate(names []string, rev string) (int, error) {
+func (e *UserScope) VendorUpdate(names []string, rev string) (int, error) {
 	if len(names) == 0 {
-		for _, d := range e.m.DependencyList() {
+		for _, d := range e.manifest.DependencyList() {
 			names = append(names, d.Name)
 		}
 		if len(names) == 0 {
-			e.infof("no dependencies in %s", e.show(e.manifestPath))
+			e.infof("no dependencies in %s", e.displayPath(e.manifestPath))
 			return e.finish("vendor")
 		}
 	}
 	for _, name := range names {
-		if _, ok := e.m.Dependencies[name]; !ok {
-			return ExitFatal, fmt.Errorf("dependency %q is not in the manifest %s", name, e.show(e.manifestPath))
+		if _, ok := e.manifest.Dependencies[name]; !ok {
+			return ExitFatal, fmt.Errorf("dependency %q is not in the manifest %s", name, e.displayPath(e.manifestPath))
 		}
 	}
 	names = slices.Compact(slices.Sorted(slices.Values(names)))
@@ -130,8 +130,8 @@ func (e *Engine) VendorUpdate(names []string, rev string) (int, error) {
 // default branch), shows the log of its skill directory and writes the new
 // commit into the manifest. It returns the new commit, or "" when the
 // skill is already there.
-func (e *Engine) updateRev(name, rev string) (string, error) {
-	d := e.m.Dependencies[name]
+func (e *UserScope) updateRev(name, rev string) (string, error) {
+	d := e.manifest.Dependencies[name]
 	newRev, err := e.nextRev("dependency "+name, name, d.Repo, d.SkillDir, d.Commit, rev)
 	if err != nil || newRev == "" {
 		return "", err
@@ -142,14 +142,14 @@ func (e *Engine) updateRev(name, rev string) (string, error) {
 	}); err != nil {
 		return "", err
 	}
-	e.changef("update dependency %s %.12s → %.12s in %s", name, old, newRev, e.show(e.manifestPath))
+	e.changef("update dependency %s %.12s → %.12s in %s", name, old, newRev, e.displayPath(e.manifestPath))
 	return newRev, nil
 }
 
 // nextRev resolves rev (default: HEAD of the default branch) of repo for
 // the entry what, pinned at old, and shows the log of dir between them
 // under the heading name. It returns "" when the entry is already there.
-func (e *base) nextRev(what, name, repo, dir, old, rev string) (string, error) {
+func (e *scope) nextRev(what, name, repo, dir, old, rev string) (string, error) {
 	cache, err := e.ensureCache(repo, "")
 	if err != nil {
 		return "", err
@@ -179,18 +179,18 @@ func (e *base) nextRev(what, name, repo, dir, old, rev string) (string, error) {
 
 // VendorRemove drops a dependency from the manifest and removes its
 // managed paths.
-func (e *Engine) VendorRemove(name string) (int, error) {
-	if _, ok := e.m.Dependencies[name]; !ok {
-		return ExitFatal, fmt.Errorf("dependency %q is not in the manifest %s", name, e.show(e.manifestPath))
+func (e *UserScope) VendorRemove(name string) (int, error) {
+	if _, ok := e.manifest.Dependencies[name]; !ok {
+		return ExitFatal, fmt.Errorf("dependency %q is not in the manifest %s", name, e.displayPath(e.manifestPath))
 	}
 	if err := e.editManifest(func(data []byte) ([]byte, error) {
 		return manifest.RemoveDependency(data, filepath.Ext(e.manifestPath), skenvfile.User, name)
 	}); err != nil {
 		return ExitFatal, err
 	}
-	e.changef("remove dependency %s from %s", name, e.show(e.manifestPath))
-	for _, p := range e.st.Paths() {
-		if entry := e.st.Managed[p]; entry.Skill == name {
+	e.changef("remove dependency %s from %s", name, e.displayPath(e.manifestPath))
+	for _, p := range e.state.Paths() {
+		if entry := e.state.Managed[p]; entry.Skill == name {
 			e.removeManaged(p, entry)
 		}
 	}
@@ -200,7 +200,7 @@ func (e *Engine) VendorRemove(name string) (int, error) {
 
 // editManifest applies edit to the manifest text, validates the result,
 // writes it (unless --dry-run) and reloads it.
-func (e *Engine) editManifest(edit func([]byte) ([]byte, error)) error {
+func (e *UserScope) editManifest(edit func([]byte) ([]byte, error)) error {
 	data, err := e.readSkenvFile(e.manifestPath)
 	if err != nil {
 		return err
@@ -219,7 +219,7 @@ func (e *Engine) editManifest(edit func([]byte) ([]byte, error)) error {
 	}
 	// Name clashes with the skills of checkouts (M1) are only visible with
 	// the checkouts listed; check before writing so a bad edit never lands.
-	prev := e.m
+	prev := e.manifest
 	restore := func() { _ = e.setManifest(prev) }
 	if err := e.setManifest(m); err != nil {
 		restore()
@@ -231,13 +231,13 @@ func (e *Engine) editManifest(edit func([]byte) ([]byte, error)) error {
 	}
 	if err := e.writeSkenvFile(e.manifestPath, out); err != nil {
 		restore()
-		return fmt.Errorf("write manifest %s: %w", e.show(e.manifestPath), err)
+		return fmt.Errorf("write manifest %s: %w", e.displayPath(e.manifestPath), err)
 	}
 	return nil
 }
 
 // syncNames vendors and links the named skills after a manifest edit.
-func (e *Engine) syncNames(names []string, hint string) (int, error) {
+func (e *UserScope) syncNames(names []string, hint string) (int, error) {
 	skills, err := e.skills()
 	if err != nil {
 		return ExitFatal, err
@@ -267,7 +267,7 @@ func (e *Engine) syncNames(names []string, hint string) (int, error) {
 	return e.finish("vendor")
 }
 
-func (e *Engine) commitHint(msg string) {
+func (e *UserScope) commitHint(msg string) {
 	if e.opts.DryRun {
 		return
 	}
@@ -276,15 +276,15 @@ func (e *Engine) commitHint(msg string) {
 	// `git commit -- <file>` fails on a file git does not track yet.
 	add := ""
 	if !e.env.Git.OK(e.ctx, dir, "ls-files", "--error-unmatch", "--", name) {
-		add = fmt.Sprintf("  git -C %s add -- %s\n", e.show(dir), name)
+		add = fmt.Sprintf("  git -C %s add -- %s\n", e.displayPath(dir), name)
 	}
 	e.infof("manifest changed but not committed; to commit:\n%s  git -C %s commit -m %q -- %s",
-		add, e.show(dir), "chore(manifest): "+msg, name)
+		add, e.displayPath(dir), "chore(manifest): "+msg, name)
 }
 
 // resolveRev returns the full SHA for rev, or the HEAD of the remote's
 // default branch when rev is empty.
-func (e *base) resolveRev(cache, repo, rev string) (string, error) {
+func (e *scope) resolveRev(cache, repo, rev string) (string, error) {
 	if rev == "" {
 		out, err := e.env.Git.Run(e.ctx, cache, "ls-remote", "origin", "HEAD")
 		if err != nil {
@@ -308,7 +308,7 @@ func (e *base) resolveRev(cache, repo, rev string) (string, error) {
 
 // findSkillPath returns the directory holding SKILL.md at rev: the given
 // path (verified) or the only such directory in the repository.
-func (e *base) findSkillPath(cache, rev, want string) (string, error) {
+func (e *scope) findSkillPath(cache, rev, want string) (string, error) {
 	if want != "" {
 		want = path.Clean(strings.Trim(want, "/"))
 		if want == "" {

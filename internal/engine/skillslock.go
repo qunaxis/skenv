@@ -89,7 +89,7 @@ func dirName(key string) string {
 // skillsLockPath is where the `skills` CLI keeps its global lock:
 // $XDG_STATE_HOME/skills/.skill-lock.json when XDG_STATE_HOME is set,
 // ~/.agents/.skill-lock.json otherwise.
-func (e *Engine) skillsLockPath() string {
+func (e *UserScope) skillsLockPath() string {
 	if dir := e.env.Getenv("XDG_STATE_HOME"); dir != "" {
 		return filepath.Join(dir, "skills", ".skill-lock.json")
 	}
@@ -257,7 +257,7 @@ const (
 // deleted), the commit whose folder holds the files of the installed copy
 // at dir (when there is one), and at last the tip. tip names the branch
 // searched.
-func (e *base) lockRev(cache, repo string, le lockEntry, dir string) (rev string, how int, tip string, err error) {
+func (e *scope) lockRev(cache, repo string, le lockEntry, dir string) (rev string, how int, tip string, err error) {
 	tip = "the default branch"
 	if le.Ref != "" {
 		tip = le.Ref
@@ -303,7 +303,7 @@ func (e *base) lockRev(cache, repo string, le lockEntry, dir string) (rev string
 
 // lockTip is the commit at ref: a branch, a tag or a commit SHA (short
 // ones too); HEAD of the default branch when ref is empty.
-func (e *base) lockTip(cache, repo, ref string) (string, error) {
+func (e *scope) lockTip(cache, repo, ref string) (string, error) {
 	if ref == "" {
 		return e.resolveRev(cache, repo, "")
 	}
@@ -334,7 +334,7 @@ func (e *base) lockTip(cache, repo, ref string) (string, error) {
 // starting with the ones made by updatedAt (else installedAt): the
 // installed version cannot be newer. Later commits follow, in case of
 // clock skew.
-func (e *base) candidates(cache, head, folder string, le lockEntry) ([]string, error) {
+func (e *scope) candidates(cache, head, folder string, le lockEntry) ([]string, error) {
 	args := []string{"log", "--format=%H %ct", head}
 	if folder != "" {
 		args = append(args, "--", folder)
@@ -366,7 +366,7 @@ func (e *base) candidates(cache, head, folder string, le lockEntry) ([]string, e
 }
 
 // folderTree is the tree id of folder at commit.
-func (e *base) folderTree(cache, commit, folder string) (string, error) {
+func (e *scope) folderTree(cache, commit, folder string) (string, error) {
 	return e.env.Git.Run(e.ctx, cache, "rev-parse", "--verify", "--quiet", commit+":"+folder)
 }
 
@@ -381,7 +381,7 @@ func skipCopied(name string, dir bool) bool {
 
 // commitBlobs maps each file of folder at commit to its blob id, without
 // the files the `skills` CLI does not copy.
-func (e *base) commitBlobs(cache, commit, folder string) (map[string]string, error) {
+func (e *scope) commitBlobs(cache, commit, folder string) (map[string]string, error) {
 	out, err := e.env.Git.Run(e.ctx, cache, "ls-tree", "-r", "-z", commit+":"+folder)
 	if err != nil {
 		return nil, err

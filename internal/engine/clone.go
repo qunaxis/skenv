@@ -259,11 +259,11 @@ func samePath(a, b string) bool {
 // repository holding the manifest but names another working copy: sync
 // never pulls the manifest checkout then. It returns that checkout and one
 // detail per entry.
-func (e *Engine) manifestElsewhere() (root string, details []string) {
-	root, elsewhere, own := ownElsewhere(e.ctx, e.env, e.m, filepath.Dir(e.manifestPath))
+func (e *UserScope) manifestElsewhere() (root string, details []string) {
+	root, elsewhere, own := ownElsewhere(e.ctx, e.env, e.manifest, filepath.Dir(e.manifestPath))
 	for i, p := range elsewhere {
 		details = append(details, fmt.Sprintf("the manifest is not in the working copy of checkout %s (%s): sync pulls that one and never this checkout, "+
-			"so manifest changes from other machines do not arrive; %s", own[i], e.show(p), elsewhereAdvice(e.env, e.m.Checkouts[own[i]].Repo, p)))
+			"so manifest changes from other machines do not arrive; %s", own[i], e.displayPath(p), elsewhereAdvice(e.env, e.manifest.Checkouts[own[i]].Repo, p)))
 	}
 	return root, details
 }

@@ -536,7 +536,7 @@ are files committed with the project; ` + "`skenv doctor --project`" + ` checks 
 skenv list`,
 		Args: nArgs(0),
 		RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
-			e, err := engine.Open(ctx, env, o)
+			e, err := engine.OpenUser(ctx, env, o)
 			if err != nil {
 				return engine.ExitFatal, err
 			}
@@ -719,7 +719,7 @@ skenv sync --project`,
 					return e.Sync()
 				}
 			}
-			e, err := engine.Open(ctx, env, o)
+			e, err := engine.OpenUser(ctx, env, o)
 			if err != nil {
 				return engine.ExitFatal, err
 			}
@@ -801,7 +801,7 @@ skenv doctor --project`,
 				defer e.Close()
 				return e.Doctor(asJSON)
 			}
-			e, err := engine.Open(ctx, env, o)
+			e, err := engine.OpenUser(ctx, env, o)
 			if err != nil {
 				return engine.ExitFatal, err
 			}
@@ -847,7 +847,7 @@ func vendorCmd(a *app) *cobra.Command {
 				if file != "" {
 					v, err = engine.OpenProject(ctx, env, f.o, file)
 				} else {
-					v, err = engine.Open(ctx, env, f.o)
+					v, err = engine.OpenUser(ctx, env, f.o)
 				}
 				if err != nil {
 					return engine.ExitFatal, err
@@ -1087,7 +1087,7 @@ skenv config show`,
 			if err != nil {
 				return engine.ExitFatal, err
 			}
-			e, err := engine.Open(ctx, env, o)
+			e, err := engine.OpenUser(ctx, env, o)
 			if err != nil {
 				return engine.ExitFatal, err
 			}

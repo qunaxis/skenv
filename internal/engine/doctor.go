@@ -61,13 +61,13 @@ type DoctorReport struct {
 
 // Doctor compares the machine with the manifest. It changes no skill, link
 // or file, but runs `git fetch` in the checkouts.
-func (e *Engine) Doctor(asJSON bool) (int, error) {
-	r := &DoctorReport{Manifest: e.show(e.manifestPath), Store: e.show(e.store), Issues: []Issue{}, Warnings: []string{}}
+func (e *UserScope) Doctor(asJSON bool) (int, error) {
+	r := &DoctorReport{Manifest: e.displayPath(e.manifestPath), Store: e.displayPath(e.store), Issues: []Issue{}, Warnings: []string{}}
 	for _, t := range e.targets {
-		r.Targets = append(r.Targets, e.show(t))
+		r.Targets = append(r.Targets, e.displayPath(t))
 	}
 	add := func(class, skill, p, detail string) {
-		r.Issues = append(r.Issues, Issue{Class: class, Skill: skill, Path: e.show(p), Detail: detail})
+		r.Issues = append(r.Issues, Issue{Class: class, Skill: skill, Path: e.displayPath(p), Detail: detail})
 	}
 	warn := func(format string, args ...any) {
 		r.Warnings = append(r.Warnings, gitx.Mask(fmt.Sprintf(format, args...)))
@@ -108,12 +108,12 @@ func (e *Engine) Doctor(asJSON bool) (int, error) {
 		}
 	}
 
-	for _, p := range e.st.Paths() {
+	for _, p := range e.state.Paths() {
 		if _, ok := want[p]; ok {
 			continue
 		}
 		if _, err := os.Lstat(p); err == nil {
-			skill := e.st.Managed[p].Skill
+			skill := e.state.Managed[p].Skill
 			detail := "managed by skenv but no longer in the manifest; `skenv sync` removes it"
 			if why, ok := e.unselected[skill]; ok {
 				detail = why + "; `skenv sync` removes it"
@@ -129,7 +129,7 @@ func (e *Engine) Doctor(asJSON bool) (int, error) {
 		}
 		for _, de := range entries {
 			p := filepath.Join(dir, de.Name())
-			if strings.HasPrefix(de.Name(), ".") || e.isClaudeSynced(p) || e.m.IsUnmanaged(de.Name()) || e.owned(p) {
+			if strings.HasPrefix(de.Name(), ".") || e.isClaudeSynced(p) || e.manifest.IsUnmanaged(de.Name()) || e.owned(p) {
 				continue
 			}
 			if _, ok := want[p]; ok {
@@ -150,11 +150,11 @@ func (e *Engine) Doctor(asJSON bool) (int, error) {
 	return ExitOK, nil
 }
 
-func (e *Engine) doctorOwn(add func(class, skill, p, detail string), warn func(string, ...any)) {
-	for _, c := range e.m.CheckoutList() {
+func (e *UserScope) doctorOwn(add func(class, skill, p, detail string), warn func(string, ...any)) {
+	for _, c := range e.manifest.CheckoutList() {
 		dir := e.checkoutPath(c)
 		if _, err := os.Stat(dir); err != nil {
-			remote, _ := e.m.Remote(c.Repo)
+			remote, _ := e.manifest.Remote(c.Repo)
 			add(ClassMissing, "", dir, fmt.Sprintf("checkout %s (%s) is not cloned; run `skenv sync`", c.ID, e.showRepo(c.Repo, remote)))
 			continue
 		}
@@ -164,25 +164,25 @@ func (e *Engine) doctorOwn(add func(class, skill, p, detail string), warn func(s
 		}
 		switch v, ok, err := harness.Version(dir); {
 		case err != nil:
-			warn("%s: %v", e.show(dir), err)
+			warn("%s: %v", e.displayPath(dir), err)
 		case ok && harness.Compare(v, harness.Latest) < 0:
-			warn("%s: template_version %s is older than %s of this skenv; run `skenv repo upgrade` there", e.show(dir), v, harness.Latest)
+			warn("%s: template_version %s is older than %s of this skenv; run `skenv repo upgrade` there", e.displayPath(dir), v, harness.Latest)
 		}
 		if out, err := e.env.Git.Run(e.ctx, dir, "status", "--porcelain"); err == nil && out != "" {
 			n := len(strings.Split(out, "\n"))
 			add(ClassDirty, "", dir, fmt.Sprintf("%d uncommitted changes", n))
 		}
 		if _, err := e.env.Git.Run(e.ctx, dir, "fetch", "--quiet"); err != nil {
-			warn("%s: git fetch failed, ahead/behind may be stale: %v", e.show(dir), err)
+			warn("%s: git fetch failed, ahead/behind may be stale: %v", e.displayPath(dir), err)
 		}
 		if target, err := e.targetBranch(dir, c); err != nil {
-			warn("%s: the default branch of origin is unknown; set branch of checkout %s", e.show(dir), c.ID)
+			warn("%s: the default branch of origin is unknown; set branch of checkout %s", e.displayPath(dir), c.ID)
 		} else if cur := e.currentBranch(dir); cur != target {
 			add(ClassWrongBranch, "", dir, fmt.Sprintf("on %s; sync keeps it on %s and does not update it now: switch back (git switch %s) or set branch of checkout %s", onBranch(cur), target, target, c.ID))
 		}
 		out, err := e.env.Git.Run(e.ctx, dir, "rev-list", "--left-right", "--count", "HEAD...@{upstream}")
 		if err != nil {
-			warn("%s: no upstream branch, cannot compare with origin", e.show(dir))
+			warn("%s: no upstream branch, cannot compare with origin", e.displayPath(dir))
 			continue
 		}
 		f := strings.Fields(out)
@@ -200,7 +200,7 @@ func (e *Engine) doctorOwn(add func(class, skill, p, detail string), warn func(s
 	}
 }
 
-func (e *Engine) doctorStore(s Skill, add func(class, skill, p, detail string)) {
+func (e *UserScope) doctorStore(s Skill, add func(class, skill, p, detail string)) {
 	p := e.storePath(s.Name)
 	fi, err := os.Lstat(p)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -229,7 +229,7 @@ func (e *Engine) doctorStore(s Skill, add func(class, skill, p, detail string)) 
 		return
 	}
 	d := s.Dependency
-	remote, _ := e.m.Remote(d.Repo)
+	remote, _ := e.manifest.Remote(d.Repo)
 	if !mk.matches(remote, d.SkillDir, d.Commit) {
 		add(ClassWrongRev, s.Name, p, fmt.Sprintf("store has %s@%.12s (%s), manifest wants %s@%.12s (%s); run `skenv sync`",
 			gitx.Mask(mk.Repo), mk.Rev, mk.Path, gitx.Mask(remote.URL), d.Commit, d.SkillDir))
@@ -237,7 +237,7 @@ func (e *Engine) doctorStore(s Skill, add func(class, skill, p, detail string)) 
 }
 
 // checkLink verifies that p is a managed symlink to dest that resolves.
-func (e *Engine) checkLink(p, dest, skill string, add func(class, skill, p, detail string)) {
+func (e *UserScope) checkLink(p, dest, skill string, add func(class, skill, p, detail string)) {
 	if !e.owned(p) {
 		add(ClassConflict, skill, p, "exists but is not managed by skenv (or was replaced since); `skenv sync --adopt` backs it up and replaces it")
 		return
@@ -260,14 +260,14 @@ func (e *Engine) checkLink(p, dest, skill string, add func(class, skill, p, deta
 	}
 }
 
-func (e *Engine) printDoctor(r *DoctorReport, asJSON bool) error {
+func (e *UserScope) printDoctor(r *DoctorReport, asJSON bool) error {
 	ok := fmt.Sprintf("ok: %d skills match %s (store %s, targets %s)", r.Skills, r.Manifest, r.Store, strings.Join(r.Targets, ", "))
 	return e.printReport(r, asJSON, r.Warnings, r.Issues, ok)
 }
 
 // printReport prints a doctor report: as JSON, or the warnings on stderr
 // and okLine or a table of the issues on stdout.
-func (e *base) printReport(report any, asJSON bool, warnings []string, issues []Issue, okLine string) error {
+func (e *scope) printReport(report any, asJSON bool, warnings []string, issues []Issue, okLine string) error {
 	out := e.env.Stdout
 	if asJSON {
 		enc := json.NewEncoder(out)

@@ -56,9 +56,9 @@ const (
 	ExitFatal    = 2 // the command could not run
 )
 
-// base is what every command shares: the outside world, the flags, the
+// scope is what every command shares: the outside world, the flags, the
 // output with its counters and the vendor cache.
-type base struct {
+type scope struct {
 	env       Env
 	opts      Options
 	layout    paths.Layout
@@ -86,16 +86,16 @@ type base struct {
 	unresolved int
 }
 
-func newBase(ctx context.Context, env Env, opts Options) base {
+func newBase(ctx context.Context, env Env, opts Options) scope {
 	if env.Now == nil {
 		env.Now = time.Now
 	}
-	return base{env: env, opts: opts, layout: paths.Layout{Home: env.Home}, ctx: ctx}
+	return scope{env: env, opts: opts, layout: paths.Layout{Home: env.Home}, ctx: ctx}
 }
 
 // readSkenvFile returns the skenv file at file as the command sees it: with
 // the edits it made so far under --dry-run.
-func (e *base) readSkenvFile(file string) ([]byte, error) {
+func (e *scope) readSkenvFile(file string) ([]byte, error) {
 	if e.pending != nil {
 		return e.pending, nil
 	}
@@ -104,7 +104,7 @@ func (e *base) readSkenvFile(file string) ([]byte, error) {
 
 // writeSkenvFile writes the edited skenv file, or keeps it in memory
 // under --dry-run.
-func (e *base) writeSkenvFile(file string, data []byte) error {
+func (e *scope) writeSkenvFile(file string, data []byte) error {
 	if e.opts.DryRun {
 		e.pending = data
 		return nil
@@ -112,14 +112,14 @@ func (e *base) writeSkenvFile(file string, data []byte) error {
 	return manifest.WriteFile(file, data)
 }
 
-// Engine is one command invocation over a loaded manifest and state.
-type Engine struct {
-	base
+// UserScope is one command invocation over a loaded manifest and state.
+type UserScope struct {
+	scope
 	manifestPath string
-	m            *manifest.Manifest
+	manifest     *manifest.Manifest
 	store        string
 	targets      []string
-	st           *state.State
+	state        *state.State
 	stateDirty   bool
 
 	// machine is the name of this machine, machineFrom where it came
@@ -186,8 +186,8 @@ func noManifest(ctx context.Context, env Env) error {
 	return fmt.Errorf("%w\nthis repository has a manifest (%s): run `skenv use .` to use it on this machine", ErrNoManifest, filepath.Base(file))
 }
 
-// Open loads the manifest and state.
-func Open(ctx context.Context, env Env, opts Options) (*Engine, error) {
+// OpenUser loads the manifest and state.
+func OpenUser(ctx context.Context, env Env, opts Options) (*UserScope, error) {
 	if err := gitx.Available(); err != nil {
 		return nil, err
 	}
@@ -204,10 +204,10 @@ func Open(ctx context.Context, env Env, opts Options) (*Engine, error) {
 
 // open takes the lock and loads the state for the manifest m of the skenv
 // file mp, which need not exist yet (`init --import`).
-func open(ctx context.Context, env Env, opts Options, mp string, m *manifest.Manifest) (*Engine, error) {
-	e := &Engine{base: newBase(ctx, env, opts), manifestPath: mp}
+func open(ctx context.Context, env Env, opts Options, mp string, m *manifest.Manifest) (*UserScope, error) {
+	e := &UserScope{scope: newBase(ctx, env, opts), manifestPath: mp}
 	if !opts.ReadOnly && !opts.DryRun {
-		if err := e.lock(); err != nil {
+		if err := e.acquireLock(); err != nil {
 			return nil, err
 		}
 	}
@@ -217,7 +217,7 @@ func open(ctx context.Context, env Env, opts Options, mp string, m *manifest.Man
 		e.Close()
 		return nil, err
 	}
-	e.st = st
+	e.state = st
 	if err := e.setManifest(m); err != nil {
 		e.Close()
 		return nil, err
@@ -227,8 +227,8 @@ func open(ctx context.Context, env Env, opts Options, mp string, m *manifest.Man
 
 // setManifest resolves m on this machine: the machine and its rules, the
 // store and the agent directories.
-func (e *Engine) setManifest(m *manifest.Manifest) error {
-	e.m = m
+func (e *UserScope) setManifest(m *manifest.Manifest) error {
+	e.manifest = m
 	e.hosts = m.GitHosts
 	e.hostsDir = m.Dir
 	e.blocked = map[string]string{}
@@ -241,23 +241,23 @@ func (e *Engine) setManifest(m *manifest.Manifest) error {
 }
 
 // agentSelection is user.agents with its paths resolved.
-func (e *Engine) agentSelection() agents.Selection {
-	a := e.m.Agents
+func (e *UserScope) agentSelection() agents.Selection {
+	a := e.manifest.Agents
 	sel := agents.Selection{Enabled: a.Enabled, Paths: map[string]string{}}
 	for name, p := range a.Paths {
-		sel.Paths[name] = e.m.Path(e.env.Home, p)
+		sel.Paths[name] = e.manifest.Path(e.env.Home, p)
 	}
 	for _, d := range a.ExtraDirs {
-		sel.ExtraDirs = append(sel.ExtraDirs, e.m.Path(e.env.Home, d))
+		sel.ExtraDirs = append(sel.ExtraDirs, e.manifest.Path(e.env.Home, d))
 	}
 	return sel
 }
 
 // resolveMachine sets the machine of e and its rules (see machineOf).
-func (e *Engine) resolveMachine() error {
-	mc, err := machineOf(e.env, e.m)
+func (e *UserScope) resolveMachine() error {
+	mc, err := machineOf(e.env, e.manifest)
 	if err != nil {
-		return fmt.Errorf("%w (manifest %s)", err, e.show(e.manifestPath))
+		return fmt.Errorf("%w (manifest %s)", err, e.displayPath(e.manifestPath))
 	}
 	e.machine, e.machineFrom, e.rules, e.hasRules = mc.name, mc.from, mc.rules, mc.has
 	return nil
@@ -331,12 +331,12 @@ type Skill struct {
 
 // checkoutPath is the resolved working copy path of c: its checkout_dir,
 // or the override of this machine.
-func (e *Engine) checkoutPath(c *manifest.Checkout) string {
-	return checkoutPathOf(e.env, e.m, machine{name: e.machine, rules: e.rules, has: e.hasRules})(c)
+func (e *UserScope) checkoutPath(c *manifest.Checkout) string {
+	return checkoutPathOf(e.env, e.manifest, machine{name: e.machine, rules: e.rules, has: e.hasRules})(c)
 }
 
 // checkoutSkillsDir is <checkout path>/<skills_dir> of c.
-func (e *Engine) checkoutSkillsDir(c *manifest.Checkout) string {
+func (e *UserScope) checkoutSkillsDir(c *manifest.Checkout) string {
 	return filepath.Join(e.checkoutPath(c), filepath.FromSlash(c.SkillsDir))
 }
 
@@ -364,7 +364,7 @@ func checkoutFound(dir string) ([]string, error) {
 // checkoutSkills lists the skills of the checkout c. A working copy
 // without its skills directory has no skills yet; only a working copy that
 // is missing (not cloned yet) or unreadable is an error.
-func (e *Engine) checkoutSkills(c *manifest.Checkout) ([]string, error) {
+func (e *UserScope) checkoutSkills(c *manifest.Checkout) ([]string, error) {
 	found, err := checkoutFound(e.checkoutSkillsDir(c))
 	if errors.Is(err, fs.ErrNotExist) {
 		if fi, serr := os.Stat(e.checkoutPath(c)); serr == nil && fi.IsDir() {
@@ -375,7 +375,7 @@ func (e *Engine) checkoutSkills(c *manifest.Checkout) ([]string, error) {
 }
 
 // machineRule names the rules of this machine in messages.
-func (e *Engine) machineRule() string {
+func (e *UserScope) machineRule() string {
 	if bareKey.MatchString(e.machine) {
 		return "user.machines." + e.machine
 	}
@@ -387,11 +387,11 @@ var bareKey = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 // skills lists every skill of the manifest that this machine installs.
 // Checkouts that are not cloned yet contribute no skills.
-func (e *Engine) skills() ([]Skill, error) {
+func (e *UserScope) skills() ([]Skill, error) {
 	selected := map[string][]string{}
 	e.checkoutUnavailable = false
 	e.unselected = map[string]string{}
-	for _, c := range e.m.CheckoutList() {
+	for _, c := range e.manifest.CheckoutList() {
 		dir := e.checkoutSkillsDir(c)
 		if e.checkoutBlocked(c) != "" {
 			// Not the declared repository: none of its skills, and no
@@ -407,13 +407,13 @@ func (e *Engine) skills() ([]Skill, error) {
 		// include and exclude select from the repository; M1 is checked on
 		// the selection, before the machine rules, so the manifest is valid
 		// or not the same way on every machine.
-		sel, err := c.Select(found, e.show(dir))
+		sel, err := c.Select(found, e.displayPath(dir))
 		if err != nil {
-			return nil, fmt.Errorf("manifest %s: %w", e.show(e.manifestPath), err)
+			return nil, fmt.Errorf("manifest %s: %w", e.displayPath(e.manifestPath), err)
 		}
 		for _, name := range sel {
 			if err := manifest.ValidName(name); err != nil {
-				e.warnf("skipping %s: %v", e.show(filepath.Join(dir, name)), err)
+				e.warnf("skipping %s: %v", e.displayPath(filepath.Join(dir, name)), err)
 				continue
 			}
 			selected[c.ID] = append(selected[c.ID], name)
@@ -424,9 +424,9 @@ func (e *Engine) skills() ([]Skill, error) {
 			}
 		}
 	}
-	refs, err := e.m.CheckNames(selected)
+	refs, err := e.manifest.CheckNames(selected)
 	if err != nil {
-		return nil, fmt.Errorf("manifest %s: %w", e.show(e.manifestPath), err)
+		return nil, fmt.Errorf("manifest %s: %w", e.displayPath(e.manifestPath), err)
 	}
 	var out []Skill
 	for _, r := range refs {
@@ -449,11 +449,11 @@ func (e *Engine) skills() ([]Skill, error) {
 }
 
 // storePath is store/<name>.
-func (e *Engine) storePath(name string) string { return filepath.Join(e.store, name) }
+func (e *UserScope) storePath(name string) string { return filepath.Join(e.store, name) }
 
 // linkDest is the relative symlink destination from target/<name> to the
 // store entry.
-func (e *Engine) linkDest(target, name string) string {
+func (e *UserScope) linkDest(target, name string) string {
 	rel, err := filepath.Rel(target, e.storePath(name))
 	if err != nil {
 		return e.storePath(name)
@@ -462,7 +462,7 @@ func (e *Engine) linkDest(target, name string) string {
 }
 
 // desired maps each path skenv should manage to its kind.
-func (e *Engine) desired(skills []Skill) map[string]state.Entry {
+func (e *UserScope) desired(skills []Skill) map[string]state.Entry {
 	out := map[string]state.Entry{}
 	for _, s := range skills {
 		kind := state.Link
@@ -480,9 +480,9 @@ func (e *Engine) desired(skills []Skill) map[string]state.Entry {
 // Output helpers. Changes go to stdout (suppressed by --quiet); warnings and
 // errors go to stderr.
 
-func (e *base) show(p string) string { return paths.Collapse(e.env.Home, p) }
+func (e *scope) displayPath(p string) string { return paths.Collapse(e.env.Home, p) }
 
-func (e *base) changef(format string, args ...any) {
+func (e *scope) changef(format string, args ...any) {
 	e.changes++
 	if e.opts.Quiet {
 		return
@@ -494,49 +494,49 @@ func (e *base) changef(format string, args ...any) {
 	fmt.Fprintf(e.env.Stdout, "%s%s\n", prefix, gitx.Mask(fmt.Sprintf(format, args...)))
 }
 
-func (e *base) infof(format string, args ...any) {
+func (e *scope) infof(format string, args ...any) {
 	if e.opts.Quiet {
 		return
 	}
 	fmt.Fprintf(e.env.Stdout, "%s\n", gitx.Mask(fmt.Sprintf(format, args...)))
 }
 
-func (e *base) warnf(format string, args ...any) {
+func (e *scope) warnf(format string, args ...any) {
 	e.warnings++
 	fmt.Fprintf(e.env.Stderr, "warning: %s\n", gitx.Mask(fmt.Sprintf(format, args...)))
 }
 
-func (e *base) errorf(format string, args ...any) {
+func (e *scope) errorf(format string, args ...any) {
 	e.errs++
 	fmt.Fprintf(e.env.Stderr, "error: %s\n", gitx.Mask(fmt.Sprintf(format, args...)))
 }
 
-func (e *Engine) saveState() error {
+func (e *UserScope) saveState() error {
 	if e.opts.DryRun || !e.stateDirty {
 		return nil
 	}
-	return e.st.Save(e.layout.StateFile())
+	return e.state.Save(e.layout.StateFile())
 }
 
-func (e *Engine) manage(p string, entry state.Entry) {
-	if cur, ok := e.st.Managed[p]; ok && cur == entry {
+func (e *UserScope) manage(p string, entry state.Entry) {
+	if cur, ok := e.state.Managed[p]; ok && cur == entry {
 		return
 	}
-	e.st.Managed[p] = entry
+	e.state.Managed[p] = entry
 	e.stateDirty = true
 }
 
-func (e *Engine) unmanage(p string) {
-	if _, ok := e.st.Managed[p]; ok {
-		delete(e.st.Managed, p)
+func (e *UserScope) unmanage(p string) {
+	if _, ok := e.state.Managed[p]; ok {
+		delete(e.state.Managed, p)
 		e.stateDirty = true
 	}
 }
 
 // finish saves state and prints the summary; it returns the exit code.
-func (e *Engine) finish(cmd string) (int, error) {
+func (e *UserScope) finish(cmd string) (int, error) {
 	if err := e.saveState(); err != nil {
-		return ExitFatal, fmt.Errorf("save state %s: %w", e.show(e.layout.StateFile()), err)
+		return ExitFatal, fmt.Errorf("save state %s: %w", e.displayPath(e.layout.StateFile()), err)
 	}
 	return e.summary(cmd), nil
 }
@@ -544,7 +544,7 @@ func (e *Engine) finish(cmd string) (int, error) {
 // unresolvedf reports what the command leaves as it is, not in the
 // desired state: an error when the declared state cannot be reached
 // (exit code 1), a warning for local development state.
-func (e *base) unresolvedf(isErr bool, format string, args ...any) {
+func (e *scope) unresolvedf(isErr bool, format string, args ...any) {
 	e.unresolved++
 	if isErr {
 		e.errs++
@@ -553,7 +553,7 @@ func (e *base) unresolvedf(isErr bool, format string, args ...any) {
 }
 
 // summary prints the one-line result of cmd and returns its exit code.
-func (e *base) summary(cmd string) int {
+func (e *scope) summary(cmd string) int {
 	if !e.opts.Quiet {
 		switch {
 		case e.changes == 0 && e.warnings == 0 && e.errs == 0 && e.unresolved == 0:
@@ -586,9 +586,9 @@ type CheckoutDir struct {
 }
 
 // CheckoutDirs lists the checkouts of the manifest.
-func (e *Engine) CheckoutDirs() []CheckoutDir {
-	out := make([]CheckoutDir, 0, len(e.m.Checkouts))
-	for _, c := range e.m.CheckoutList() {
+func (e *UserScope) CheckoutDirs() []CheckoutDir {
+	out := make([]CheckoutDir, 0, len(e.manifest.Checkouts))
+	for _, c := range e.manifest.CheckoutList() {
 		out = append(out, CheckoutDir{ID: c.ID, Repo: c.Repo, Path: e.checkoutPath(c), SkillsDir: c.SkillsDir, Checkout: *c})
 	}
 	return out
@@ -599,7 +599,7 @@ func (e *Engine) CheckoutDirs() []CheckoutDir {
 // is not a git working copy, one without an origin, or one whose origin is
 // another repository. Its skills are then not used, and nothing in it is
 // changed.
-func (e *Engine) checkoutBlocked(c *manifest.Checkout) string {
+func (e *UserScope) checkoutBlocked(c *manifest.Checkout) string {
 	if why, ok := e.blocked[c.ID]; ok {
 		return why
 	}
@@ -616,12 +616,12 @@ func (e *Engine) checkoutBlocked(c *manifest.Checkout) string {
 // repo of c: the same after NormalizeURL, as written or after
 // url.<base>.insteadOf (git ls-remote --get-url, which does not touch the
 // network).
-func (e *Engine) originMismatch(dir string, c *manifest.Checkout) string {
+func (e *UserScope) originMismatch(dir string, c *manifest.Checkout) string {
 	if !e.env.Git.OK(e.ctx, dir, "rev-parse", "--is-inside-work-tree") {
 		return "exists but is not a git working copy"
 	}
 	origin, err := e.env.Git.Run(e.ctx, dir, "config", "--get", "remote.origin.url")
-	remote, _ := e.m.Remote(c.Repo) // Validate resolved it already
+	remote, _ := e.manifest.Remote(c.Repo) // Validate resolved it already
 	if err != nil || strings.TrimSpace(origin) == "" {
 		return fmt.Sprintf("has no origin remote, and the manifest names %s", remote.URL)
 	}
@@ -629,8 +629,8 @@ func (e *Engine) originMismatch(dir string, c *manifest.Checkout) string {
 		return ""
 	}
 	// The ssh and https forms of a repository on a known host.
-	if so, ok := e.m.GitHosts.ShortForm(origin); ok {
-		if sr, ok := e.m.GitHosts.ShortForm(remote.URL); ok && so == sr {
+	if so, ok := e.manifest.GitHosts.ShortForm(origin); ok {
+		if sr, ok := e.manifest.GitHosts.ShortForm(remote.URL); ok && so == sr {
 			return ""
 		}
 	}
@@ -645,7 +645,7 @@ func (e *Engine) originMismatch(dir string, c *manifest.Checkout) string {
 // targetBranch is the branch sync keeps the working copy at dir on: the
 // branch of c, else the default branch of origin (origin/HEAD, else asked
 // from the remote).
-func (e *Engine) targetBranch(dir string, c *manifest.Checkout) (string, error) {
+func (e *UserScope) targetBranch(dir string, c *manifest.Checkout) (string, error) {
 	if c.Branch != "" {
 		return c.Branch, nil
 	}
@@ -667,7 +667,7 @@ func (e *Engine) targetBranch(dir string, c *manifest.Checkout) (string, error) 
 }
 
 // currentBranch is the branch checked out at dir, "" for a detached HEAD.
-func (e *Engine) currentBranch(dir string) string {
+func (e *UserScope) currentBranch(dir string) string {
 	cur, err := e.env.Git.Run(e.ctx, dir, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
 		return ""

@@ -69,10 +69,10 @@ func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) 
 	}
 	if r.changed() && !opts.DryRun {
 		if fresh {
-			e.infof("add [user] to %s", e.show(mp))
+			e.infof("add [user] to %s", e.displayPath(mp))
 		}
 		if err := manifest.WriteFile(mp, r.out); err != nil {
-			return ExitFatal, fmt.Errorf("write manifest %s: %w", e.show(mp), err)
+			return ExitFatal, fmt.Errorf("write manifest %s: %w", e.displayPath(mp), err)
 		}
 	}
 	code, err := e.finishImport(r, sync)
@@ -130,7 +130,7 @@ func InitImport(ctx context.Context, env Env, dir, format, remote string, dryRun
 // r, leaving the unmatched skills as installed, and reports which skills
 // it took over.
 func syncAdopt(ctx context.Context, env Env, mp string, r *imported) (int, error) {
-	e, err := Open(ctx, env, Options{Manifest: mp, Adopt: true, Keep: r.unmatched})
+	e, err := OpenUser(ctx, env, Options{Manifest: mp, Adopt: true, Keep: r.unmatched})
 	if err != nil {
 		return ExitFatal, err
 	}
@@ -139,7 +139,7 @@ func syncAdopt(ctx context.Context, env Env, mp string, r *imported) (int, error
 	if err != nil {
 		return code, err
 	}
-	e.reportTakeover(r, e.show(mp), "", func(name string) bool { return e.owned(e.storePath(name)) })
+	e.reportTakeover(r, e.displayPath(mp), "", func(name string) bool { return e.owned(e.storePath(name)) })
 	return code, nil
 }
 
@@ -223,7 +223,7 @@ type ownGroup struct {
 // report and the manifest diff, and returns the new text and the lock
 // entries to remove. extraOwn is added as a checkout unless the import
 // adds its working copy already.
-func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest.Checkout) (*imported, error) {
+func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *manifest.Checkout) (*imported, error) {
 	r := &imported{before: before, out: start}
 	lock, err := readSkillsLock(e.skillsLockPath(), skillsLockVersion)
 	if err != nil {
@@ -240,7 +240,7 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 	}
 	unmanaged := func(p, why string) {
 		r.unmanaged++
-		r.skipped = append(r.skipped, fmt.Sprintf("%s: %s", e.show(p), why))
+		r.skipped = append(r.skipped, fmt.Sprintf("%s: %s", e.displayPath(p), why))
 	}
 
 	// Everything installed in the store and the agent directories, once per
@@ -256,7 +256,7 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 		for _, de := range entries {
 			name := de.Name()
 			p := filepath.Join(dir, name)
-			if strings.HasPrefix(name, ".") || e.isClaudeSynced(p) || e.m.IsUnmanaged(name) || e.owned(p) || inManifest[name] {
+			if strings.HasPrefix(name, ".") || e.isClaudeSynced(p) || e.manifest.IsUnmanaged(name) || e.owned(p) || inManifest[name] {
 				continue
 			}
 			resolved, err := filepath.EvalSymlinks(p)
@@ -273,7 +273,7 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 			}
 			if prev, ok := seen[name]; ok {
 				if prev.resolved != resolved {
-					unmanaged(p, fmt.Sprintf("%s is also installed from %s; keep one", name, e.show(prev.resolved)))
+					unmanaged(p, fmt.Sprintf("%s is also installed from %s; keep one", name, e.displayPath(prev.resolved)))
 				}
 				continue
 			}
@@ -303,19 +303,19 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 		}
 		if le, ok := lock.entries[f.name]; ok {
 			if _, err := lockRepo(le, e.hosts); err != nil {
-				unmanaged(f.path, fmt.Sprintf("in %s, but %v", e.show(lock.path), err))
+				unmanaged(f.path, fmt.Sprintf("in %s, but %v", e.displayPath(lock.path), err))
 				continue
 			}
 			vendors[f.name] = f
 			continue
 		}
 		unmanaged(f.path, fmt.Sprintf("not in %s and not a link into a git working copy; move it into a checkout, "+
-			"or add %q to user.unmanaged", e.show(lock.path), f.name))
+			"or add %q to user.unmanaged", e.displayPath(lock.path), f.name))
 	}
 
 	var own []ownGroup
 	taken := map[string]bool{}
-	for id := range e.m.Checkouts {
+	for id := range e.manifest.Checkouts {
 		taken[id] = true
 	}
 	for _, k := range sortedKeys(groups) {
@@ -344,14 +344,14 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 		if g.own.Include != nil {
 			detail = "include " + strings.Join(g.own.Include, ", ")
 		}
-		r.managed[byOwn] = append(r.managed[byOwn], fmt.Sprintf("%s: %s at %s (%s)", g.own.ID, g.own.Repo, e.show(g.top), detail))
+		r.managed[byOwn] = append(r.managed[byOwn], fmt.Sprintf("%s: %s at %s (%s)", g.own.ID, g.own.Repo, e.displayPath(g.top), detail))
 		r.names = append(r.names, g.names...)
 	}
 	slices.Sort(r.names)
 	for _, name := range sortedKeys(lock.entries) {
 		if _, ok := seen[name]; !ok && !inManifest[name] {
 			r.skipped = append(r.skipped, fmt.Sprintf("%s, in %s: not installed in %s or an agent directory; it stays in the lock",
-				name, e.show(lock.path), e.show(e.store)))
+				name, e.displayPath(lock.path), e.displayPath(e.store)))
 		}
 	}
 
@@ -372,7 +372,7 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 		}
 		r.entries++
 	}
-	resolved := func(c manifest.Checkout) string { return e.m.Path(e.env.Home, c.CheckoutDir) }
+	resolved := func(c manifest.Checkout) string { return e.manifest.Path(e.env.Home, c.CheckoutDir) }
 	if extraOwn != nil && !slices.ContainsFunc(own, func(g ownGroup) bool { return samePath(resolved(g.own), resolved(*extraOwn)) }) {
 		extra := *extraOwn
 		extra.ID = manifest.NewID(extra.Repo, taken)
@@ -385,7 +385,7 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 		} else {
 			out = withExtra
 			r.entries++
-			r.managed[byOwn] = append(r.managed[byOwn], fmt.Sprintf("%s: %s at %s (the repository of the manifest)", extra.ID, extra.Repo, e.show(resolved(extra))))
+			r.managed[byOwn] = append(r.managed[byOwn], fmt.Sprintf("%s: %s at %s (the repository of the manifest)", extra.ID, extra.Repo, e.displayPath(resolved(extra))))
 		}
 	}
 	if string(out) != string(start) || fresh {
@@ -410,19 +410,19 @@ func (e *Engine) importUser(before, start []byte, fresh bool, extraOwn *manifest
 		}
 	}
 	slices.Sort(r.unlock)
-	r.diff = strings.TrimSuffix(lineDiff(e.show(e.manifestPath), before, out), "\n")
-	e.report(r, e.show(e.manifestPath))
+	r.diff = strings.TrimSuffix(lineDiff(e.displayPath(e.manifestPath), before, out), "\n")
+	e.report(r, e.displayPath(e.manifestPath))
 	return r, nil
 }
 
 // checkManifest parses the manifest text and makes it the engine's
 // manifest when its skills, checkouts listed, are valid.
-func (e *Engine) checkManifest(data []byte) error {
+func (e *UserScope) checkManifest(data []byte) error {
 	m, err := manifest.ParseIn(data, filepath.Ext(e.manifestPath), filepath.Dir(e.manifestPath))
 	if err != nil {
 		return err
 	}
-	prev := e.m
+	prev := e.manifest
 	if err := e.setManifest(m); err != nil {
 		_ = e.setManifest(prev)
 		return err
@@ -436,7 +436,7 @@ func (e *Engine) checkManifest(data []byte) error {
 
 // claudePlugins is the resolved plugins directory of Claude Code, whose
 // skills belong to their plugins; "" when it does not exist.
-func (e *Engine) claudePlugins() string {
+func (e *UserScope) claudePlugins() string {
 	for _, a := range agents.Table(e.env.Home, e.env.Getenv) {
 		if a.Name == "claude" {
 			if p, err := filepath.EvalSymlinks(filepath.Join(a.Base, "plugins")); err == nil {
@@ -450,7 +450,7 @@ func (e *Engine) claudePlugins() string {
 // ownOf returns the checkout of an installed skill that links into a git
 // working copy: nil when it does not, why when such a skill cannot be
 // imported.
-func (e *Engine) ownOf(f found) (g *ownGroup, why string) {
+func (e *UserScope) ownOf(f found) (g *ownGroup, why string) {
 	if !f.link {
 		return nil, ""
 	}
@@ -465,7 +465,7 @@ func (e *Engine) ownOf(f found) (g *ownGroup, why string) {
 	if top, err = filepath.EvalSymlinks(top); err != nil {
 		return nil, ""
 	}
-	where := "a link into the working copy " + e.show(top)
+	where := "a link into the working copy " + e.displayPath(top)
 	rel, err := filepath.Rel(top, f.resolved)
 	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
 		return nil, where + ", at its root; skenv links skills from a directory of the repository (skills_dir)"
@@ -483,14 +483,14 @@ func (e *Engine) ownOf(f found) (g *ownGroup, why string) {
 	if err != nil || remote == "" {
 		return nil, where + " without an origin remote; push it somewhere, then import again"
 	}
-	repo, ok := e.m.GitHosts.ShortForm(remote)
+	repo, ok := e.manifest.GitHosts.ShortForm(remote)
 	if !ok {
 		if hasCredentials(remote) {
 			return nil, where + " whose origin URL carries credentials; add the checkout by hand"
 		}
 		repo = remote
 	}
-	for _, c := range e.m.CheckoutList() {
+	for _, c := range e.manifest.CheckoutList() {
 		if p, err := filepath.EvalSymlinks(e.checkoutPath(c)); err == nil && p == top {
 			return nil, fmt.Sprintf("%s, already checkout %s in the manifest; add %q to its include or skills_dir", where, c.ID, f.name)
 		}
@@ -508,7 +508,7 @@ func (e *Engine) ownOf(f found) (g *ownGroup, why string) {
 // lockVendor turns a lock entry into a dependency: how says how its commit
 // was found, and note why it is not an exact match. dir is the installed
 // copy, "" when there is none.
-func (e *base) lockVendor(name string, le lockEntry, dir string) (v manifest.Dependency, how int, note string, err error) {
+func (e *scope) lockVendor(name string, le lockEntry, dir string) (v manifest.Dependency, how int, note string, err error) {
 	if err := manifest.ValidName(name); err != nil {
 		return v, 0, "", err
 	}
@@ -558,7 +558,7 @@ func (e *base) lockVendor(name string, le lockEntry, dir string) (v manifest.Dep
 
 // report prints what the import makes managed in file, grouped by how
 // the entries match what is installed, and what it does not import.
-func (e *base) report(r *imported, file string) {
+func (e *scope) report(r *imported, file string) {
 	n := 0
 	for _, g := range r.managed {
 		n += len(g)
@@ -596,18 +596,18 @@ func (e *base) report(r *imported, file string) {
 
 // decide tells how to settle each unmatched skill that sync left as
 // installed; flag is the --project flag of vendor remove, or "".
-func (e *base) decide(names []string, flag string) {
+func (e *scope) decide(names []string, flag string) {
 	for _, name := range names {
 		e.infof("  %s: `skenv sync --adopt` replaces it with the pinned commit (the copy goes to %s), "+
 			"or `skenv vendor remove%s %s` drops the entry and leaves the copy to neither skenv nor the skills CLI "+
-			"(its lock entry is in the backup of the lock)", name, e.show(e.layout.Backup()), flag, name)
+			"(its lock entry is in the backup of the lock)", name, e.displayPath(e.layout.Backup()), flag, name)
 	}
 }
 
 // reportTakeover prints, after the sync of the import r into file, which
 // of the recorded skills sync took over (managed says whether skenv
 // manages a skill now) and which it left as installed.
-func (e *base) reportTakeover(r *imported, file, flag string, managed func(string) bool) {
+func (e *scope) reportTakeover(r *imported, file, flag string, managed func(string) bool) {
 	if len(r.names) == 0 {
 		return
 	}
@@ -641,9 +641,9 @@ func (e *base) reportTakeover(r *imported, file, flag string, managed func(strin
 
 // finishImport cleans the lock, prints the diff, the summary and the next
 // step, and returns the exit code. sync says `skenv sync --adopt` follows.
-func (e *Engine) finishImport(r *imported, sync bool) (int, error) {
+func (e *UserScope) finishImport(r *imported, sync bool) (int, error) {
 	if len(r.unlock) > 0 {
-		if err := e.cleanLock(r.lock, r.unlock, e.show); err != nil {
+		if err := e.cleanLock(r.lock, r.unlock, e.displayPath); err != nil {
 			return ExitFatal, err
 		}
 	}
@@ -680,7 +680,7 @@ func (e *Engine) finishImport(r *imported, sync bool) (int, error) {
 // nextAfterImport prints what follows the import r: the sync of --sync
 // under --dry-run, or the next step without --sync. flag is the --project
 // flag of vendor remove, or "".
-func (e *base) nextAfterImport(r *imported, sync bool, flag string) {
+func (e *scope) nextAfterImport(r *imported, sync bool, flag string) {
 	switch {
 	case sync && e.errs > 0:
 		e.infof("not running skenv sync --adopt: fix the errors above, then run it")
@@ -691,19 +691,19 @@ func (e *base) nextAfterImport(r *imported, sync bool, flag string) {
 		e.infof("would run skenv sync --adopt")
 	case !sync && !e.opts.DryRun && len(r.unmatched) > 0:
 		e.infof("next: `skenv sync --adopt` replaces the installed copies with managed ones, the unmatched %s included "+
-			"(the old ones go to %s); compare the unmatched ones first", strings.Join(r.unmatched, ", "), e.show(e.layout.Backup()))
+			"(the old ones go to %s); compare the unmatched ones first", strings.Join(r.unmatched, ", "), e.displayPath(e.layout.Backup()))
 	case !sync && !e.opts.DryRun:
-		e.infof("next: `skenv sync --adopt` replaces the installed copies with managed ones (the old ones go to %s)", e.show(e.layout.Backup()))
+		e.infof("next: `skenv sync --adopt` replaces the installed copies with managed ones (the old ones go to %s)", e.displayPath(e.layout.Backup()))
 	}
 }
 
 // cleanLock removes the imported entries names from a lock of the
 // `skills` CLI, so `npx skills update` does not fight skenv over them,
 // after a copy to the backup directory. show shows the lock path.
-func (e *base) cleanLock(lock *skillsLock, names []string, show func(string) string) error {
+func (e *scope) cleanLock(lock *skillsLock, names []string, show func(string) string) error {
 	backup := e.backupPath(lock.path)
 	e.changef("remove %s from %s, so that the skills CLI no longer updates them; skenv manages each once sync takes its installed copy over (a copy of the lock goes to %s)",
-		strings.Join(names, ", "), show(lock.path), e.show(backup))
+		strings.Join(names, ", "), show(lock.path), e.displayPath(backup))
 	if e.opts.DryRun {
 		return nil
 	}
@@ -725,7 +725,7 @@ func (e *base) cleanLock(lock *skillsLock, names []string, show func(string) str
 
 // backupPath is where p goes in the backup directory of this run:
 // backup/<ts>/<path relative to home>.
-func (e *base) backupPath(p string) string {
+func (e *scope) backupPath(p string) string {
 	if e.backupDir == "" {
 		e.backupDir = filepath.Join(e.layout.Backup(), e.env.Now().UTC().Format("20060102T150405Z"))
 	}

@@ -14,7 +14,7 @@ import (
 
 // isClaudeSynced reports whether p is ~/.claude/skills/synced (or the same
 // under $CLAUDE_CONFIG_DIR), which skenv never touches (N1).
-func (e *Engine) isClaudeSynced(p string) bool {
+func (e *UserScope) isClaudeSynced(p string) bool {
 	for _, a := range agents.Table(e.env.Home, e.env.Getenv) {
 		if a.Name == "claude" && p == filepath.Join(a.Skills, "synced") {
 			return true
@@ -26,8 +26,8 @@ func (e *Engine) isClaudeSynced(p string) bool {
 // owned reports whether p is recorded in the state and still is what skenv
 // created there: a symlink for links, a directory with a .skenv marker for
 // vendored skills. Anything else put there since is the user's (N1).
-func (e *Engine) owned(p string) bool {
-	entry, ok := e.st.Managed[p]
+func (e *UserScope) owned(p string) bool {
+	entry, ok := e.state.Managed[p]
 	if !ok {
 		return false
 	}
@@ -48,13 +48,13 @@ func (e *Engine) owned(p string) bool {
 // unmanaged path that may not be replaced (a conflict, reported as an
 // error), and true when p is absent, managed, or was moved to the backup
 // directory under --adopt.
-func (e *Engine) claim(p, skill string) bool {
+func (e *UserScope) claim(p, skill string) bool {
 	if e.isClaudeSynced(p) {
-		e.errorf("%s is managed by Claude and never touched by skenv", e.show(p))
+		e.errorf("%s is managed by Claude and never touched by skenv", e.displayPath(p))
 		return false
 	}
-	if e.m.IsUnmanaged(filepath.Base(p)) {
-		e.errorf("%s matches user.unmanaged and is never touched by skenv", e.show(p))
+	if e.manifest.IsUnmanaged(filepath.Base(p)) {
+		e.errorf("%s matches user.unmanaged and is never touched by skenv", e.displayPath(p))
 		return false
 	}
 	if _, err := os.Lstat(p); errors.Is(err, fs.ErrNotExist) || e.owned(p) {
@@ -62,20 +62,20 @@ func (e *Engine) claim(p, skill string) bool {
 	}
 	if !e.opts.Adopt {
 		e.errorf("conflict: %s exists and is not managed by skenv (skill %q); inspect it, then rerun with --adopt to move it to %s and replace it",
-			e.show(p), skill, e.show(e.layout.Backup()))
+			e.displayPath(p), skill, e.displayPath(e.layout.Backup()))
 		return false
 	}
 	if err := e.backup(p); err != nil {
-		e.errorf("adopt %s: %v", e.show(p), err)
+		e.errorf("adopt %s: %v", e.displayPath(p), err)
 		return false
 	}
 	return true
 }
 
 // backup moves p to its backupPath.
-func (e *base) backup(p string) error {
+func (e *scope) backup(p string) error {
 	dst := e.backupPath(p)
-	e.changef("adopt %s (old content → %s)", e.show(p), e.show(dst))
+	e.changef("adopt %s (old content → %s)", e.displayPath(p), e.displayPath(dst))
 	if e.opts.DryRun {
 		return nil
 	}
@@ -90,7 +90,7 @@ func (e *base) backup(p string) error {
 
 // placeSymlink creates or replaces the managed symlink p → dest atomically
 // (temporary name + rename, N2). The caller has claimed p.
-func (e *Engine) placeSymlink(p, dest, skill string) error {
+func (e *UserScope) placeSymlink(p, dest, skill string) error {
 	fi, err := os.Lstat(p)
 	if err == nil && fi.Mode()&fs.ModeSymlink != 0 {
 		if cur, _ := os.Readlink(p); cur == dest {
@@ -98,7 +98,7 @@ func (e *Engine) placeSymlink(p, dest, skill string) error {
 			return nil
 		}
 	}
-	e.changef("link %s → %s", e.show(p), dest)
+	e.changef("link %s → %s", e.displayPath(p), dest)
 	if e.opts.DryRun {
 		return nil
 	}
@@ -156,9 +156,9 @@ func replace(src, dst string) error {
 
 // removeManaged deletes a managed path after checking it still looks like
 // something skenv created; otherwise it only forgets it.
-func (e *Engine) removeManaged(p string, entry state.Entry) {
-	if e.m.IsUnmanaged(filepath.Base(p)) {
-		e.warnf("%s matches user.unmanaged; leaving it in place and forgetting it", e.show(p))
+func (e *UserScope) removeManaged(p string, entry state.Entry) {
+	if e.manifest.IsUnmanaged(filepath.Base(p)) {
+		e.warnf("%s matches user.unmanaged; leaving it in place and forgetting it", e.displayPath(p))
 		if !e.opts.DryRun {
 			e.unmanage(p)
 		}
@@ -172,11 +172,11 @@ func (e *Engine) removeManaged(p string, entry state.Entry) {
 		return
 	}
 	if err != nil {
-		e.errorf("remove %s: %v", e.show(p), err)
+		e.errorf("remove %s: %v", e.displayPath(p), err)
 		return
 	}
 	if !e.owned(p) {
-		e.warnf("%s was recorded as managed but has been replaced by something else; leaving it in place and forgetting it", e.show(p))
+		e.warnf("%s was recorded as managed but has been replaced by something else; leaving it in place and forgetting it", e.displayPath(p))
 		if !e.opts.DryRun {
 			e.unmanage(p)
 		}
@@ -186,12 +186,12 @@ func (e *Engine) removeManaged(p string, entry state.Entry) {
 	if r, ok := e.unselected[entry.Skill]; ok {
 		why = "is " + r
 	}
-	e.changef("remove %s (skill %q %s)", e.show(p), entry.Skill, why)
+	e.changef("remove %s (skill %q %s)", e.displayPath(p), entry.Skill, why)
 	if e.opts.DryRun {
 		return
 	}
 	if err := os.RemoveAll(p); err != nil {
-		e.errorf("remove %s: %v", e.show(p), err)
+		e.errorf("remove %s: %v", e.displayPath(p), err)
 		return
 	}
 	e.unmanage(p)

@@ -104,8 +104,8 @@ func ManifestSource(ctx context.Context, env Env, flag string) (string, string, 
 
 // Explain builds the effective configuration. It reads the file system
 // and runs local git commands only: no fetch, no writes.
-func (e *Engine) Explain(manifestSource string) (*Effective, error) {
-	show := e.show
+func (e *UserScope) Explain(manifestSource string) (*Effective, error) {
+	show := e.displayPath
 	r := &Effective{
 		Manifest:        Sourced{show(e.manifestPath), manifestSource},
 		Machine:         EffectiveMachine{Name: e.machine, Source: e.machineFrom},
@@ -115,7 +115,7 @@ func (e *Engine) Explain(manifestSource string) (*Effective, error) {
 		Agents:          []EffectiveAgent{},
 		Checkouts:       []EffectiveRepo{},
 		Skills:          []EffectiveSkill{},
-		Unmanaged:       append([]string{}, e.m.Unmanaged...),
+		Unmanaged:       append([]string{}, e.manifest.Unmanaged...),
 		Problems:        []string{},
 		Reproducible: "dependencies are pinned to a commit; checkouts follow their branch and local edits, " +
 			"and agent detection, the machine name and $HOME come from this machine, so the file alone does not " +
@@ -124,15 +124,15 @@ func (e *Engine) Explain(manifestSource string) (*Effective, error) {
 	if e.hasRules {
 		r.Machine.Rules = e.machineRule()
 	}
-	if e.m.Storage.Dir != "" {
+	if e.manifest.Storage.Dir != "" {
 		r.Store.Source = "user.storage.dir"
 	}
 	for _, d := range agents.Resolve(e.env.Home, e.env.Getenv, e.agentSelection(), e.store) {
 		r.Agents = append(r.Agents, EffectiveAgent{Agent: d.Agent, Dir: show(d.Dir), On: d.On, Why: d.Why})
 	}
-	for _, c := range e.m.CheckoutList() {
+	for _, c := range e.manifest.CheckoutList() {
 		er := EffectiveRepo{ID: c.ID, Repo: gitx.Mask(c.Repo), Dir: show(e.checkoutPath(c)), DirSource: "checkout_dir " + c.CheckoutDir}
-		if remote, err := e.m.Remote(c.Repo); err == nil {
+		if remote, err := e.manifest.Remote(c.Repo); err == nil {
 			er.URL = gitx.Mask(remote.URL)
 		}
 		if _, ok := e.rules.CheckoutDirs[c.ID]; ok && e.hasRules {
@@ -170,7 +170,7 @@ func (e *Engine) Explain(manifestSource string) (*Effective, error) {
 	for _, s := range skills {
 		installed[s.Name] = true
 	}
-	for _, c := range e.m.CheckoutList() {
+	for _, c := range e.manifest.CheckoutList() {
 		if e.checkoutBlocked(c) != "" {
 			continue
 		}
@@ -187,7 +187,7 @@ func (e *Engine) Explain(manifestSource string) (*Effective, error) {
 			r.Skills = append(r.Skills, EffectiveSkill{Name: name, Source: "checkout " + c.ID, Selected: ok && installed[name], Why: why})
 		}
 	}
-	for _, d := range e.m.DependencyList() {
+	for _, d := range e.manifest.DependencyList() {
 		why := e.machineWhy(d.Name, fmt.Sprintf("dependency %s at %.12s (%s)", gitx.Mask(d.Repo), d.Commit, d.SkillDir))
 		r.Skills = append(r.Skills, EffectiveSkill{Name: d.Name, Source: "dependency", Selected: installed[d.Name], Why: why})
 	}
@@ -195,7 +195,7 @@ func (e *Engine) Explain(manifestSource string) (*Effective, error) {
 }
 
 // machineWhy adds the verdict of the machine rules to why.
-func (e *Engine) machineWhy(name, why string) string {
+func (e *UserScope) machineWhy(name, why string) string {
 	if !e.hasRules || (e.rules.Include == nil && firstMatch(e.rules.Exclude, name) == "") {
 		return why
 	}
@@ -234,7 +234,7 @@ func firstMatch(pats []string, name string) string {
 }
 
 // targetBranchLocal is targetBranch without asking the remote.
-func (e *Engine) targetBranchLocal(dir string, c *manifest.Checkout) (string, error) {
+func (e *UserScope) targetBranchLocal(dir string, c *manifest.Checkout) (string, error) {
 	if c.Branch != "" {
 		return c.Branch, nil
 	}
@@ -246,7 +246,7 @@ func (e *Engine) targetBranchLocal(dir string, c *manifest.Checkout) (string, er
 }
 
 // PrintEffective prints the effective configuration, as JSON or text.
-func (e *Engine) PrintEffective(r *Effective, asJSON bool) error {
+func (e *UserScope) PrintEffective(r *Effective, asJSON bool) error {
 	out := e.env.Stdout
 	if asJSON {
 		enc := json.NewEncoder(out)
@@ -262,7 +262,7 @@ func (e *Engine) PrintEffective(r *Effective, asJSON bool) error {
 	fmt.Fprintf(tw, "machine\t%s (%s; %s)\n", r.Machine.Name, r.Machine.Source, rules)
 	fmt.Fprintf(tw, "home\t%s ($HOME)\n", r.Home)
 	if r.ClaudeConfigDir != "" {
-		fmt.Fprintf(tw, "claude\t%s ($CLAUDE_CONFIG_DIR)\n", e.show(paths.Expand(e.env.Home, r.ClaudeConfigDir)))
+		fmt.Fprintf(tw, "claude\t%s ($CLAUDE_CONFIG_DIR)\n", e.displayPath(paths.Expand(e.env.Home, r.ClaudeConfigDir)))
 	}
 	fmt.Fprintf(tw, "store\t%s (%s)\n", r.Store.Value, r.Store.Source)
 	if len(r.Unmanaged) > 0 {
