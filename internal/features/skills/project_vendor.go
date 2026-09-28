@@ -133,28 +133,19 @@ func (e *ProjectScope) VendorRemove(name string) (int, error) {
 // edit applies fn to the skenv file, validates the result, writes it
 // (unless --dry-run) and reloads [project] from it.
 func (e *ProjectScope) edit(fn func(data []byte, ext string) ([]byte, error)) error {
-	data, err := e.readSkenvFile(e.file)
-	if err != nil {
-		return err
-	}
 	ext := filepath.Ext(e.file)
-	out, err := fn(data, ext)
-	if err != nil {
-		return err
-	}
-	if out, err = skenvfile.Stamp(out, ext, false); err != nil {
-		return err
-	}
-	p, err := skenvfile.ParseProject(out, ext)
-	if err != nil {
-		return err
-	}
-	if err := e.writeSkenvFile(e.file, out); err != nil {
-		return fmt.Errorf("write %s: %w", e.displayPath(e.file), err)
-	}
-	e.project = p
-	e.hosts = p.GitHosts
-	return nil
+	return e.editFile(e.file, func(data []byte) ([]byte, error) { return fn(data, ext) }, func(out []byte) error {
+		p, err := skenvfile.ParseProject(out, ext)
+		if err != nil {
+			return err
+		}
+		if err := e.writeSkenvFile(e.file, out); err != nil {
+			return fmt.Errorf("write %s: %w", e.displayPath(e.file), err)
+		}
+		e.project = p
+		e.hosts = p.GitHosts
+		return nil
+	})
 }
 
 // syncAfterEdit syncs the whole project after an edit of [project].

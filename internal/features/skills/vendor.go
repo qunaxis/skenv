@@ -200,39 +200,29 @@ func (e *UserScope) VendorRemove(name string) (int, error) {
 // editManifest applies edit to the manifest text, validates the result,
 // writes it (unless --dry-run) and reloads it.
 func (e *UserScope) editManifest(edit func([]byte) ([]byte, error)) error {
-	data, err := e.readSkenvFile(e.manifestPath)
-	if err != nil {
-		return err
-	}
-	out, err := edit(data)
-	if err != nil {
-		return err
-	}
-	// A skenv schema directive moves to the version of this skenv.
-	if out, err = skenvfile.Stamp(out, filepath.Ext(e.manifestPath), false); err != nil {
-		return err
-	}
-	m, err := skenvfile.ParseManifestIn(out, filepath.Ext(e.manifestPath), filepath.Dir(e.manifestPath))
-	if err != nil {
-		return err
-	}
-	// Name clashes with the skills of checkouts (M1) are only visible with
-	// the checkouts listed; check before writing so a bad edit never lands.
-	prev := e.manifest
-	restore := func() { _ = e.setManifest(prev) }
-	if err := e.setManifest(m); err != nil {
-		restore()
-		return err
-	}
-	if _, err := e.skills(); err != nil {
-		restore()
-		return err
-	}
-	if err := e.writeSkenvFile(e.manifestPath, out); err != nil {
-		restore()
-		return fmt.Errorf("write manifest %s: %w", e.displayPath(e.manifestPath), err)
-	}
-	return nil
+	return e.editFile(e.manifestPath, edit, func(out []byte) error {
+		m, err := skenvfile.ParseManifestIn(out, filepath.Ext(e.manifestPath), filepath.Dir(e.manifestPath))
+		if err != nil {
+			return err
+		}
+		// Name clashes with the skills of checkouts (M1) are only visible with
+		// the checkouts listed; check before writing so a bad edit never lands.
+		prev := e.manifest
+		restore := func() { _ = e.setManifest(prev) }
+		if err := e.setManifest(m); err != nil {
+			restore()
+			return err
+		}
+		if _, err := e.skills(); err != nil {
+			restore()
+			return err
+		}
+		if err := e.writeSkenvFile(e.manifestPath, out); err != nil {
+			restore()
+			return fmt.Errorf("write manifest %s: %w", e.displayPath(e.manifestPath), err)
+		}
+		return nil
+	})
 }
 
 // syncNames vendors and links the named skills after a manifest edit.

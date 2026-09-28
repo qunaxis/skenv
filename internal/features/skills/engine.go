@@ -111,6 +111,25 @@ func (e *scope) writeSkenvFile(file string, data []byte) error {
 	return skenvfile.WriteFile(file, data)
 }
 
+// editFile reads file, transforms it with edit and stamps the result to
+// this skenv's schema version, then hands the stamped bytes to apply, which
+// validates them and commits them (write, and whatever state that depends
+// on the parsed result, with a rollback on failure).
+func (e *scope) editFile(file string, edit func([]byte) ([]byte, error), apply func([]byte) error) error {
+	data, err := e.readSkenvFile(file)
+	if err != nil {
+		return err
+	}
+	out, err := edit(data)
+	if err != nil {
+		return err
+	}
+	if out, err = skenvfile.Stamp(out, filepath.Ext(file), false); err != nil {
+		return err
+	}
+	return apply(out)
+}
+
 // UserScope is one command invocation over a loaded manifest and state.
 type UserScope struct {
 	scope
