@@ -141,11 +141,6 @@ func byteOffset(line string, col int) int {
 
 func indentOf(line string) int { return len(line) - len(strings.TrimLeft(line, " ")) }
 
-func isBlankOrComment(line string) bool {
-	t := strings.TrimSpace(line)
-	return t == "" || strings.HasPrefix(t, "#")
-}
-
 func isDash(line string) bool {
 	t := strings.TrimSpace(line)
 	return t == "-" || strings.HasPrefix(t, "- ")
@@ -160,7 +155,7 @@ func (d *yamlDoc) blockEnd(start, col int, dashAtCol bool) int {
 	last := start
 	for i := start + 1; i < len(d.lines); i++ {
 		l := d.lines[i]
-		if isBlankOrComment(l) {
+		if IsBlankOrComment(l) {
 			continue
 		}
 		if ind := indentOf(l); ind > col || (dashAtCol && ind == col && isDash(l)) {

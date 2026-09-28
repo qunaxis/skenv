@@ -513,7 +513,7 @@ func Init(root, visibility, ci, format string, runner []string, dryRun, force bo
 	}
 	changes := []Change{{Path: filepath.Base(c.File), Action: action}}
 	if !dryRun {
-		if err := writeKeepMode(c.File, out); err != nil {
+		if err := atomicfile.Replace(c.File, out); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -588,7 +588,7 @@ func Upgrade(root, version string, dryRun bool) (bool, error) {
 	if dryRun {
 		return true, nil
 	}
-	return true, writeKeepMode(file, out)
+	return true, atomicfile.Replace(file, out)
 }
 
 func setTemplateVersion(data []byte, ext, version string) ([]byte, error) {
@@ -639,12 +639,4 @@ func DirectiveWarning(c *skenvfile.Repository) (string, error) {
 		return "", err
 	}
 	return schemas.Check(data, filepath.Ext(c.File), schemas.Skenv, c.TemplateVersion), nil
-}
-
-func writeKeepMode(file string, data []byte) error {
-	mode := os.FileMode(0o644)
-	if fi, err := os.Stat(file); err == nil {
-		mode = fi.Mode().Perm()
-	}
-	return atomicfile.Write(file, data, mode)
 }
