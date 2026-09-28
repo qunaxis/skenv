@@ -2,7 +2,6 @@ package cli
 
 import (
 	"errors"
-	"strings"
 	"testing"
 )
 
@@ -33,18 +32,20 @@ func TestJobPath(t *testing.T) {
 	}
 }
 
-// `autostart status` never installs or loads a job: it only reads. Under
-// the world's temporary $HOME the unit file never exists, so the report is
-// "disabled" regardless of what launchctl/systemctl says about this label
-// on the real machine (#56). `enable`/`disable` are not exercised here:
-// runAutostart hardcodes autostart.ExecRunner (no seam to fake it), so
-// driving them would install or unload a real LaunchAgent/systemd unit on
-// whatever machine runs the tests; that is out of scope for a
+// `autostart status` never installs or loads a job: it only reads, never
+// writes. Config.Status does still query the real launchctl/systemctl for
+// this machine's UID and the fixed label (Run is not scoped to the world's
+// temporary $HOME), but under that $HOME the unit file never exists, so
+// Installed is always false and the report is "disabled" no matter what
+// the real machine answers (#56). `enable`/`disable` are not exercised
+// here: runAutostart hardcodes autostart.ExecRunner (no seam to fake it),
+// so driving them would install or unload a real LaunchAgent/systemd unit
+// on whatever machine runs the tests; that is out of scope for a
 // behavior-pinning change (see AGENTS.md/#56: no production code changes).
 func TestAutostartStatusReadOnly(t *testing.T) {
 	w := newWorld(t)
 	code, out, _ := w.run("autostart", "status")
-	if code != 1 || !strings.Contains(out, "autostart: disabled") {
+	if code != 1 || out != "autostart: disabled\n" {
 		t.Errorf("autostart status: exit %d\n%s", code, out)
 	}
 }
