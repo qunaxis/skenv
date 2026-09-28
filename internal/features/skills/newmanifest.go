@@ -90,37 +90,52 @@ func planManifest(ctx context.Context, env Env, dir, format, remote string) (*ma
 		return nil, fmt.Errorf("%s is not inside a git repository; run `git init` first or pass --dir", dir)
 	}
 	p := &manifestPlan{show: homeShow(env.Home)}
-	show := p.show
+	if err := p.planFile(root, format); err != nil {
+		return nil, err
+	}
+	if p.own, err = planOwn(ctx, env, root, remote); err != nil {
+		return nil, err
+	}
+	if err := p.planConfig(env, root); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
 
+// planFile chooses the skenv file of the repository root and reads it
+// when it exists: it must not have [user] or be public.
+func (p *manifestPlan) planFile(root, format string) error {
+	show := p.show
 	existing, err := skenvfile.Find(root)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if p.file, err = docedit.ChooseFormat(root, "skenv", existing, format); err != nil {
-		return nil, err
+		return err
 	}
-	if existing != "" {
-		p.existing = true
-		if p.data, err = os.ReadFile(existing); err != nil {
-			return nil, err
-		}
-		doc, err := skenvfile.Parse(p.data, filepath.Ext(existing))
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", show(existing), err)
-		}
-		if doc.Has(skenvfile.SectionUser) {
-			return nil, fmt.Errorf("%s has [user] already; `skenv init` only starts a new manifest "+
-				"(to use this one on this machine: `skenv use %s`)", show(existing), show(root))
-		}
-		if err := refusePublic(p.data, filepath.Ext(existing), show(existing)); err != nil {
-			return nil, err
-		}
+	if existing == "" {
+		return nil
 	}
+	p.existing = true
+	if p.data, err = os.ReadFile(existing); err != nil {
+		return err
+	}
+	doc, err := skenvfile.Parse(p.data, filepath.Ext(existing))
+	if err != nil {
+		return fmt.Errorf("%s: %w", show(existing), err)
+	}
+	if doc.Has(skenvfile.SectionUser) {
+		return fmt.Errorf("%s has [user] already; `skenv init` only starts a new manifest "+
+			"(to use this one on this machine: `skenv use %s`)", show(existing), show(root))
+	}
+	return refusePublic(p.data, filepath.Ext(existing), show(existing))
+}
 
-	// The repository itself is the first checkout when its origin, or
-	// --remote for a repository without one, is on a network host. Its
-	// checkout_dir is ".": the repository that holds the manifest, wherever
-	// it is cloned.
+// planOwn is the checkout of the repository root itself, the first one
+// when its origin, or remote for a repository without one, is on a
+// network host; nil otherwise. Its checkout_dir is ".": the repository
+// that holds the manifest, wherever it is cloned.
+func planOwn(ctx context.Context, env Env, root, remote string) (*skenvfile.Checkout, error) {
 	origin, err := env.Git.Run(ctx, root, "config", "--get", "remote.origin.url")
 	hasOrigin := err == nil && strings.TrimSpace(origin) != ""
 	switch {
@@ -131,30 +146,33 @@ func planManifest(ctx context.Context, env Env, dir, format, remote string) (*ma
 		if err != nil {
 			return nil, err
 		}
-		p.own = &skenvfile.Checkout{ID: skenvfile.NewID(repo, nil), Repo: repo, CheckoutDir: "."}
+		return &skenvfile.Checkout{ID: skenvfile.NewID(repo, nil), Repo: repo, CheckoutDir: "."}, nil
 	case hasOrigin:
 		if repo, ok := ownRepo(origin); ok {
-			p.own = &skenvfile.Checkout{ID: skenvfile.NewID(repo, nil), Repo: repo, CheckoutDir: "."}
+			return &skenvfile.Checkout{ID: skenvfile.NewID(repo, nil), Repo: repo, CheckoutDir: "."}, nil
 		}
 	}
+	return nil, nil
+}
 
-	// A config that cannot be updated fails before the skenv file is
-	// written.
+// planConfig checks the tool config, so that one which cannot be updated
+// fails before the skenv file is written, and records the manifest it
+// names now if the new one in root replaces it.
+func (p *manifestPlan) planConfig(env Env, root string) error {
 	cfg, err := config.Load(env.Home)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if cfg.Path == "" {
 		p.cfgFormat = docedit.FormatOf(p.file)
 	}
 	if p.cfgPath, err = config.Target(env.Home, p.cfgFormat); err != nil {
-		return nil, err
+		return err
 	}
-	// The config may name another manifest, which the new one replaces.
 	if prev, ok, _ := cfg.String("manifest"); ok && paths.Expand(env.Home, prev) != p.file && paths.Expand(env.Home, prev) != root {
 		p.replaced = prev
 	}
-	return p, nil
+	return nil
 }
 
 // homeShow collapses paths against home and, since git prints resolved
