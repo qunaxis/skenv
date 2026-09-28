@@ -243,12 +243,12 @@ commit = "`+strings.Repeat("a", 40)+`"
 // A relative local repo resolves against the directory of the skenv file,
 // not the working directory.
 func TestResolveIn(t *testing.T) {
-	r, err := Hosts(nil).ResolveIn("/m/dir", "../remotes/r.git")
+	r, err := Hosts(nil).ResolveIn(SectionUser, "/m/dir", "../remotes/r.git")
 	if err != nil || r.URL != "/m/remotes/r.git" {
 		t.Errorf("ResolveIn = %+v, %v", r, err)
 	}
 	home, _ := os.UserHomeDir()
-	if r, err := Hosts(nil).ResolveIn("/m", "~/src/skills"); err != nil || r.URL != filepath.Join(home, "src/skills") {
+	if r, err := Hosts(nil).ResolveIn(SectionUser, "/m", "~/src/skills"); err != nil || r.URL != filepath.Join(home, "src/skills") {
 		t.Errorf("~ in a local repo: %+v, %v", r, err)
 	}
 	m, err := ParseManifestIn([]byte("[user.dependencies.x]\nrepo = \"./r\"\ncommit = \""+strings.Repeat("a", 40)+"\"\n"), ".toml", "/m/dir")

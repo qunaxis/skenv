@@ -54,7 +54,7 @@ func TestMachineOf(t *testing.T) {
 		t.Errorf("explicit machine: %+v %v", mc, err)
 	}
 	delete(vars, "SKENV_MACHINE")
-	if _, err := config.Set(home, "machine", "work"); err != nil {
+	if _, err := config.SetFormat(home, "", "machine", "work"); err != nil {
 		t.Fatal(err)
 	}
 	if mc, err := machineOf(env, withWork); err != nil || mc.from != "tool config `machine`" {

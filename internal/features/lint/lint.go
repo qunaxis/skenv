@@ -5,11 +5,11 @@ package lint
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io/fs"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -19,6 +19,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/qunaxis/skenv/internal/model/skillname"
+	"github.com/qunaxis/skenv/internal/platform/gitx"
 )
 
 // Limits from the Agent Skills specification (agentskills.io).
@@ -60,12 +61,12 @@ var skipDirs = map[string]bool{".git": true, "node_modules": true, ".venv": true
 // Inside a git work tree only the files git would commit are considered
 // (tracked plus untracked-but-not-ignored), so ignored local files such as
 // .env or caches never block a commit; outside git every file is checked.
-func Skill(dir string) []Finding {
+func Skill(ctx context.Context, dir string) []Finding {
 	var out []Finding
 	add := func(rule, path, format string, args ...any) {
 		out = append(out, Finding{Skill: dir, Rule: rule, Path: path, Msg: fmt.Sprintf(format, args...)})
 	}
-	files := gitFiles(dir)
+	files := gitFiles(ctx, dir)
 	checkFrontmatter(dir, add)
 	checkLinks(dir, files, add)
 	checkFiles(dir, files, add)
@@ -76,24 +77,18 @@ func Skill(dir string) []Finding {
 // sees; nil means "not in a git work tree, use the file system".
 type fileSet map[string]bool
 
-func gitFiles(dir string) fileSet {
-	cmd := exec.Command("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--full-name", "--", ".")
-	cmd.Dir = dir
-	out, err := cmd.Output()
+func gitFiles(ctx context.Context, dir string) fileSet {
+	// -z output is NUL-terminated, not whitespace-trimmed: gitx.Git.Run
+	// would TrimSpace the whole blob and corrupt a name that starts with
+	// space, tab or newline, so this reads the raw bytes instead.
+	out, err := gitx.Git{}.Output(ctx, dir, nil, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ".")
 	if err != nil {
 		return nil
 	}
-	top := exec.Command("git", "rev-parse", "--show-prefix")
-	top.Dir = dir
-	prefix, err := top.Output()
-	if err != nil {
-		return nil
-	}
-	pre := strings.TrimSpace(string(prefix))
 	set := fileSet{}
 	for f := range strings.SplitSeq(string(out), "\x00") {
-		if rel, ok := strings.CutPrefix(f, pre); ok && rel != "" {
-			set[rel] = true
+		if f != "" {
+			set[f] = true
 		}
 	}
 	return set

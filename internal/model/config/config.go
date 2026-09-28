@@ -211,14 +211,6 @@ func Resolve(home string, getenv func(string) string, key, flag, def string) (st
 	return def, FromDefault, nil
 }
 
-// Set writes key = value into the config file of home. An existing file
-// keeps its format, comments, other keys and their order, and a skenv
-// schema directive in it moves to the version of the running skenv. Without
-// a file, config.toml is created with a header and the schema directive.
-func Set(home, key, value string) (string, error) {
-	return SetFormat(home, "", key, value)
-}
-
 // Target returns the config file that SetFormat writes for format ("" for
 // the existing file or TOML): the existing file, or a new
 // config.<format>. An existing file in another format is an error.
@@ -230,15 +222,19 @@ func Target(home, format string) (string, error) {
 	return docedit.ChooseFormat(Dir(home), "config", f.Path, format)
 }
 
-// SetFormat is Set with the format of a new file ("toml", "yaml", "json";
-// "" for TOML). An existing file keeps its format; format that disagrees
-// with it is an error, and nothing is written.
+// SetFormat writes key = value into the config file of home, in the format
+// of a new file ("toml", "yaml", "json"; "" for TOML or the existing
+// file's format). An existing file keeps its format, comments, other keys
+// and their order, and a skenv schema directive in it moves to the version
+// of the running skenv; format that disagrees with it is an error, and
+// nothing is written. Without a file, config.toml is created with a header
+// and the schema directive.
 func SetFormat(home, format, key, value string) (string, error) {
 	f, err := Load(home)
 	if err != nil {
 		return "", err
 	}
-	path, err := docedit.ChooseFormat(Dir(home), "config", f.Path, format)
+	path, err := Target(home, format)
 	if err != nil {
 		return "", err
 	}

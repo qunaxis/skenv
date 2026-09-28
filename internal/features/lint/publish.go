@@ -3,6 +3,7 @@ package lint
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -95,8 +96,8 @@ func Publish(dir string) []Finding {
 
 // RepoFiles lists the files git would publish from the repository at root
 // (tracked plus untracked-but-not-ignored), relative to root.
-func RepoFiles(root string) ([]string, error) {
-	set := gitFiles(root)
+func RepoFiles(ctx context.Context, root string) ([]string, error) {
+	set := gitFiles(ctx, root)
 	if set == nil {
 		return nil, fmt.Errorf("%s is not a git work tree", root)
 	}
@@ -137,9 +138,9 @@ func ScanDenylist(root string, files []string, deny *Denylist) []Finding {
 // stop-list (ScanDenylist) over every file git would publish, and gitleaks
 // over the whole history. leaks is the redacted gitleaks report, empty when
 // it found nothing.
-func PublishScan(root string, deny *Denylist) (findings []Finding, leaks string, err error) {
+func PublishScan(ctx context.Context, root string, deny *Denylist) (findings []Finding, leaks string, err error) {
 	// The whole repository is published, not only the skills.
-	files, err := RepoFiles(root)
+	files, err := RepoFiles(ctx, root)
 	if err != nil {
 		return nil, "", err
 	}

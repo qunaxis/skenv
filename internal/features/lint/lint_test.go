@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"context"
 	"maps"
 	"os"
 	"os/exec"
@@ -70,7 +71,7 @@ func rules(fs []Finding) []string {
 func fm(body string) string { return "---\n" + body + "---\n# x\n" }
 
 func TestGoodSkill(t *testing.T) {
-	if got := Skill(skill(t, nil)); len(got) != 0 {
+	if got := Skill(context.Background(), skill(t, nil)); len(got) != 0 {
 		t.Fatalf("findings on a valid skill: %v", got)
 	}
 }
@@ -115,7 +116,7 @@ func TestRules(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := Skill(skill(t, c.files))
+			got := Skill(context.Background(), skill(t, c.files))
 			if !reflect.DeepEqual(rules(got), c.want) {
 				t.Fatalf("rules = %v, want %v: %v", rules(got), c.want, got)
 			}
@@ -141,7 +142,7 @@ func TestRulesPass(t *testing.T) {
 	}
 	for name, files := range cases {
 		t.Run(name, func(t *testing.T) {
-			if got := Skill(skill(t, files)); len(got) != 0 {
+			if got := Skill(context.Background(), skill(t, files)); len(got) != 0 {
 				t.Fatalf("unexpected findings: %v", got)
 			}
 		})
@@ -197,8 +198,54 @@ func TestGitIgnoredFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".env\ncache/\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got := Skill(dir)
+	got := Skill(context.Background(), dir)
 	if len(got) != 2 || got[0].Rule != "L4" || !strings.Contains(got[0].Msg, "ignored by git") || got[1].Path != "notes/secret.key" {
 		t.Fatalf("findings = %v", got)
+	}
+}
+
+// gitFiles reports paths relative to the skill directory, not the
+// repository root, however many levels separate them.
+func TestGitFilesSkillInSubdirectory(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "a", "b", "demo")
+	if err := os.MkdirAll(filepath.Join(dir, "references"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(goodSkill), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "references/guide.md"), []byte("# Guide\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "t@example.invalid"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Skipf("git: %v %s", err, out)
+		}
+	}
+	files := gitFiles(context.Background(), dir)
+	if !files.has("SKILL.md") || !files.has("references/guide.md") {
+		t.Fatalf("gitFiles = %v", files)
+	}
+}
+
+// gitFiles must not trim the raw `git ls-files -z` output: a leading space,
+// tab or newline in the first (sorted) file name is part of the name, not
+// incidental whitespace around it.
+func TestGitFilesLeadingWhitespaceInName(t *testing.T) {
+	dir := skill(t, map[string]string{" leading.txt": "x"})
+	root := filepath.Dir(dir)
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "t@example.invalid"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Skipf("git: %v %s", err, out)
+		}
+	}
+	files := gitFiles(context.Background(), dir)
+	if !files.has(" leading.txt") {
+		t.Fatalf("gitFiles = %v, want \" leading.txt\" (with its leading space) present", files)
 	}
 }

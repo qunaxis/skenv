@@ -83,15 +83,17 @@ type Remote struct {
 // "github:owner/repo" on github.com, "gitlab:group/sub/repo",
 // "codeberg:owner/repo", "<alias>:path" of a declared host, or a full git
 // URL (https://, ssh://, git@host:path, file://, a local path). A prefix
-// that is neither built in nor declared is an error, never a fallback to
-// GitHub. h may be nil. A relative local path is made absolute against
-// the working directory; ResolveIn names another base.
-func (h Hosts) Resolve(repo string) (Remote, error) { return h.ResolveIn("", repo) }
+// that is neither built in nor declared is an error naming
+// [user.git_hosts.*], never a fallback to GitHub. h may be nil. A relative
+// local path is made absolute against the working directory; ResolveIn
+// names another base and section.
+func (h Hosts) Resolve(repo string) (Remote, error) { return h.ResolveIn(SectionUser, "", repo) }
 
 // ResolveIn is Resolve with a relative local path resolved against base,
 // the directory of the skenv file that holds the value ("" for the
-// working directory).
-func (h Hosts) ResolveIn(base, repo string) (Remote, error) {
+// working directory), and section naming where an unknown host prefix
+// should be declared (SectionUser or SectionProject) in the error.
+func (h Hosts) ResolveIn(section, base, repo string) (Remote, error) {
 	s := strings.TrimSpace(repo)
 	if s == "" {
 		return Remote{}, errors.New("repo is empty")
@@ -105,7 +107,7 @@ func (h Hosts) ResolveIn(base, repo string) (Remote, error) {
 	if m := prefixRe.FindStringSubmatch(s); m != nil && !strings.HasPrefix(m[2], "/") {
 		host, ok := h.lookup(m[1])
 		if !ok {
-			return Remote{}, h.unknownPrefix(m[1], s)
+			return Remote{}, h.unknownPrefix(section, m[1], s)
 		}
 		r, err := onHost(host, m[2])
 		if err != nil {
@@ -236,7 +238,7 @@ func (h Hosts) lookup(prefix string) (GitHost, bool) {
 	return host, ok
 }
 
-func (h Hosts) unknownPrefix(prefix, repo string) error {
+func (h Hosts) unknownPrefix(section, prefix, repo string) error {
 	known := []string{}
 	for _, b := range builtins {
 		if b.prefix != "" {
@@ -246,8 +248,8 @@ func (h Hosts) unknownPrefix(prefix, repo string) error {
 	for _, a := range slices.Sorted(maps.Keys(h)) {
 		known = append(known, a+":")
 	}
-	return fmt.Errorf("repo %q: unknown host prefix %q (known: %s); declare it under [user.git_hosts.%s], "+
-		"or write owner/repo for github.com or a full git URL", repo, prefix+":", strings.Join(known, ", "), prefix)
+	return fmt.Errorf("repo %q: unknown host prefix %q (known: %s); declare it under [%s.git_hosts.%s], "+
+		"or write owner/repo for github.com or a full git URL", repo, prefix+":", strings.Join(known, ", "), section, prefix)
 }
 
 // match finds the built-in or declared host that the URL u is on and

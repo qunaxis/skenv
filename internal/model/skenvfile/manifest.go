@@ -302,7 +302,7 @@ func (m *Manifest) Validate() error {
 		errs = append(errs, checkSelection(where, c.Include, c.Exclude)...)
 	}
 	for _, d := range m.DependencyList() {
-		errs = append(errs, checkDependency("user.dependencies", d, m.GitHosts, m.Dir)...)
+		errs = append(errs, checkDependency("user.dependencies", d, m.GitHosts, SectionUser, m.Dir)...)
 	}
 	for _, name := range slices.Sorted(maps.Keys(m.Machines)) {
 		mc := m.Machines[name]
@@ -503,7 +503,9 @@ func (m *Manifest) DependencyList() []*Dependency {
 
 // Remote resolves a repo value of the manifest: a relative local path
 // against the directory of the skenv file.
-func (m *Manifest) Remote(repo string) (Remote, error) { return m.GitHosts.ResolveIn(m.Dir, repo) }
+func (m *Manifest) Remote(repo string) (Remote, error) {
+	return m.GitHosts.ResolveIn(SectionUser, m.Dir, repo)
+}
 
 // SkillRef names one skill and where it comes from.
 type SkillRef struct {
