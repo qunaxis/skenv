@@ -4,24 +4,17 @@ Instructions for coding agents working on skenv. Do not add a `CLAUDE.md`:
 it would stop Claude Code from loading this file.
 
 - Go CLI, module `github.com/qunaxis/skenv`, binary `cmd/skenv`. Runtime
-  dependency: `git` only. No network services, no other executables.
-- Layout: `internal/model/agents`, `internal/platform/atomicfile` (atomic file writes),
-  `internal/features/autostart`, `internal/platform/buildinfo`, `internal/cli` (flags, integration tests),
-  `internal/devtools/clidocs` (command reference and man pages), `internal/devtools/clidocs/example` (command examples),
-  `internal/cli/new.go` (`skenv new`), `internal/model/config` (tool config),
-  `internal/platform/docedit` (YAML/JSON document editing; `format.go`: `--format` of new files; no write changes a file's
-  format, `TestWritesKeepFormat` covers every write path), `internal/features/skills`
-  (sync, link, doctor, list, vendor, init, clone, use, import; `project*.go`: `[project]` in a
-  project repository), `internal/platform/gitx`,
-  `internal/features/repository` (`[repository]`, `repo init|apply|upgrade|check`, templates in
-  `internal/features/repository/templates/`), `internal/features/lint` (L1-L6; `publish.go`: P1 publication check,
-  stop-list phrases are never printed), `internal/devtools/mdscan` (fenced-code-block scanner for doc
-  example tests), `internal/platform/paths` (file location resolution), `internal/devtools/release`
-  (tests for `cliff.toml` and the commit check), `internal/devtools/schemagen` (JSON Schema generation),
-  `internal/model/skenvfile` (the skenv file: `[repository]`, `[user]` and `[project]`,
-  TOML/YAML/JSON, parsing and in-place editing; `legacy.go`: errors for the keys before 0.6), `internal/model/skillname` (skill name validation),
-  `internal/features/skills/state`, `internal/devtools/gendocs` (command reference generation tool),
-  `internal/devtools/genschemas` (schema generation tool).
+  dependency: `git` only. External optional tools: `gitleaks` (lint check), `lefthook`
+  (repository init), OS service managers for autostart (`launchctl` on macOS, `systemctl` on Linux).
+  No network services.
+- Layout by layer: `internal/platform` (`internal/platform/atomicfile` for atomic writes, `internal/platform/buildinfo`,
+  `internal/platform/docedit` for YAML/JSON editing, `internal/platform/gitx` for git utilities, `internal/platform/paths`
+  for file resolution); `internal/model` (`internal/model/agents`, `internal/model/config`, `internal/model/skenvfile`,
+  `internal/model/skillname`); `internal/cli` for flags and integration tests; `internal/features` (`internal/features/autostart`
+  for service registration, `internal/features/lint` for L1-L6 checks, `internal/features/repository` for init/upgrade/templates,
+  `internal/features/skills` with `internal/features/skills/state`); `internal/devtools` (`internal/devtools/clidocs` with
+  `internal/devtools/clidocs/example` for docs, `internal/devtools/gendocs`, `internal/devtools/genschemas`, `internal/devtools/mdscan`
+  for doc tests, `internal/devtools/release`, `internal/devtools/schemagen` for JSON Schema).
 - Layers, enforced by depguard in `.golangci.yml`: `platform` imports no internal
   package, `model` only `platform` and `model`, features never import each other,
   and only `devtools` and tests import `devtools`.
