@@ -42,7 +42,7 @@ func TestSchemaRules(t *testing.T) {
 		{"checkout_dir required", ".toml", "[user.checkouts.a]\nrepo = \"a/b\"\n", "[user.checkouts.a] checkout_dir: is required"},
 		{"skills_dir escapes", ".toml", checkout + "skills_dir = \"../s\"\n", "[user.checkouts.a] skills_dir: invalid value. A relative path inside the repository"},
 		{"branch", ".toml", checkout + "branch = \"-x\"\n", "[user.checkouts.a] branch: invalid value. A git branch name."},
-		{"include twice", ".toml", checkout + "include = [\"x\", \"x\"]\n", `[user.checkouts.a] include: lists "x" twice`},
+		{"include twice", ".toml", checkout + "include = [\"x\", \"x\"]\n", "[user.checkouts.a] include: items 0 and 1 are the same; keep one"},
 		{"include with a slash", ".toml", checkout + "include = [\"a/b\"]\n", "[user.checkouts.a] include[0]: invalid value. A skill name or a glob over names"},
 		{"empty exclude", ".toml", checkout + "exclude = [\"\"]\n", "[user.checkouts.a] exclude[0]: invalid value. A skill name or a glob over names"},
 		{"unmanaged with a slash", ".toml", "[user]\nunmanaged = [\"a/b\"]\n", "[user] unmanaged[0]: invalid value. A glob over entry names"},
@@ -53,10 +53,10 @@ func TestSchemaRules(t *testing.T) {
 		{"dependency commit required", ".toml", dep("x", "repo = \"a/b\"\n"), "[user.dependencies.x] commit: is required"},
 		{"short commit", ".toml", dep("x", "repo = \"a/b\"\ncommit = \"abc1234\"\n"), "[user.dependencies.x] commit: invalid value. A full 40-character lowercase commit SHA"},
 		{"absolute skill_dir", ".toml", dep("x", full+"skill_dir = \"/etc\"\n"), "[user.dependencies.x] skill_dir: invalid value. A relative path"},
-		{"machine include twice", ".toml", "[user.machines.m]\ninclude = [\"a\", \"a\"]\n", `[user.machines.m] include: lists "a" twice`},
+		{"machine include twice", ".toml", "[user.machines.m]\ninclude = [\"a\", \"a\"]\n", "[user.machines.m] include: items 0 and 1 are the same; keep one"},
 		{"empty checkout_dirs entry", ".toml", checkout + "[user.machines.m.checkout_dirs]\na = \"\"\n", "[user.machines.m.checkout_dirs] a: must not be empty"},
 		{"unknown agent", ".toml", "[user.agents]\nenabled = [\"codex\"]\n", `[user.agents] enabled[0]: must be one of "claude", "pi". Add other directories to user.agents.extra_dirs; Codex needs no entry`},
-		{"agent twice", ".toml", "[user.agents]\nenabled = [\"pi\", \"pi\"]\n", `[user.agents] enabled: lists "pi" twice`},
+		{"agent twice", ".toml", "[user.agents]\nenabled = [\"pi\", \"pi\"]\n", "[user.agents] enabled: items 0 and 1 are the same; keep one"},
 		{"agent path of an unknown agent", ".toml", "[user.agents.paths]\ncodex = \"~/x\"\n", `[user.agents.paths] codex: must be one of "claude", "pi". Add other directories`},
 		{"empty agent path", ".toml", "[user.agents.paths]\npi = \"\"\n", "[user.agents.paths] pi: must not be empty"},
 		{"empty extra dir", ".toml", "[user.agents]\nextra_dirs = [\"\"]\n", "[user.agents] extra_dirs[0]: must not be empty"},
@@ -73,7 +73,7 @@ func TestSchemaRules(t *testing.T) {
 		{"from skills required", ".toml", from("commit = \"" + sha + "\"\n"), "[project.from.c] skills: is required"},
 		{"from skills empty", ".toml", from("skills = []\ncommit = \"" + sha + "\"\n"), "[project.from.c] skills: must list at least 1"},
 		{"from skill name", ".toml", from("skills = [\"A\"]\ncommit = \"" + sha + "\"\n"), "[project.from.c] skills[0]: invalid value. A skill name is"},
-		{"from skill twice", ".toml", from("skills = [\"x\", \"x\"]\ncommit = \"" + sha + "\"\n"), `[project.from.c] skills: lists "x" twice`},
+		{"from skill twice", ".toml", from("skills = [\"x\", \"x\"]\ncommit = \"" + sha + "\"\n"), "[project.from.c] skills: items 0 and 1 are the same; keep one"},
 		{"from commit", ".toml", from("skills = [\"x\"]\ncommit = \"main\"\n"), "[project.from.c] commit: invalid value. A full 40-character"},
 		{"project dependency commit", ".toml", "[project.dependencies.x]\nrepo = \"a/b\"\ncommit = \"HEAD\"\n", "[project.dependencies.x] commit: invalid value. A full 40-character"},
 
@@ -104,8 +104,19 @@ func TestSchemaErrorFormat(t *testing.T) {
 	_, err := LoadManifest(p)
 	want := "manifest " + p + ": 2 errors:\n" +
 		"  [user.checkouts.a] checkout_dir: is required\n" +
-		"  [user.git_hosts.work] base_url: invalid value. A base URL such as \"https://git.example.com\" (no credentials) or \"ssh://git@git.example.com\"."
+		"  [user.git_hosts.work] base_url: invalid value. A base URL such as \"https://git.example.com\" or \"ssh://git@git.example.com\", without credentials: " +
+		"use a git credential helper or an ssh key (https://qunaxis.github.io/skenv/git-hosts#authentication)."
 	if err == nil || err.Error() != want {
 		t.Errorf("err =\n%v\nwant\n%s", err, want)
+	}
+}
+
+// A duplicate in a list is named by position, not by value: a misplaced URL
+// may carry a token.
+func TestSchemaDuplicateNotEchoed(t *testing.T) {
+	text := "[project]\nmirrors = [\"https://tok:secret@x\", \"https://tok:secret@x\"]\n"
+	_, err := Parse([]byte(text), ".toml")
+	if err == nil || strings.Contains(err.Error(), "secret") || !strings.Contains(err.Error(), "[project] mirrors: items 0 and 1 are the same; keep one") {
+		t.Errorf("err = %v", err)
 	}
 }

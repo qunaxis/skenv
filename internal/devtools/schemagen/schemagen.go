@@ -197,7 +197,8 @@ func (g *gen) skenv() *Schema {
 	gitHost.Required = []string{"base_url"}
 	hostURL := gitHost.Properties.get("base_url")
 	hostURL.Pattern = `^([Hh][Tt][Tt][Pp][Ss]?://[^/@?#]+|[Ss][Ss][Hh]://([^/:@?#]+@)?[^/@?#]+)(/[^?#]*)?$`
-	hostURL.PatternErrorMessage = `A base URL such as "https://git.example.com" (no credentials) or "ssh://git@git.example.com".`
+	hostURL.PatternErrorMessage = `A base URL such as "https://git.example.com" or "ssh://git@git.example.com", without credentials: ` +
+		`use a git credential helper or an ssh key (https://qunaxis.github.io/skenv/git-hosts#authentication).`
 	hostURL.Examples = []any{"https://git.example.com", "ssh://git@git.example.com"}
 	provider := gitHost.Properties.get("provider")
 	provider.Enum = skenvfile.HostTypes

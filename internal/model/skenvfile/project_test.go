@@ -67,7 +67,7 @@ func TestParseProjectErrors(t *testing.T) {
 		{"[project]\ndirs = \"x\"\n", "[project] dirs: unknown key"},
 		{d("a") + from("s", "repo = \"me/s\"\nskills = [\"a\"]\ncommit = \""+sha+"\"\n"), `project skill "a" is defined twice: dependency a (x/a) and from.s (me/s)`},
 		{from("s", "repo = \"me/s\"\ncommit = \""+sha+"\"\n"), "[project.from.s] skills: is required"},
-		{from("s", "repo = \"me/s\"\nskills = [\"a\", \"a\"]\ncommit = \""+sha+"\"\n"), `lists "a" twice`},
+		{from("s", "repo = \"me/s\"\nskills = [\"a\", \"a\"]\ncommit = \""+sha+"\"\n"), "skills: items 0 and 1 are the same"},
 		{from("s", "repo = \"me/s\"\nskills = [\"a\"]\ncommit = \"main\"\n"), "full 40-character"},
 		{from("s", "skills = [\"a\"]\ncommit = \""+sha+"\"\n"), "[project.from.s] repo: is required"},
 		{from("S", "repo = \"me/s\"\nskills = [\"a\"]\ncommit = \""+sha+"\"\n"), "[project.from] S: invalid value. An ID is lowercase"},

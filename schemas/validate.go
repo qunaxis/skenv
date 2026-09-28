@@ -2,7 +2,6 @@ package schemas
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -183,7 +182,7 @@ func (f *formatter) message(e *jsonschema.ValidationError, loc []string) string 
 	case *kind.MinItems:
 		msg = fmt.Sprintf("must list at least %d", k.Want)
 	case *kind.UniqueItems:
-		msg = "lists " + f.display(append(slices.Clone(loc), strconv.Itoa(k.Duplicates[1]))) + " twice"
+		msg = fmt.Sprintf("items %d and %d are the same; keep one", k.Duplicates[0], k.Duplicates[1])
 	default:
 		msg = e.ErrorKind.LocalizedString(nil)
 	}
@@ -307,13 +306,6 @@ func (f *formatter) at(loc []string) any {
 		}
 	}
 	return cur
-}
-
-// display quotes the string at loc, for duplicates in a list of names or
-// directories.
-func (f *formatter) display(loc []string) string {
-	b, _ := json.Marshal(f.at(loc))
-	return string(b)
 }
 
 func str(schema any, key string) string {

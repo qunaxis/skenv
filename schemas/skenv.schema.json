@@ -413,7 +413,7 @@
             "https://git.example.com",
             "ssh://git@git.example.com"
           ],
-          "patternErrorMessage": "A base URL such as \"https://git.example.com\" (no credentials) or \"ssh://git@git.example.com\"."
+          "patternErrorMessage": "A base URL such as \"https://git.example.com\" or \"ssh://git@git.example.com\", without credentials: use a git credential helper or an ssh key (https://qunaxis.github.io/skenv/git-hosts#authentication)."
         },
         "provider": {
           "description": "The software of the server: \"github\", \"gitlab\" (subgroups of any depth), \"gitea\" (Gitea, Forgejo) or \"generic\" (any path, cloned as written, \".git\" is not added). It sets the accepted paths and is recorded for CI templates and imports. Default: \"generic\".",

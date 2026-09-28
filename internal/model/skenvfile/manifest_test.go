@@ -121,7 +121,7 @@ func TestParseManifestErrors(t *testing.T) {
 		"syntax":                   {"[[vendor]\n", "expected"},
 		"bad include name":         {checkout("include = [\"Foo\"]\n"), "single hyphens"},
 		"reserved include":         {checkout("include = [\"synced\"]\n"), "reserved"},
-		"duplicate include":        {checkout("include = [\"a\", \"a\"]\n"), "lists \"a\" twice"},
+		"duplicate include":        {checkout("include = [\"a\", \"a\"]\n"), "include: items 0 and 1 are the same"},
 		"exclude with slash":       {checkout("exclude = [\"a/b\"]\n"), "glob over names"},
 		"exclude bad glob":         {checkout("exclude = [\"[\"]\n"), "glob over names"},
 		"exclude empty":            {checkout("exclude = [\"\"]\n"), "glob over names"},
@@ -130,7 +130,7 @@ func TestParseManifestErrors(t *testing.T) {
 		"codex is not an agent":    {"[user.agents]\nenabled = [\"codex\"]\n", "Codex needs no entry"},
 		"unknown agent":            {"[user.agents]\nenabled = [\"cursor\"]\n", `[user.agents] enabled[0]: must be one of "claude", "pi"`},
 		"unknown agent path":       {"[user.agents.paths]\ncursor = \"~/c\"\n", `[user.agents.paths] cursor: must be one of "claude", "pi"`},
-		"agent twice":              {"[user.agents]\nenabled = [\"pi\", \"pi\"]\n", `lists "pi" twice`},
+		"agent twice":              {"[user.agents]\nenabled = [\"pi\", \"pi\"]\n", "enabled: items 0 and 1 are the same"},
 		"unmanaged slash":          {"[user]\nunmanaged = [\"a/b\"]\n", "[user] unmanaged[0]"},
 		"old key":                  {"[user]\nlayout = {}\n", "user.layout → user.storage"},
 	}
