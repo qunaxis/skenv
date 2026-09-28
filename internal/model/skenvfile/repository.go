@@ -20,7 +20,7 @@ import (
 // read from disk name it too.
 const DefaultName = "skenv.toml"
 
-// LatestTemplates is the template version of the templates that
+// LatestTemplates is the version of the templates that
 // internal/features/repository embeds; `repo init` and `repo upgrade`
 // write it as repository.template_version, and `repo apply` generates it
 // only. The CI workflow installs this skenv release. It lives in the file

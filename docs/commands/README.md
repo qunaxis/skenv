@@ -24,7 +24,7 @@ Generated from `skenv --help`. Start with [skenv](skenv.md).
 - [skenv list](skenv_list.md): List the skills of the manifest and whether they are installed
 - [skenv new](skenv_new.md): Scaffold a skill
 - [skenv repo](skenv_repo.md): Set up and check the repository templates of a skills repository
-- [skenv repo apply](skenv_repo_apply.md): Regenerate the managed files of the repository templates
+- [skenv repo apply](skenv_repo_apply.md): Regenerate the managed files from the repository templates
 - [skenv repo check](skenv_repo_check.md): Compare the managed files with the repository templates
 - [skenv repo init](skenv_repo_init.md): Set up the repository templates of a skills repository
 - [skenv repo upgrade](skenv_repo_upgrade.md): Move the repository to the templates of this skenv

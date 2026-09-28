@@ -2,7 +2,7 @@
 
 ## skenv repo apply
 
-Regenerate the managed files of the repository templates
+Regenerate the managed files from the repository templates
 
 ### Synopsis
 

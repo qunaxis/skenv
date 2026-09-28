@@ -235,7 +235,7 @@ func repoCmd(a *app) *cobra.Command {
 	initC.Flags().StringVar(&ci, "ci", "", "CI system: github or gitlab (default: detected from the host of origin, else github)")
 	_ = initC.RegisterFlagCompletionFunc("ci", cobra.FixedCompletions(skenvfile.CIs, cobra.ShellCompDirectiveNoFileComp))
 	formatFlag(initC, &format, "format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)")
-	apply := sub("apply", "apply", "Regenerate the managed files of the repository templates",
+	apply := sub("apply", "apply", "Regenerate the managed files from the repository templates",
 		"Regenerate the managed files and blocks from the templates of\nrepository.template_version; then `lefthook install`. apply never changes\nthe skenv file: template_version is what the repository asks for, and\nthis skenv embeds the templates of "+skenvfile.LatestTemplates+" only. Another version\nis an error: run `skenv repo upgrade` to move the repository to "+skenvfile.LatestTemplates+",\nor use the skenv release it names.\n\nThe CI pipeline follows the table under repository.ci. To switch CI systems,\nreplace [repository.ci.github] with [repository.ci.gitlab] (or back) and run\napply: it writes the pipeline of the new one and removes the managed file\nof the other (.github/workflows/check.yml or .gitlab-ci.yml).\n\n"+
 			"- Reads: the skenv file ([repository]) and the managed files.\n"+
 			"- Changes: the managed files and blocks, and the git hooks (lefthook\n  install).\n"+

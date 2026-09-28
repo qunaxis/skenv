@@ -215,7 +215,7 @@ func TestConfig(t *testing.T) {
 	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "must be a version") {
 		t.Errorf("bad version: %v", err)
 	}
-	// Update only touches the template_version line under [repository],
+	// Upgrade only touches the template_version line under [repository],
 	// and adds the schema directive of that version.
 	write(t, cfg, "# keep\n[user.storage]\ndir = \"x\"\n\n[repository]\ntemplate_version = \"0.1.0\" # old\nvisibility = \"public\"\n")
 	if changed, err := Upgrade(root, "0.4.0", false); err != nil || !changed {
@@ -223,10 +223,10 @@ func TestConfig(t *testing.T) {
 	}
 	want := "#:schema " + schemas.URL(schemas.Skenv, "0.4.0") + "\n# keep\n[user.storage]\ndir = \"x\"\n\n[repository]\ntemplate_version = \"0.4.0\" # old\nvisibility = \"public\"\n"
 	if got := read(t, cfg); got != want {
-		t.Errorf("Update:\n%s", got)
+		t.Errorf("Upgrade:\n%s", got)
 	}
 	if changed, err := Upgrade(root, "0.4.0", false); err != nil || changed {
-		t.Errorf("second Update: %v %v", changed, err)
+		t.Errorf("second Upgrade: %v %v", changed, err)
 	}
 }
 
@@ -282,7 +282,7 @@ func TestInitNextToUser(t *testing.T) {
 }
 
 // A repository whose desired template_version is older is reported by
-// check and moved to skenvfile.LatestTemplates by Update (what `repo upgrade` does).
+// check and moved to skenvfile.LatestTemplates by Upgrade (what `repo upgrade` does).
 func TestOlderTemplateVersion(t *testing.T) {
 	root := t.TempDir()
 	if _, _, err := Init(root, "private", "", "", nil, false, false); err != nil {
@@ -299,7 +299,7 @@ func TestOlderTemplateVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	if d, _ := Check(root); len(d) != 0 {
-		t.Fatalf("drift after Update = %v", d)
+		t.Fatalf("drift after Upgrade = %v", d)
 	}
 }
 
