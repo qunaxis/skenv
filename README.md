@@ -266,69 +266,11 @@ the skills repository, then `skenv link` (see
 ## Documentation
 
 The same pages, with search, are published at
-<https://qunaxis.github.io/skenv/>.
-
-**Getting started**
-
-- [Getting started](docs/getting-started.md): the three situations above.
-- [Install](docs/install.md): binaries, `go install`, man pages and shell
-  completion.
-- [Create your first environment](docs/first-environment.md): `skenv init`,
-  a first skill, `sync`, verify, commit and push.
-- [Adopt existing skills](docs/adopting.md): `skenv init --import` and
-  `skenv import` for skills installed with `npx skills` or by hand, the
-  import report, and `skenv import --project`.
-- [Connect another machine](docs/another-machine.md): `skenv clone`,
-  `skenv use`, the first sync and how to verify it.
-
-**Everyday tasks**
-
-- [Commands by task](docs/commands.md): which command does what, and exit
-  codes.
-- [List installed skills](docs/list-skills.md): `skenv list`,
-  `skenv doctor` and its classes.
-- [Add, update and remove skills](docs/manage-skills.md): `skenv vendor`
-  and checkouts.
-- [Create a skill](docs/create-skill.md): `skenv new`, `skenv link`.
-- [Resolve conflicts and restore backups](docs/conflicts.md): `--adopt`,
-  backups, `--dry-run` limits.
-- [Enable automatic sync](docs/autostart.md): `skenv autostart`.
-
-**Reference**
-
-- [Command reference](docs/commands/README.md): one page per command with
-  every flag, generated from the command definitions by `make docs`.
-- [Manifest format](docs/manifest.md): `[user]`, where it is found,
-  selection, machine rules, agents and storage, and the mapping to
-  `skills-lock.json`.
-- [The skenv file](docs/skenv-file.md): `skenv.toml` with its `[repository]`,
-  `[user]` and `[project]` sections, formats, and moving to the 0.6
-  format.
-- [Machine configuration](docs/configuration.md): the tool config and
-  precedence of flags, environment and file.
-- [Git hosts and authentication](docs/git-hosts.md): `repo` forms for
-  GitHub, GitLab, Codeberg and self-hosted servers, host aliases, https or ssh, and
-  authentication.
-- [Project skills](docs/project-skills.md): `[project]`, skills committed
-  with a project, mirrors, `doctor` in CI.
-- [Editor support](docs/editor-support.md): JSON Schemas of the skenv file
-  and the tool config, and editor setup.
-
-**For skill authors**
-
-- [Validation and publication](docs/lint.md): `skenv lint`, its rules and
-  the publication check.
-- [Repository checks and CI](docs/harness.md): the optional harness of
-  `skenv repo init|apply|upgrade|check`: hooks, the GitHub Actions and GitLab CI
-  pipelines, runners and prerequisites.
-- [Claude Code hook](docs/claude-code-hook.md): how skills are linted while
-  an agent edits them.
-
-**Contributing**
-
-- [Development and releases](docs/releasing.md): `make` targets, commit
-  rules, versioning and cutting a release.
-- [Changelog](CHANGELOG.md).
+<https://qunaxis.github.io/skenv/>; its sidebar is the full index. Start with
+[Getting started](docs/getting-started.md), then
+[Commands by task](docs/commands.md),
+[Machine configuration](docs/configuration.md) and
+[the skenv file](docs/skenv-file.md).
 
 `skenv --help` and `skenv <command> --help` print the command reference in
 the terminal.
@@ -345,16 +287,8 @@ skenv vendor add qunaxis/skenv --path skills/skenv
 
 ## Roadmap
 
-Done:
-
-- **v0.1** — `env.toml`, `sync`, `link`, `init`, `doctor`, `vendor
-  add|update|remove`, `autostart`.
-- **v0.2** — `skenv lint` (L1–L6), the skills-repository harness
-  (`skenv repo`), ignore patterns for other tools' skills.
-- **v0.3** — the publication check (`lint --publish`), the Claude Code hook,
-  `skenv new`, harness 0.3.0.
-
-Being considered next, in no particular order and with no dates:
+Shipped work is in [CHANGELOG.md](CHANGELOG.md). Being considered next, in no
+particular order and with no dates:
 
 - a Homebrew tap;
 - stabilising the manifest format and the CLI for 1.0.

@@ -14,7 +14,7 @@ repository, look at the plan, apply it and check the result.
 
 ## Before you start
 
-- skenv is [installed](install.md) and `git` can clone your repository:
+- skenv is [installed](getting-started.md#install) and `git` can clone your repository:
   for a private one, the ssh key or credential helper you normally use
   (see [Authentication](git-hosts.md#authentication)).
 - The manifest on the server has everything you want here. skenv never

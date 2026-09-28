@@ -20,7 +20,7 @@ skenv autostart status   # exit 0: installed and loaded
   enabled with `systemctl --user`.
 
 The job runs the skenv binary you ran `enable` with, by its path: install
-skenv where it stays (see [Install](install.md)) and run `enable` again
+skenv where it stays (see [Install](getting-started.md#install)) and run `enable` again
 after moving it. An existing job is replaced.
 
 The log is `~/.local/state/skenv/autostart.log`. With `--quiet` it holds
