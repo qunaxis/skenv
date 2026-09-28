@@ -46,3 +46,19 @@ it would stop Claude Code from loading this file.
   data in code, tests, fixtures or commit messages.
 - Work on issues follows `.devloop/process.md` (board, executor model
   labels `model:*`, merge queue, definition of done); config in `devloop.toml`.
+
+## Definition of done
+
+Full contribution workflow: `docs/contributing.md`. Change → update in the
+same PR:
+
+| change | update |
+|---|---|
+| new/changed command, flag, argument, output | `Long`/`Example` in `internal/cli`, `make examples`, `make docs`, the task page in `docs/` that describes the workflow, `skills/skenv/` if agents use it |
+| skenv file or config key | Go types → `make schemas`, `docs/skenv-file.md` or `docs/configuration.md`, legacy error in `skenvfile/legacy.go` if a key is renamed/removed, `skills/skenv/` |
+| new/moved/removed package | this file's layout list above |
+| breaking change | `!` in the commit, docs, `skills/skenv/` |
+| repository templates | the template version bump rules above |
+
+Run `make check`; the docs tests (docs harness epic) fail on stale commands,
+flags, keys and package lists.
