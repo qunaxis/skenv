@@ -66,13 +66,8 @@ func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) 
 	if err != nil {
 		return ExitFatal, err
 	}
-	if r.changed() && !opts.DryRun {
-		if fresh {
-			e.infof("add [user] to %s", e.displayPath(mp))
-		}
-		if err := skenvfile.WriteFile(mp, r.out); err != nil {
-			return ExitFatal, fmt.Errorf("write manifest %s: %w", e.displayPath(mp), err)
-		}
+	if err := e.writeImported(r, mp, skenvfile.SectionUser); err != nil {
+		return ExitFatal, err
 	}
 	code, err := e.finishImport(r, sync)
 	if err != nil || code != ExitOK || !sync || opts.DryRun {
@@ -80,6 +75,25 @@ func Import(ctx context.Context, env Env, opts Options, sync bool) (int, error) 
 	}
 	e.Close()
 	return syncAdopt(ctx, env, mp, r)
+}
+
+// writeImported writes the text of the import r to the skenv file, and
+// says so first when it adds [section]; not under --dry-run.
+func (e *scope) writeImported(r *imported, file, section string) error {
+	if !r.changed() || e.opts.DryRun {
+		return nil
+	}
+	if r.fresh {
+		e.infof("add [%s] to %s", section, e.displayPath(file))
+	}
+	what := e.displayPath(file)
+	if section == skenvfile.SectionUser {
+		what = "manifest " + what
+	}
+	if err := skenvfile.WriteFile(file, r.out); err != nil {
+		return fmt.Errorf("write %s: %w", what, err)
+	}
+	return nil
 }
 
 // InitImport runs `skenv init --import`: start a manifest in the git
@@ -158,6 +172,7 @@ var groupTitles = [...]string{
 // imported is the outcome of importUser.
 type imported struct {
 	before, out []byte
+	fresh       bool // the section was just added to before
 	entries     int
 	unmanaged   int
 	lock        *skillsLock
@@ -230,7 +245,7 @@ type ownGroup struct {
 // entries to remove. extraOwn is added as a checkout unless the import
 // adds its working copy already.
 func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *skenvfile.Checkout) (*imported, error) {
-	r := &imported{before: before, out: start}
+	r := &imported{before: before, out: start, fresh: fresh}
 	lock, err := readSkillsLock(e.skillsLockPath(), skillsLockVersion)
 	if err != nil {
 		return nil, err

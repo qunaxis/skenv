@@ -34,38 +34,9 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 	if err != nil || root == "" {
 		return ExitFatal, fmt.Errorf("--project: %s is not inside a git repository", homeShow(env.Home)(dir))
 	}
-	file, err := skenvfile.Find(root)
+	file, data, start, fresh, p, err := openProjectFile(env, root)
 	if err != nil {
 		return ExitFatal, err
-	}
-	var data []byte
-	if file == "" {
-		file = filepath.Join(root, skenvfile.Names[0])
-	} else if data, err = os.ReadFile(file); err != nil {
-		return ExitFatal, err
-	}
-	ext := filepath.Ext(file)
-	doc, err := skenvfile.Parse(data, ext)
-	if err != nil {
-		return ExitFatal, fmt.Errorf("%s: %w", homeShow(env.Home)(file), err)
-	}
-	start, fresh := data, !doc.Has(skenvfile.SectionProject)
-	if fresh {
-		// The skills CLI links its copies into the other agent directories:
-		// mirrors.
-		var mirrors []string
-		for _, d := range agentDirs[1:] {
-			if _, err := os.Stat(filepath.Join(root, d)); err == nil {
-				mirrors = append(mirrors, d)
-			}
-		}
-		if start, err = skenvfile.AddProject(data, ext, mirrors); err != nil {
-			return ExitFatal, fmt.Errorf("%s: %w", homeShow(env.Home)(file), err)
-		}
-	}
-	p, err := skenvfile.ParseProject(start, ext)
-	if err != nil {
-		return ExitFatal, fmt.Errorf("%s: %w", homeShow(env.Home)(file), err)
 	}
 	e, err := openProject(ctx, env, Options{DryRun: dryRun}, root, file, p)
 	if err != nil {
@@ -77,13 +48,8 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 	if err != nil {
 		return ExitFatal, err
 	}
-	if r.changed() && !dryRun {
-		if fresh {
-			e.infof("add [project] to %s", e.displayPath(file))
-		}
-		if err := skenvfile.WriteFile(file, r.out); err != nil {
-			return ExitFatal, fmt.Errorf("write %s: %w", e.displayPath(file), err)
-		}
+	if err := e.writeImported(&r.imported, file, skenvfile.SectionProject); err != nil {
+		return ExitFatal, err
 	}
 	if len(r.unlock) > 0 {
 		if err := e.cleanLock(r.lock, r.unlock, e.rel); err != nil {
@@ -111,6 +77,44 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 	return code, nil
 }
 
+// openProjectFile reads and parses the skenv file of the repository root
+// (file, the path of a new skenv.toml when there is none, and data, its
+// text on disk); start is that text with [project] added when it has none
+// (fresh), and p the project it describes.
+func openProjectFile(env Env, root string) (file string, data, start []byte, fresh bool, p *skenvfile.Project, err error) {
+	if file, err = skenvfile.Find(root); err != nil {
+		return "", nil, nil, false, nil, err
+	}
+	if file == "" {
+		file = filepath.Join(root, skenvfile.Names[0])
+	} else if data, err = os.ReadFile(file); err != nil {
+		return "", nil, nil, false, nil, err
+	}
+	ext := filepath.Ext(file)
+	doc, err := skenvfile.Parse(data, ext)
+	if err != nil {
+		return "", nil, nil, false, nil, fmt.Errorf("%s: %w", homeShow(env.Home)(file), err)
+	}
+	start, fresh = data, !doc.Has(skenvfile.SectionProject)
+	if fresh {
+		// The skills CLI links its copies into the other agent directories:
+		// mirrors.
+		var mirrors []string
+		for _, d := range agentDirs[1:] {
+			if _, err := os.Stat(filepath.Join(root, d)); err == nil {
+				mirrors = append(mirrors, d)
+			}
+		}
+		if start, err = skenvfile.AddProject(data, ext, mirrors); err != nil {
+			return "", nil, nil, false, nil, fmt.Errorf("%s: %w", homeShow(env.Home)(file), err)
+		}
+	}
+	if p, err = skenvfile.ParseProject(start, ext); err != nil {
+		return "", nil, nil, false, nil, fmt.Errorf("%s: %w", homeShow(env.Home)(file), err)
+	}
+	return file, data, start, fresh, p, nil
+}
+
 // projectImport is the outcome of importLock.
 type projectImport struct {
 	imported
@@ -123,7 +127,7 @@ type projectImport struct {
 // just added), prints the report and the diff, and returns the new text
 // and the lock entries to remove.
 func (e *ProjectScope) importLock(before, start []byte, fresh bool) (*projectImport, error) {
-	r := &projectImport{before: before, out: start}
+	r := &projectImport{before: before, out: start, fresh: fresh}
 	lock, err := readSkillsLock(filepath.Join(e.root, projectLockName), projectLockVersion)
 	if err != nil {
 		return nil, err
