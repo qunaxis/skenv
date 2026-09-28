@@ -3,8 +3,9 @@
 //
 // YAML is edited as text at the positions the parser reports, so comments,
 // blank lines, quoting and key order of everything else stay byte for byte.
-// JSON is decoded into an order-preserving tree and encoded again with
-// two-space indentation and without HTML escaping.
+// JSON is decoded into an order-preserving tree and encoded again without
+// HTML escaping, keeping the file's indentation (its first indented line,
+// or two spaces for a file with none).
 //
 // Paths address nodes from the top of the document: a string selects a
 // mapping key, an int a sequence item.

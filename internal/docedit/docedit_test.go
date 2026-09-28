@@ -193,6 +193,26 @@ func TestYAMLCRLF(t *testing.T) {
 	}
 }
 
+// #55: a JSON file indented with tabs or four spaces keeps that indentation
+// after an edit; only the changed value's line differs.
+func TestJSONKeepsIndent(t *testing.T) {
+	cases := map[string]string{
+		"tabs":        "{\n\t\"a\": {\n\t\t\"b\": \"x\",\n\t\t\"c\": \"keep\"\n\t}\n}\n",
+		"four spaces": "{\n    \"a\": {\n        \"b\": \"x\",\n        \"c\": \"keep\"\n    }\n}\n",
+	}
+	for name, in := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := edit(t, ".json", in, func(d Doc) error {
+				return d.SetString([]any{"a", "b"}, "y")
+			})
+			want := strings.Replace(in, `"x"`, `"y"`, 1)
+			if got != want {
+				t.Errorf("got:\n%q\nwant:\n%q", got, want)
+			}
+		})
+	}
+}
+
 func TestJSON(t *testing.T) {
 	in := `{
   "$schema": "https://example.org/s.json?a=1&b=2",
