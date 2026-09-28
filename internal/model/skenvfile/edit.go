@@ -39,12 +39,14 @@ func sectionRe(section string) *regexp.Regexp {
 type block struct{ start, end int } // line range [start, end)
 
 // splitLines is docedit.SplitLines, except it keeps a trailing empty
-// element when data ends with a newline. insertTable sizes its blank
-// separator off len(lines), and dropping that element (as
-// docedit.SplitLines does) changes the number of blank lines it inserts
-// before a brand new section's first table (a pre-existing quirk, #110).
-// Kept byte for byte so this refactor changes no output (#69); unifying
-// the two is a separate, behaviour-changing follow-up.
+// element when data ends with a newline. Every function below that reads
+// lines (insertTable, setCommit and its RemoveDependency use of
+// namedBlock) sees that element as one more line, and insertTable's
+// `!strings.HasSuffix(lines[at-1], "\n")` check treats it as an
+// unterminated line, so it writes one extra blank line before a brand new
+// section's first table (a pre-existing quirk, #110). Kept byte for byte
+// so this refactor changes no output (#69); unifying the two is a
+// separate, behaviour-changing follow-up.
 func splitLines(data []byte) []string {
 	ls := docedit.SplitLines(data)
 	if len(data) > 0 && data[len(data)-1] == '\n' {
