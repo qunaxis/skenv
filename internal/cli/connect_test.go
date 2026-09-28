@@ -211,6 +211,23 @@ func onlyDirective(stderr string) bool {
 	return stderr == "Completion ended with directive: ShellCompDirectiveNoFileComp\n"
 }
 
+// --project completes the names pinned in [project] of the current
+// repository instead of the manifest (#56), and offers nothing outside a
+// project without printing or touching the network.
+func TestCompletionOfPinnedSkillsProject(t *testing.T) {
+	w := newWorld(t)
+	w.project("")
+	code, out, errOut := w.run("__complete", "vendor", "update", "--project", "")
+	if code != 0 || !strings.HasPrefix(out, "archify\n") || !onlyDirective(errOut) {
+		t.Errorf("completion in a project: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	t.Chdir(w.home)
+	code, out, errOut = w.run("__complete", "vendor", "update", "--project", "")
+	if code != 0 || !strings.HasPrefix(out, ":4\n") || !onlyDirective(errOut) {
+		t.Errorf("completion outside a project: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+}
+
 // An own repository whose working copy has no skills directory yet has no
 // skills: sync still prunes, and list does not call it "not cloned".
 func TestOwnWithoutSkillsDir(t *testing.T) {
