@@ -110,24 +110,26 @@ var items = []item{
 // managed returns the items c generates: the common ones and those of its
 // CI.
 func managed(c *skenvfile.Repository) []item {
-	var out []item
-	for _, it := range items {
-		if it.CI == "" || it.CI == c.Provider {
-			out = append(out, it)
-		}
-	}
-	return out
+	own, _ := itemsByCI(c)
+	return own
 }
 
 // otherCI returns the items of the CI systems that c does not use.
 func otherCI(c *skenvfile.Repository) []item {
-	var out []item
+	_, other := itemsByCI(c)
+	return other
+}
+
+// itemsByCI splits the items into those of managed and those of otherCI.
+func itemsByCI(c *skenvfile.Repository) (own, other []item) {
 	for _, it := range items {
-		if it.CI != "" && it.CI != c.Provider {
-			out = append(out, it)
+		if it.CI == "" || it.CI == c.Provider {
+			own = append(own, it)
+		} else {
+			other = append(other, it)
 		}
 	}
-	return out
+	return own, other
 }
 
 // jsonHeader marks items whose template writes its own header.
@@ -337,57 +339,89 @@ func Apply(root string, c *skenvfile.Repository, dryRun, force bool) ([]Change, 
 		return nil, err
 	}
 	if !force {
-		var foreign []string
-		for _, it := range managed(c) {
-			if it.Kind != whole {
-				continue
-			}
-			data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(it.Path)))
-			if err == nil && !isManaged(data) {
-				foreign = append(foreign, it.Path)
-			}
-		}
-		if len(foreign) > 0 {
-			return nil, fmt.Errorf("%s exist and are not managed by skenv; move what you need out of them (local Claude Code settings: .claude/settings.local.json), then rerun with --force to replace them", strings.Join(foreign, ", "))
+		if err := refuseForeign(root, c); err != nil {
+			return nil, err
 		}
 	}
 	var changes []Change
 	for _, it := range managed(c) {
-		want, err := render(c, it)
+		ch, err := applyItem(root, c, it, dryRun)
 		if err != nil {
 			return nil, err
 		}
-		file := filepath.Join(root, filepath.FromSlash(it.Path))
-		data, err := os.ReadFile(file)
-		exists := err == nil
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return nil, err
-		}
-		next := want
-		if it.Kind == block {
-			next, err = mergeBlock(it, string(data), want, exists)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", it.Path, err)
-			}
-		}
-		if exists && string(data) == next {
-			continue
-		}
-		action := "update"
-		if !exists {
-			action = "create"
-		}
-		changes = append(changes, Change{Path: it.Path, Action: action})
-		if dryRun {
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-			return nil, err
-		}
-		if err := atomicfile.Write(file, []byte(next), 0o644); err != nil {
-			return nil, err
+		if ch != nil {
+			changes = append(changes, *ch)
 		}
 	}
+	removed, err := removeOtherCI(root, c, dryRun)
+	if err != nil {
+		return nil, err
+	}
+	return append(changes, removed...), nil
+}
+
+// refuseForeign fails when a whole file that Apply would write exists and
+// skenv does not manage it.
+func refuseForeign(root string, c *skenvfile.Repository) error {
+	var foreign []string
+	for _, it := range managed(c) {
+		if it.Kind != whole {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(it.Path)))
+		if err == nil && !isManaged(data) {
+			foreign = append(foreign, it.Path)
+		}
+	}
+	if len(foreign) > 0 {
+		return fmt.Errorf("%s exist and are not managed by skenv; move what you need out of them (local Claude Code settings: .claude/settings.local.json), then rerun with --force to replace them", strings.Join(foreign, ", "))
+	}
+	return nil
+}
+
+// applyItem regenerates the file or block it in root for c; the change is
+// nil when the file is up to date.
+func applyItem(root string, c *skenvfile.Repository, it item, dryRun bool) (*Change, error) {
+	want, err := render(c, it)
+	if err != nil {
+		return nil, err
+	}
+	file := filepath.Join(root, filepath.FromSlash(it.Path))
+	data, err := os.ReadFile(file)
+	exists := err == nil
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	next := want
+	if it.Kind == block {
+		next, err = mergeBlock(it, string(data), want, exists)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", it.Path, err)
+		}
+	}
+	if exists && string(data) == next {
+		return nil, nil
+	}
+	ch := &Change{Path: it.Path, Action: "update"}
+	if !exists {
+		ch.Action = "create"
+	}
+	if dryRun {
+		return ch, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		return nil, err
+	}
+	if err := atomicfile.Write(file, []byte(next), 0o644); err != nil {
+		return nil, err
+	}
+	return ch, nil
+}
+
+// removeOtherCI removes the managed files of the CI systems c does not
+// use, and the directories that leaves empty.
+func removeOtherCI(root string, c *skenvfile.Repository, dryRun bool) ([]Change, error) {
+	var changes []Change
 	for _, it := range otherCI(c) {
 		file := filepath.Join(root, filepath.FromSlash(it.Path))
 		data, err := os.ReadFile(file)

@@ -53,64 +53,20 @@ func runNew(ctx context.Context, env skills.Env, o skills.Options, name, visibil
 		defer e.Close()
 	}
 
-	// target is the checkout of the manifest the skill goes to, nil
-	// for a repository the manifest does not list.
-	var target *skills.CheckoutDir
-	var root, skillsDir string
-	if dir != "" {
-		var err error
-		if root, err = gitRoot(ctx, dir); err != nil {
-			return 0, err
-		}
-		skillsDir = "skills"
-		if openErr == nil {
-			if target = ownAt(e.CheckoutDirs(), root); target != nil {
-				skillsDir = target.SkillsDir
-			}
-		}
-	} else {
-		if openErr != nil {
-			return 0, openErr
-		}
-		d, err := ownTarget(e.CheckoutDirs(), visibility)
-		if err != nil {
-			return 0, err
-		}
-		target = &d
-		root, skillsDir = d.Path, d.SkillsDir
-	}
-	// The repository's own [repository] section knows its visibility.
-	c, ok, err := skenvfile.ReadRepository(root)
+	target, root, skillsDir, err := newTarget(ctx, e, openErr, dir, visibility)
 	if err != nil {
 		return 0, err
 	}
-	if ok && c.Visibility != "" {
-		if visibilitySet && c.Visibility != visibility {
-			return 0, fmt.Errorf("--visibility %s, but %s is %s according to its skenv file", visibility, paths.Collapse(env.Home, root), c.Visibility)
-		}
-		visibility = c.Visibility
+	if visibility, err = repoVisibility(env, root, visibility, visibilitySet); err != nil {
+		return 0, err
 	}
 
 	skill := filepath.Join(root, filepath.FromSlash(skillsDir), name)
 	if _, err := os.Lstat(skill); err == nil {
 		return 0, fmt.Errorf("%s already exists", paths.Collapse(env.Home, skill))
 	}
-	title := strings.ReplaceAll(name, "-", " ")
-	title = strings.ToUpper(title[:1]) + title[1:]
-	files := map[string]string{
-		"SKILL.md": "---\nname: " + name + "\n" +
-			"description: \"TODO: what this skill does and when the agent should use it (at most 1024 characters).\"\n" +
-			"metadata:\n  source: original\n---\n\n# " + title + "\n\nTODO: instructions for the agent. Put long material in references/ and link it,\nfor example [notes](references/notes.md).\n",
-		"references/notes.md": "# Notes\n\nTODO: reference material, linked from SKILL.md.\n",
-	}
-	for rel, content := range files {
-		p := filepath.Join(skill, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			return 0, err
-		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-			return 0, err
-		}
+	if err := scaffold(skill, name); err != nil {
+		return 0, err
 	}
 	fmt.Fprintf(env.Stdout, "created %s (SKILL.md, references/notes.md)\n", paths.Collapse(env.Home, skill))
 	if findings := lint.Skill(ctx, skill); len(findings) > 0 {
@@ -126,6 +82,72 @@ func runNew(ctx context.Context, env skills.Env, o skills.Options, name, visibil
 	}
 	fmt.Fprintln(env.Stdout, "  - "+availability(env, name, root, target, openErr))
 	return skills.ExitOK, nil
+}
+
+// newTarget is where `skenv new` creates a skill: the git repository of
+// dir, or the own checkout of the manifest for visibility, and its skills
+// directory. target is that checkout of the manifest, nil for a
+// repository the manifest does not list. e is nil when openErr is not.
+func newTarget(ctx context.Context, e *skills.UserScope, openErr error, dir, visibility string) (target *skills.CheckoutDir, root, skillsDir string, err error) {
+	if dir == "" {
+		if openErr != nil {
+			return nil, "", "", openErr
+		}
+		d, err := ownTarget(e.CheckoutDirs(), visibility)
+		if err != nil {
+			return nil, "", "", err
+		}
+		return &d, d.Path, d.SkillsDir, nil
+	}
+	if root, err = gitRoot(ctx, dir); err != nil {
+		return nil, "", "", err
+	}
+	skillsDir = "skills"
+	if openErr == nil {
+		if target = ownAt(e.CheckoutDirs(), root); target != nil {
+			skillsDir = target.SkillsDir
+		}
+	}
+	return target, root, skillsDir, nil
+}
+
+// repoVisibility is the visibility of the repository root: the one its
+// own [repository] section records, which --visibility (when set) must
+// match, or visibility.
+func repoVisibility(env skills.Env, root, visibility string, visibilitySet bool) (string, error) {
+	c, ok, err := skenvfile.ReadRepository(root)
+	if err != nil {
+		return "", err
+	}
+	if !ok || c.Visibility == "" {
+		return visibility, nil
+	}
+	if visibilitySet && c.Visibility != visibility {
+		return "", fmt.Errorf("--visibility %s, but %s is %s according to its skenv file", visibility, paths.Collapse(env.Home, root), c.Visibility)
+	}
+	return c.Visibility, nil
+}
+
+// scaffold writes the files of a new skill name into the directory skill.
+func scaffold(skill, name string) error {
+	title := strings.ReplaceAll(name, "-", " ")
+	title = strings.ToUpper(title[:1]) + title[1:]
+	files := map[string]string{
+		"SKILL.md": "---\nname: " + name + "\n" +
+			"description: \"TODO: what this skill does and when the agent should use it (at most 1024 characters).\"\n" +
+			"metadata:\n  source: original\n---\n\n# " + title + "\n\nTODO: instructions for the agent. Put long material in references/ and link it,\nfor example [notes](references/notes.md).\n",
+		"references/notes.md": "# Notes\n\nTODO: reference material, linked from SKILL.md.\n",
+	}
+	for rel, content := range files {
+		p := filepath.Join(skill, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // availability is the step that makes the new skill name available to the
