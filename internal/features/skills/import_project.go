@@ -67,19 +67,9 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 	if err != nil {
 		return ExitFatal, fmt.Errorf("%s: %w", homeShow(env.Home)(file), err)
 	}
-	e := &ProjectScope{scope: newBase(ctx, env, Options{DryRun: dryRun}), root: root, file: file, project: p, removed: map[string]bool{}}
-	e.hosts, e.hostsDir = p.GitHosts, e.root
-	if err := e.checkDirs(); err != nil {
-		return ExitFatal, fmt.Errorf("%s: %w", e.displayPath(file), err)
-	}
-	e.user = userDirs(ctx, env)
-	if err := e.checkScope(e.user); err != nil {
-		return ExitFatal, fmt.Errorf("%s: %w", e.displayPath(file), err)
-	}
-	if !dryRun {
-		if err := e.acquireLock(); err != nil {
-			return ExitFatal, err
-		}
+	e, err := openProject(ctx, env, Options{DryRun: dryRun}, root, file, p)
+	if err != nil {
+		return ExitFatal, err
 	}
 	defer e.Close()
 

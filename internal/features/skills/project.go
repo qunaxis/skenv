@@ -71,7 +71,15 @@ func OpenProject(ctx context.Context, env Env, opts Options, file string) (*Proj
 	if err != nil {
 		return nil, err
 	}
-	e := &ProjectScope{scope: newBase(ctx, env, opts), root: filepath.Dir(file), file: file, project: p, removed: map[string]bool{}}
+	return openProject(ctx, env, opts, filepath.Dir(file), file, p)
+}
+
+// openProject is the shared tail of OpenProject and ImportProject, which
+// each parse [project] their own way (from file, or from a freshly added
+// section): hosts, the directory checks, the user scope and, unless opts
+// says otherwise, the skenv lock.
+func openProject(ctx context.Context, env Env, opts Options, root, file string, p *skenvfile.Project) (*ProjectScope, error) {
+	e := &ProjectScope{scope: newBase(ctx, env, opts), root: root, file: file, project: p, removed: map[string]bool{}}
 	e.hosts, e.hostsDir = p.GitHosts, e.root
 	if err := e.checkDirs(); err != nil {
 		return nil, fmt.Errorf("%s: %w", e.displayPath(file), err)
@@ -447,7 +455,7 @@ func (e *ProjectScope) syncMirror(mdir, name string) {
 		}
 		// A symlink into the repository is skenv's to repoint; one that
 		// leads out of it (to a personal checkout, say) is not.
-		if (filepath.IsAbs(dest) || !e.inRepo(filepath.Join(mdir, dest))) && !e.adoptMirror(p, src,
+		if (filepath.IsAbs(dest) || !e.inRepo(filepath.Join(mdir, dest))) && !e.adoptMirror(p,
 			fmt.Sprintf("is a symlink out of the repository (to %s)", dest)) {
 			return
 		}
@@ -464,7 +472,7 @@ func (e *ProjectScope) syncMirror(mdir, name string) {
 			return
 		}
 		// The hash leaves out .git: a working copy there is never the same.
-		if !ours && (h != srcHash || fileExists(filepath.Join(p, ".git"))) && !e.adoptMirror(p, src,
+		if !ours && (h != srcHash || fileExists(filepath.Join(p, ".git"))) && !e.adoptMirror(p,
 			fmt.Sprintf("differs from %s and was not made by skenv (edited in the mirror?); move the change to %s", e.rel(src), e.rel(src))) {
 			return
 		}
@@ -490,7 +498,7 @@ func (e *ProjectScope) syncMirror(mdir, name string) {
 // adoptMirror handles a mirror entry p that skenv may not replace on its
 // own: a conflict, or under --adopt a backup. It reports whether p may be
 // replaced now.
-func (e *ProjectScope) adoptMirror(p, src, why string) bool {
+func (e *ProjectScope) adoptMirror(p, why string) bool {
 	if !e.opts.Adopt {
 		e.errorf("conflict: %s %s, or rerun with --adopt to move it to %s and replace it", e.rel(p), why, e.displayPath(e.layout.Backup()))
 		return false

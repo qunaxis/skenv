@@ -153,14 +153,8 @@ var ErrNoManifest = errors.New("no manifest configured: start one with `skenv in
 // (~/.config/skenv/config.{toml,yaml,yml,json}). Each may name the file or
 // the directory that holds it. Without any of them it returns ErrNoManifest.
 func ResolveManifest(ctx context.Context, env Env, flag string) (string, error) {
-	m, _, err := config.Resolve(env.Home, env.Getenv, "manifest", flag, "")
-	if err != nil {
-		return "", err
-	}
-	if m == "" {
-		return "", noManifest(ctx, env)
-	}
-	return skenvfile.Locate(paths.Expand(env.Home, m))
+	path, _, err := ManifestSource(ctx, env, flag)
+	return path, err
 }
 
 // noManifest is ErrNoManifest, pointing at `skenv use .` when the git
