@@ -87,7 +87,7 @@ See [Project skills](project-skills.md).
 | Task | Command | Guide |
 | ---- | ------- | ----- |
 | Sync at login and hourly | [`skenv autostart enable`](commands/skenv_autostart_enable.md) | [Enable automatic sync](autostart.md) |
-| Shell completion | [`skenv completion bash\|zsh\|fish`](commands/skenv_completion.md) | [Install](install.md#shell-completion) |
+| Shell completion | [`skenv completion bash\|zsh\|fish`](commands/skenv_completion.md) | [Install](../README.md#shell-completion) |
 | JSON Schema of the skenv file or the tool config | [`skenv schema`](commands/skenv_schema.md) | [Editor support](editor-support.md) |
 | Version, commit and build date | [`skenv version`](commands/skenv_version.md) | |
 

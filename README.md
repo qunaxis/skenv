@@ -337,7 +337,7 @@ the terminal.
 Done:
 
 - **v0.1** — `env.toml`, `sync`, `link`, `init`, `doctor`, `vendor
-  add|bump|remove`, `autostart`.
+  add|update|remove`, `autostart`.
 - **v0.2** — `skenv lint` (L1–L6), the skills-repository harness
   (`skenv repo`), ignore patterns for other tools' skills.
 - **v0.3** — the publication check (`lint --publish`), the Claude Code hook,
