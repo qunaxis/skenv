@@ -83,9 +83,10 @@ type Remote struct {
 // "github:owner/repo" on github.com, "gitlab:group/sub/repo",
 // "codeberg:owner/repo", "<alias>:path" of a declared host, or a full git
 // URL (https://, ssh://, git@host:path, file://, a local path). A prefix
-// that is neither built in nor declared is an error, never a fallback to
-// GitHub. h may be nil. A relative local path is made absolute against
-// the working directory; ResolveIn names another base.
+// that is neither built in nor declared is an error naming
+// [user.git_hosts.*], never a fallback to GitHub. h may be nil. A relative
+// local path is made absolute against the working directory; ResolveIn
+// names another base and section.
 func (h Hosts) Resolve(repo string) (Remote, error) { return h.ResolveIn(SectionUser, "", repo) }
 
 // ResolveIn is Resolve with a relative local path resolved against base,

@@ -80,7 +80,7 @@ func OpenProject(ctx context.Context, env Env, opts Options, file string) (*Proj
 // says otherwise, the skenv lock.
 func openProject(ctx context.Context, env Env, opts Options, root, file string, p *skenvfile.Project) (*ProjectScope, error) {
 	e := &ProjectScope{scope: newBase(ctx, env, opts), root: root, file: file, project: p, removed: map[string]bool{}}
-	e.hosts, e.hostsDir = p.GitHosts, e.root
+	e.hosts, e.hostsDir, e.hostsSection = p.GitHosts, e.root, skenvfile.SectionProject
 	if err := e.checkDirs(); err != nil {
 		return nil, fmt.Errorf("%s: %w", e.displayPath(file), err)
 	}

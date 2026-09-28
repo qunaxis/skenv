@@ -66,9 +66,11 @@ type scope struct {
 	backupDir string
 	// hosts resolve the repo values of the skenv file: the declared hosts
 	// of the manifest, or of [project]; a relative local path resolves
-	// against hostsDir, the directory of the skenv file.
-	hosts    skenvfile.Hosts
-	hostsDir string
+	// against hostsDir, the directory of the skenv file. hostsSection
+	// names which one, for an unknown-host-prefix error.
+	hosts        skenvfile.Hosts
+	hostsDir     string
+	hostsSection string
 	// pending is the edited skenv file under --dry-run, which is never
 	// written: the next edit of the same command builds on it.
 	pending []byte
@@ -243,6 +245,7 @@ func (e *UserScope) setManifest(m *skenvfile.Manifest) error {
 	e.manifest = m
 	e.hosts = m.GitHosts
 	e.hostsDir = m.Dir
+	e.hostsSection = skenvfile.SectionUser
 	e.blocked = map[string]string{}
 	e.store = e.layout.DefaultStore()
 	if m.Storage.Dir != "" {
