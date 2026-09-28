@@ -1,8 +1,8 @@
 // Command genschemas writes the JSON Schemas of skenv's files, generated
-// from the Go types (internal/schemagen).
+// from the Go types (internal/devtools/schemagen).
 //
-//	go run ./internal/tools/genschemas schemas               # make schemas
-//	go run ./internal/tools/genschemas -version 0.4.0 DIR    # "$id" of a release
+//	go run ./internal/devtools/genschemas schemas               # make schemas
+//	go run ./internal/devtools/genschemas -version 0.4.0 DIR    # "$id" of a release
 //
 // Run it from the module root: descriptions come from the doc comments in
 // the sources.
@@ -14,7 +14,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/qunaxis/skenv/internal/schemagen"
+	"github.com/qunaxis/skenv/internal/devtools/schemagen"
 )
 
 func main() {

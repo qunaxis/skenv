@@ -27,7 +27,7 @@ func TestGenerateMan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	md, err := filepath.Glob(filepath.Join("..", "..", "docs", "commands", "skenv*.md"))
+	md, err := filepath.Glob(filepath.Join("..", "..", "..", "docs", "commands", "skenv*.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,5 +1,5 @@
 // Package schemas holds the JSON Schemas of skenv's files, generated from
-// the Go types by `make schemas` (internal/tools/genschemas), and the URLs
+// the Go types by `make schemas` (internal/devtools/genschemas), and the URLs
 // they are published at.
 //
 // A file skenv writes names its schema in a directive (TOML "#:schema",

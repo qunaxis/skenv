@@ -89,7 +89,7 @@ func getAgentsPackages(t *testing.T) []string {
 		t.Fatalf("failed to read AGENTS.md: %v", err)
 	}
 
-	// Match backticked paths like `internal/cli`, `internal/tools/gendocs`
+	// Match backticked paths like `internal/cli`, `internal/devtools/gendocs`
 	re := regexp.MustCompile("`(internal/[^`]+)`")
 	matches := re.FindAllStringSubmatch(string(data), -1)
 

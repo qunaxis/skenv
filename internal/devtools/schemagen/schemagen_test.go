@@ -16,13 +16,13 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/qunaxis/skenv/internal/mdscan"
+	"github.com/qunaxis/skenv/internal/devtools/mdscan"
 	"github.com/qunaxis/skenv/internal/model/config"
 	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/schemas"
 )
 
-const root = "../.."
+const root = "../../.."
 
 // The committed schemas must match the Go types; CI runs this, so a change
 // of a type, its doc comments or a parser constant without `make schemas`

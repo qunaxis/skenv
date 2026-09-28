@@ -1,7 +1,7 @@
 // Command gendocs writes the command reference from the cobra command tree.
 //
-//	go run ./internal/tools/gendocs docs/commands            # Markdown
-//	go run ./internal/tools/gendocs -man [-version V] [-date RFC3339] man
+//	go run ./internal/devtools/gendocs docs/commands            # Markdown
+//	go run ./internal/devtools/gendocs -man [-version V] [-date RFC3339] man
 package main
 
 import (
@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/qunaxis/skenv/internal/clidocs"
+	"github.com/qunaxis/skenv/internal/devtools/clidocs"
 )
 
 func main() {

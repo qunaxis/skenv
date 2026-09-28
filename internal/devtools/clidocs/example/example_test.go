@@ -1,4 +1,4 @@
-package cliexample
+package example
 
 import (
 	"os"

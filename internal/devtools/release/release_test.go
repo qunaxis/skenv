@@ -11,7 +11,7 @@ import (
 
 func root(t *testing.T) string {
 	t.Helper()
-	dir, err := filepath.Abs("../..")
+	dir, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
 	}

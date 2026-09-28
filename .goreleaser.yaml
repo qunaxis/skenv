@@ -6,9 +6,9 @@ before:
   hooks:
     - go mod tidy -diff
     # Man pages from the command tree; not committed, see `make man`.
-    - go run ./internal/tools/gendocs -man -version {{ .Version }} -date {{ .CommitDate }} man
+    - go run ./internal/devtools/gendocs -man -version {{ .Version }} -date {{ .CommitDate }} man
     # JSON Schemas with the "$id" of this release, attached below.
-    - go run ./internal/tools/genschemas -version {{ .Version }} build/schemas
+    - go run ./internal/devtools/genschemas -version {{ .Version }} build/schemas
 
 builds:
   - id: skenv

@@ -12,7 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/qunaxis/skenv/internal/cliexample"
+	"github.com/qunaxis/skenv/internal/devtools/clidocs/example"
 	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/buildinfo"
 )
@@ -276,7 +276,7 @@ func TestExamples(t *testing.T) {
 			return
 		}
 		path := c.CommandPath()
-		examples := cliexample.Parse(c.Example)
+		examples := example.Parse(c.Example)
 		if len(examples) == 0 {
 			t.Errorf("%s has no Example", path)
 		}
@@ -291,7 +291,7 @@ func TestExamples(t *testing.T) {
 				t.Errorf("%s: no scenario for %q; add one to exampleScenarios or a reason to exampleSkips", key, ex.Line)
 				continue
 			}
-			file := filepath.Join(docs, cliexample.File(path, i+1))
+			file := filepath.Join(docs, example.File(path, i+1))
 			recorded[file] = true
 			t.Run(key, func(t *testing.T) {
 				f := newExampleWorld(t)
@@ -301,7 +301,7 @@ func TestExamples(t *testing.T) {
 					writeFile(t, file, got.Format())
 					return
 				}
-				want, ok, err := cliexample.Read(file)
+				want, ok, err := example.Read(file)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -523,7 +523,7 @@ var backupTS = regexp.MustCompile(`backup/[0-9]{8}T[0-9]{6}Z/`)
 // record runs skenv with stdout and stderr in one stream, as a terminal
 // shows them, and replaces the temporary directories: $HOME by ~, the
 // remotes by https://github.com.
-func (f *exampleWorld) record(args []string) cliexample.Output {
+func (f *exampleWorld) record(args []string) example.Output {
 	f.t.Helper()
 	var out bytes.Buffer
 	code := Main(context.Background(), args, &out, &out)
@@ -537,5 +537,5 @@ func (f *exampleWorld) record(args []string) cliexample.Output {
 		text = strings.ReplaceAll(text, r[0], r[1])
 	}
 	text = backupTS.ReplaceAllString(text, "backup/<timestamp>/")
-	return cliexample.Output{Code: code, Text: text}
+	return example.Output{Code: code, Text: text}
 }

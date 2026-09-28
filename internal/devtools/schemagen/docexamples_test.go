@@ -15,7 +15,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/qunaxis/skenv/internal/mdscan"
+	"github.com/qunaxis/skenv/internal/devtools/mdscan"
 	"github.com/qunaxis/skenv/schemas"
 )
 

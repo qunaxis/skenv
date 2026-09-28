@@ -7,7 +7,7 @@ it would stop Claude Code from loading this file.
   dependency: `git` only. No network services, no other executables.
 - Layout: `internal/model/agents`, `internal/platform/atomicfile` (atomic file writes),
   `internal/features/autostart`, `internal/platform/buildinfo`, `internal/cli` (flags, integration tests),
-  `internal/clidocs` (command reference and man pages), `internal/cliexample` (command examples),
+  `internal/devtools/clidocs` (command reference and man pages), `internal/devtools/clidocs/example` (command examples),
   `internal/cli/new.go` (`skenv new`), `internal/model/config` (tool config),
   `internal/platform/docedit` (YAML/JSON document editing; `format.go`: `--format` of new files; no write changes a file's
   format, `TestWritesKeepFormat` covers every write path), `internal/features/skills`
@@ -15,13 +15,13 @@ it would stop Claude Code from loading this file.
   project repository), `internal/platform/gitx`,
   `internal/features/repository` (`[repository]`, `repo init|apply|upgrade|check`, templates in
   `internal/features/repository/templates/`), `internal/features/lint` (L1-L6; `publish.go`: P1 publication check,
-  stop-list phrases are never printed), `internal/mdscan` (fenced-code-block scanner for doc
-  example tests), `internal/platform/paths` (file location resolution), `internal/release`
-  (tests for `cliff.toml` and the commit check), `internal/schemagen` (JSON Schema generation),
+  stop-list phrases are never printed), `internal/devtools/mdscan` (fenced-code-block scanner for doc
+  example tests), `internal/platform/paths` (file location resolution), `internal/devtools/release`
+  (tests for `cliff.toml` and the commit check), `internal/devtools/schemagen` (JSON Schema generation),
   `internal/model/skenvfile` (the skenv file: `[repository]`, `[user]` and `[project]`,
   TOML/YAML/JSON, parsing and in-place editing; `legacy.go`: errors for the keys before 0.6), `internal/model/skillname` (skill name validation),
-  `internal/features/skills/state`, `internal/tools/gendocs` (command reference generation tool),
-  `internal/tools/genschemas` (schema generation tool).
+  `internal/features/skills/state`, `internal/devtools/gendocs` (command reference generation tool),
+  `internal/devtools/genschemas` (schema generation tool).
 - One template set is embedded, version `skenvfile.LatestTemplates`. A template change
   bumps `skenvfile.LatestTemplates` to the release that ships it; `skenv repo check`
   then reports older repositories and `skenv repo upgrade` moves them

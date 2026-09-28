@@ -10,7 +10,7 @@ import (
 // The committed reference must match the command definitions; CI runs
 // this, so a flag or help change without `make docs` fails the build.
 func TestReferenceUpToDate(t *testing.T) {
-	want := filepath.Join("..", "..", "docs", "commands")
+	want := filepath.Join("..", "..", "..", "docs", "commands")
 	got := t.TempDir()
 	if err := Generate(got, want); err != nil {
 		t.Fatal(err)

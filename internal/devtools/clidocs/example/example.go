@@ -1,9 +1,10 @@
-// Package cliexample reads the examples of a skenv command (cobra's
+// Package example reads the examples of a skenv command (cobra's
 // Example field) and their recorded output. The example tests in
-// internal/cli record the output of each runnable example as a golden file
-// under docs/commands/examples; the reference generator (internal/clidocs)
-// embeds it under the example. The skenv binary does not link this package.
-package cliexample
+// internal/cli record the output of each runnable example as a golden
+// file under docs/commands/examples; the reference generator
+// (internal/devtools/clidocs) embeds it under the example. The skenv binary
+// does not link this package.
+package example
 
 import (
 	"errors"

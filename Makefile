@@ -22,16 +22,16 @@ lint: ## go mod tidy -diff, go vet, staticcheck, golangci-lint, skenv lint skill
 	$(GO) run ./cmd/skenv lint skills
 
 docs: ## regenerate the command reference in docs/commands
-	$(GO) run ./internal/tools/gendocs docs/commands
+	$(GO) run ./internal/devtools/gendocs docs/commands
 
 examples: ## re-record the output of the command examples (docs/commands/examples); then make docs
 	$(GO) test ./internal/cli -run '^TestExamples$$' -count=1 -update
 
 schemas: ## regenerate the JSON Schemas in schemas/ from the Go types
-	$(GO) run ./internal/tools/genschemas schemas
+	$(GO) run ./internal/devtools/genschemas schemas
 
 man: ## write section-1 man pages into man/ (not committed; releases ship them)
-	$(GO) run ./internal/tools/gendocs -man man
+	$(GO) run ./internal/devtools/gendocs -man man
 
 check: lint test check-commits ## everything CI runs
 

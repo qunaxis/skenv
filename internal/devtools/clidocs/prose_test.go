@@ -14,7 +14,7 @@ import (
 // AGENTS.md, docs/, skills/skenv/) must still exist, so a rename or
 // removal fails here instead of leaving stale examples; see issue #79.
 func TestProseCommandsExist(t *testing.T) {
-	root := filepath.Join("..", "..")
+	root := filepath.Join("..", "..", "..")
 	files, err := proseFiles(root)
 	if err != nil {
 		t.Fatal(err)
