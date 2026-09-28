@@ -149,7 +149,7 @@ func TestImportProject(t *testing.T) {
 	for _, want := range []string{
 		"would become managed: 4 entries in ~/src/app/skenv.toml\n  exact: the commit has the hash recorded in the lock\n" +
 			"    archify from ext/tools (tools/archify) at " + revs["archify"][:12] + "\n",
-		"+[project]\n+mirrors = [\".claude/skills\"]\n",
+		"+[project]\n+dir = \".agents/skills\"\n+mirrors = [\".claude/skills\"]\n",
 		"would remove archify, drifted, lost, notes from skills-lock.json",
 		"import: planned: 4 [project] entries (2 exact, 1 same files, 1 unmatched), 4 removed from skills-lock.json, 4 project-own skills, 1 differing duplicates",
 	} {
@@ -170,7 +170,7 @@ func TestImportProject(t *testing.T) {
 			t.Errorf("%s: want %q in\n%s", name, want, text)
 		}
 	}
-	if !strings.HasPrefix(text, "#:schema ") || !strings.Contains(text, "[project]\nmirrors = [\".claude/skills\"]\n") || strings.Contains(text, "local-one") {
+	if !strings.HasPrefix(text, "#:schema ") || !strings.Contains(text, "[project]\ndir = \".agents/skills\"\nmirrors = [\".claude/skills\"]\n") || strings.Contains(text, "local-one") {
 		t.Errorf("skenv.toml:\n%s", text)
 	}
 	for _, want := range []string{
@@ -312,7 +312,7 @@ func TestImportProjectExistingFile(t *testing.T) {
 		t.Errorf("the commit hint names the removed, never committed lock:\n%s", out)
 	}
 	text := readFile(t, w.pp("skenv.yaml"))
-	if !strings.Contains(text, yaml) || !strings.Contains(text, "project:\n  mirrors: [.claude/skills]\n  dependencies:\n    archify:\n") ||
+	if !strings.Contains(text, yaml) || !strings.Contains(text, "project:\n  dir: .agents/skills\n  mirrors: [.claude/skills]\n  dependencies:\n    archify:\n") ||
 		!strings.Contains(text, rev) {
 		t.Errorf("skenv.yaml:\n%s", text)
 	}
@@ -334,6 +334,57 @@ func TestImportProjectExistingFile(t *testing.T) {
 	t.Chdir(w.home)
 	if _, errOut := w.mustRun(2, "import", "--project"); !strings.Contains(errOut, "not inside a git repository") {
 		t.Errorf("outside a repository: %s", errOut)
+	}
+}
+
+// #51: after import --project, plain sync names the unmarked copy that has
+// the pinned files as one for sync --adopt (and keeps calling a differing
+// one a possible project-own skill), and the commit hint of sync --adopt
+// covers the lock the import removed. Without a lock, the summary says so.
+func TestImportProjectThenSyncAdopt(t *testing.T) {
+	w := newWorld(t)
+	w.push("ext/tools", under("tools/archify", archifyV1), "feat: archify v1")
+	w.push("ext/tools", under("tools/notes", notesV1), "feat: notes")
+	dir := w.path(projectDir)
+	mustMkdir(t, dir)
+	w.git(dir, "init", "--quiet", "-b", "main")
+	t.Chdir(dir)
+
+	out, _ := w.mustRun(0, "import", "--project")
+	if !strings.Contains(out, "import: 0 [project] entries, no skills-lock.json, 0 project-own skills") {
+		t.Errorf("summary without a lock:\n%s", out)
+	}
+	if err := os.Remove(w.pp("skenv.toml")); err != nil {
+		t.Fatal(err)
+	}
+
+	w.installedInProject("archify", archifyV1)
+	w.installedInProject("notes", map[string]string{"SKILL.md": skillMD("notes", "edited here")})
+	w.writeProjectLock(map[string]lockEntry{
+		"archify": projectEntry("ext/tools", "github", "tools/archify/SKILL.md", archifyV1Hash),
+		"notes":   projectEntry("ext/tools", "github", "tools/notes/SKILL.md", notesV1Hash),
+	})
+	w.git(dir, "add", "--", ".")
+	w.git(dir, "commit", "--quiet", "-m", "chore: skills")
+
+	w.mustRun(0, "import", "--project")
+	_, errOut := w.mustRun(1, "sync")
+	for _, want := range []string{
+		"conflict: .agents/skills/archify has the files of ext/tools@",
+		"but no .skenv marker: installed another way, as by the skills CLI before `skenv import --project`; run `skenv sync --adopt` to take it over",
+		"conflict: .agents/skills/notes exists without a .skenv marker (a project-own skill?)",
+	} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("sync lacks %q:\n%s", want, errOut)
+		}
+	}
+	if strings.Contains(errOut, "archify exists without") {
+		t.Errorf("archify is called a project-own skill:\n%s", errOut)
+	}
+
+	out, _ = w.mustRun(0, "sync", "--adopt")
+	if !strings.Contains(out, "git -C ~/src/app add -- skenv.toml .agents/skills .claude/skills skills-lock.json\n") {
+		t.Errorf("the commit hint of sync --adopt leaves out the removed lock:\n%s", out)
 	}
 }
 

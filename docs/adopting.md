@@ -294,6 +294,9 @@ git add -- skenv.toml .agents/skills .claude/skills skills-lock.json
 git commit -m "chore(skills): import project skills"
 ```
 
+`skenv sync --adopt` prints that `git add` line as its commit hint, with
+`skills-lock.json` in it while git sees the lock edited or removed.
+
 `skenv import --project --sync` runs `skenv sync --adopt` right after the
 import, except for the unmatched skills: their installed copies stay, and
 the report offers `skenv sync --adopt` or
@@ -305,8 +308,8 @@ your machine's manifest (`--manifest` is refused with `--project`).
 
 - **The skenv file** at the repository root: a file without `[project]`
   gets one, and a repository without a skenv file gets `skenv.toml`. The
-  new section keeps the default `dir` (`.agents/skills`, where the
-  `skills` CLI installs) and lists the agent directories that exist,
+  new section writes out the default `dir` (`dir = ".agents/skills"`,
+  where the `skills` CLI installs) and lists the agent directories that exist,
   `.claude/skills` and `.pi/skills`, as `mirrors`. Each lock entry becomes
   a `[project.dependencies.<name>]` at the end of `[project]`, in the
   file's format, with its comments kept; the diff is printed.
@@ -331,7 +334,16 @@ your machine's manifest (`--manifest` is refused with `--project`).
   first. Commit the change with the project.
 - **Nothing else**: the installed copies stay until `skenv sync --adopt`
   moves each to the backup directory and copies the pinned commit in its
-  place (`--sync` does that for every skill but the unmatched ones).
+  place (`--sync` does that for every skill but the unmatched ones). They
+  have no `.skenv` marker yet, so a plain `skenv sync` stops at each; for
+  a copy with the files of its pinned commit it says so:
+
+  ```text
+  error: conflict: .agents/skills/release-notes has the files of example-vendor/tools@27f221f8f2a4 (tools/release-notes) but no .skenv marker: installed another way, as by the skills CLI before `skenv import --project`; run `skenv sync --adopt` to take it over (the copy goes to ~/.local/state/skenv/backup)
+  ```
+
+  A copy with other files gets the conflict of a possible project-own
+  skill (see [Project skills](project-skills.md)).
 
 `--dry-run` prints the same report, diff and lock changes and writes
 nothing. A second `import --project` imports nothing; an entry the
@@ -418,5 +430,8 @@ remove lost, release-notes from skills-lock.json, so that the skills CLI no long
 ...
 import: 2 [project] entries (1 exact, 1 same files), 2 removed from skills-lock.json, 1 project-own skills, 0 differing duplicates, 0 warnings, 0 errors
 ```
+
+In a project without `skills-lock.json` the summary says
+`no skills-lock.json` in place of the removed count.
 
 The [command reference](commands/skenv_import.md) has complete runs.

@@ -174,6 +174,7 @@ remove release-notes from skills-lock.json, so that the skills CLI no longer upd
 +# The skills this project carries, committed with it: `skenv sync` copies the
 +# pinned ones into dir and mirrors dir. Reference: https://qunaxis.github.io/skenv/project-skills
 +[project]
++dir = ".agents/skills"
 +mirrors = [".claude/skills"]
 +
 +[project.dependencies.release-notes]

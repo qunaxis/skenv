@@ -29,8 +29,6 @@ type ProjectEngine struct {
 	// removed are the copies sync removes (or would, under --dry-run), so
 	// that mirrors follow the plan.
 	removed map[string]bool
-	// hintPaths are more paths for the commit hint.
-	hintPaths []string
 	// kept are the skills of opts.Keep that sync leaves as installed.
 	kept map[string]bool
 	// user are the directories of the user scope (userDirs).
@@ -265,7 +263,13 @@ func (e *ProjectEngine) syncCopy(s manifest.ProjectSkill, dst string) {
 	default:
 		mk, merr := readMarker(dst)
 		if !fi.IsDir() || merr != nil {
-			if !e.opts.Adopt {
+			switch {
+			case e.opts.Adopt:
+			case fi.IsDir() && e.hasPinnedFiles(s, dst):
+				e.errorf("conflict: %s has the files of %s but no %s marker: installed another way, as by the skills CLI before "+
+					"`skenv import --project`; run `skenv sync --adopt` to take it over (the copy goes to %s)", e.rel(dst), from, markerName, e.show(e.layout.Backup()))
+				return
+			default:
 				e.errorf("conflict: %s exists without a %s marker (a project-own skill?) and is never replaced; "+
 					"rename it or the entry, or rerun with --adopt to move it to %s and copy %s", e.rel(dst), markerName, e.show(e.layout.Backup()), s.Name)
 				return
@@ -316,6 +320,22 @@ func (e *ProjectEngine) syncCopy(s manifest.ProjectSkill, dst string) {
 		return
 	}
 	e.warnLinks(dst)
+}
+
+// hasPinnedFiles reports whether the unmarked copy dir has the files of
+// s at its commit, as the skills CLI installs them: a copy that sync
+// --adopt only takes over.
+func (e *ProjectEngine) hasPinnedFiles(s manifest.ProjectSkill, dir string) bool {
+	cache, err := e.ensureCache(s.Repo, s.Commit)
+	if err != nil {
+		return false
+	}
+	want, err := e.commitBlobs(cache, s.Commit, s.Path)
+	if err != nil {
+		return false
+	}
+	got, err := copyBlobs(dir)
+	return err == nil && sameBlobs(got, want)
 }
 
 // skillNames lists the skills of dir that mirrors get: its directories with
@@ -559,13 +579,16 @@ func (e *ProjectEngine) warnLinks(dst string) {
 }
 
 // commitHint tells how to commit what changed: the copies and mirrors are
-// part of the project, and so is the lock of the skills CLI after an
-// import.
+// part of the project, and so is the lock of the skills CLI while git sees
+// it edited or removed (by an import, which a later sync --adopt completes).
 func (e *ProjectEngine) commitHint(msg string) {
 	if e.opts.DryRun || e.changes == 0 {
 		return
 	}
-	paths := append(append([]string{filepath.Base(e.file), e.p.Dir}, e.p.Mirrors...), e.hintPaths...)
+	paths := append([]string{filepath.Base(e.file), e.p.Dir}, e.p.Mirrors...)
+	if st, err := e.env.Git.Run(e.ctx, e.root, "status", "--porcelain", "--", projectLockName); err == nil && st != "" {
+		paths = append(paths, projectLockName)
+	}
 	if msg == "" {
 		msg = "sync project skills"
 	}

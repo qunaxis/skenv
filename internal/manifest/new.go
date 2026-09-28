@@ -67,19 +67,20 @@ const projectLead = "# The skills this project carries, committed with it: `sken
 	"# pinned ones into dir and mirrors dir. Reference: https://qunaxis.github.io/skenv/project-skills\n"
 
 // AddProject returns data, a skenv file in the format of ext (empty for a
-// new file), with a [project] section added that has the default dir and
-// the given mirrors. The file must not have [project] yet; it is edited as
+// new file), with a [project] section added that has the default dir,
+// written out so that readers see where the skills live, and the given
+// mirrors. The file must not have [project] yet; it is edited as
 // AddEnvironment edits it.
 func AddProject(data []byte, ext string, mirrors []string) ([]byte, error) {
-	section := projectLead + "[project]\n"
-	value := docedit.Map{}
+	section := projectLead + "[project]\n" + fmt.Sprintf("dir = %s\n", quote(DefaultProjectDir))
+	value := docedit.Map{{Key: "dir", Value: DefaultProjectDir}}
 	if len(mirrors) > 0 {
 		q := make([]string, len(mirrors))
 		for i, m := range mirrors {
 			q[i] = quote(m)
 		}
 		section += fmt.Sprintf("mirrors = [%s]\n", strings.Join(q, ", "))
-		value = docedit.Map{{Key: "mirrors", Value: mirrors}}
+		value = append(value, docedit.Field{Key: "mirrors", Value: mirrors})
 	}
 	out, err := addSection(data, ext, skenvfile.Project, section, value, projectLead)
 	if err != nil {

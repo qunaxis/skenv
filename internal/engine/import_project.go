@@ -100,10 +100,6 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 		if err := e.cleanLock(r.lock, r.unlock, e.rel); err != nil {
 			return ExitFatal, err
 		}
-		// A lock that is gone and was never committed has nothing to add.
-		if fileExists(r.lock.path) || e.env.Git.OK(ctx, root, "ls-files", "--error-unmatch", "--", projectLockName) {
-			e.hintPaths = []string{projectLockName}
-		}
 	}
 	code := e.finishProjectImport(r, sync)
 	if code != ExitOK || !sync || dryRun {
@@ -115,7 +111,6 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 		return ExitFatal, err
 	}
 	defer s.Close()
-	s.hintPaths = e.hintPaths
 	code, err = s.Sync()
 	if err != nil {
 		return code, err
@@ -374,7 +369,12 @@ func (e *ProjectEngine) finishProjectImport(r *projectImport, sync bool) int {
 		if r.entries == 1 {
 			entries = "entry"
 		}
-		fmt.Fprintf(e.env.Stdout, "import: %s%d [project] %s%s, %d removed from %s", verb, r.entries, entries, r.groups(), len(r.unlock), projectLockName)
+		fmt.Fprintf(e.env.Stdout, "import: %s%d [project] %s%s, ", verb, r.entries, entries, r.groups())
+		if r.lock.exists {
+			fmt.Fprintf(e.env.Stdout, "%d removed from %s", len(r.unlock), projectLockName)
+		} else {
+			fmt.Fprintf(e.env.Stdout, "no %s", projectLockName)
+		}
 	}
 	fmt.Fprintf(e.env.Stdout, ", %d project-own skills, %d differing duplicates, %d warnings, %d errors\n", r.own, r.duplicates, e.warnings, e.errs)
 	pending := r.changed() || len(r.unlock) > 0
