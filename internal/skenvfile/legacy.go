@@ -9,6 +9,49 @@ import (
 // MigrationURL is the manual migration from the format before skenv 0.6.
 const MigrationURL = "https://qunaxis.github.io/skenv/skenv-file#moving-to-the-0-6-format"
 
+// legacyRepoTable and legacyEnvironmentTable are the table names before
+// skenv 0.6 ([repo], now [repository]; [environment], now [user]).
+const (
+	legacyRepoTable        = "repo"
+	legacyEnvironmentTable = "environment"
+)
+
+// legacyTopLevelKeys sat at the top of the skenv file before [repository]
+// existed. legacyRepositoryKeys are the old field names of [repo] (and, by
+// mistake, of the [repository] that replaces it). legacyLayoutKeys are the
+// old fields of [environment.layout].
+var (
+	legacyTopLevelKeys   = []string{"harness", "visibility", "runner"}
+	legacyRepositoryKeys = []string{"harness", "runner"}
+	legacyLayoutKeys     = []string{"store", "targets", "ignore"}
+)
+
+// LegacyKeys returns the dotted table and key paths of the skenv file
+// format before 0.6, built from the same names legacyError checks for.
+// TestNoRetiredTerms in this package uses it so that a rename here is the
+// only place docs need to follow.
+func LegacyKeys() []string {
+	keys := append([]string{}, legacyTopLevelKeys...)
+	keys = append(keys, legacyRepoTable)
+	for _, k := range legacyRepositoryKeys {
+		keys = append(keys, legacyRepoTable+"."+k)
+	}
+	keys = append(keys, legacyEnvironmentTable, legacyEnvironmentTable+".layout")
+	for _, k := range legacyLayoutKeys {
+		keys = append(keys, legacyEnvironmentTable+".layout."+k)
+	}
+	keys = append(keys,
+		legacyEnvironmentTable+".own",
+		legacyEnvironmentTable+".vendor",
+		legacyEnvironmentTable+".hosts",
+		legacyEnvironmentTable+".host",
+		"project.vendor",
+		"project.hosts",
+		"project.from",
+	)
+	return keys
+}
+
 // legacyError reports the keys of the format before skenv 0.6 in raw, the
 // whole document, each with the key that replaces it. skenv does not read
 // the old format: the error lists every rename at once, so that one pass
@@ -33,19 +76,19 @@ func (l *legacy) add(old, repl string) {
 }
 
 func (l *legacy) check(raw map[string]any) {
-	for _, k := range []string{"harness", "visibility", "runner"} {
+	for _, k := range legacyTopLevelKeys {
 		if _, ok := raw[k]; ok {
 			l.add(k+" (top level)", "under [repository]: "+repositoryKey(k))
 		}
 	}
-	if repo, ok := raw["repo"]; ok {
-		l.add("[repo]", "[repository]")
-		l.repository("repo", repo)
+	if repo, ok := raw[legacyRepoTable]; ok {
+		l.add("["+legacyRepoTable+"]", "[repository]")
+		l.repository(legacyRepoTable, repo)
 	}
 	l.repository(Repository, raw[Repository])
-	if env, ok := raw["environment"]; ok {
-		l.add("[environment]", "[user]")
-		l.user("environment", env)
+	if env, ok := raw[legacyEnvironmentTable]; ok {
+		l.add("["+legacyEnvironmentTable+"]", "[user]")
+		l.user(legacyEnvironmentTable, env)
 	}
 	l.user(User, raw[User])
 	l.project(raw[Project])
@@ -64,7 +107,7 @@ func repositoryKey(k string) string {
 
 func (l *legacy) repository(name string, v any) {
 	m, _ := v.(map[string]any)
-	for _, k := range []string{"harness", "runner"} {
+	for _, k := range legacyRepositoryKeys {
 		if _, ok := m[k]; ok {
 			l.add(name+"."+k, "repository."+repositoryKey(k))
 		}
@@ -82,7 +125,7 @@ func (l *legacy) user(name string, v any) {
 	if layout, ok := m["layout"]; ok {
 		lm, _ := layout.(map[string]any)
 		moved := map[string]string{"store": "user.storage.dir", "targets": "user.agents (enabled, paths, extra_dirs)", "ignore": "user.unmanaged"}
-		for _, k := range []string{"store", "targets", "ignore"} {
+		for _, k := range legacyLayoutKeys {
 			if _, ok := lm[k]; ok {
 				l.add(name+".layout."+k, moved[k])
 			}
