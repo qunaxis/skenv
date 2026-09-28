@@ -26,6 +26,7 @@
 - [Install](#install)
 - [Getting started](#getting-started)
 - [Documentation](#documentation)
+- [Agent skill](#agent-skill)
 - [Roadmap](#roadmap)
 - [Contribute](#contribute)
 
@@ -331,6 +332,16 @@ The same pages, with search, are published at
 
 `skenv --help` and `skenv <command> --help` print the command reference in
 the terminal.
+
+## Agent skill
+
+skenv teaches itself to your agent through the skill that ships in
+[`skills/skenv/`](skills/skenv/SKILL.md): checkouts and dependencies,
+publishing a skill, and what to do for each `skenv doctor` class.
+
+```sh
+skenv vendor add qunaxis/skenv --path skills/skenv
+```
 
 ## Roadmap
 

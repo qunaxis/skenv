@@ -14,11 +14,12 @@ build: ## build ./skenv (version 0.0.0-dev+<sha>)
 test: ## go test -race
 	$(GO) test -race ./...
 
-lint: ## go mod tidy -diff, go vet, staticcheck, golangci-lint
+lint: ## go mod tidy -diff, go vet, staticcheck, golangci-lint, skenv lint skills
 	$(GO) mod tidy -diff
 	$(GO) vet ./...
 	$(STATICCHECK) ./...
 	$(GOLANGCI_LINT) run ./...
+	$(GO) run ./cmd/skenv lint skills
 
 docs: ## regenerate the command reference in docs/commands
 	$(GO) run ./internal/tools/gendocs docs/commands
