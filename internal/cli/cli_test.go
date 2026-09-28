@@ -10,7 +10,7 @@ import (
 
 func runMain(args ...string) (int, string, string) {
 	var out, errOut bytes.Buffer
-	code := Main(context.Background(), args, &out, &errOut)
+	code := Main(context.Background(), args, strings.NewReader(""), &out, &errOut)
 	return code, out.String(), errOut.String()
 }
 

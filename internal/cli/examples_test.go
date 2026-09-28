@@ -526,7 +526,7 @@ var backupTS = regexp.MustCompile(`backup/[0-9]{8}T[0-9]{6}Z/`)
 func (f *exampleWorld) record(args []string) example.Output {
 	f.t.Helper()
 	var out bytes.Buffer
-	code := Main(context.Background(), args, &out, &out)
+	code := Main(context.Background(), args, strings.NewReader(""), &out, &out)
 	text := out.String()
 	for _, r := range [][2]string{
 		{"file://" + f.remotes, "https://github.com"},

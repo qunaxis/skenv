@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -131,8 +132,14 @@ func skillMD(name, extra string) string {
 // run executes skenv in-process.
 func (w *world) run(args ...string) (int, string, string) {
 	w.t.Helper()
+	return w.runIn(strings.NewReader(""), args...)
+}
+
+// runIn runs skenv with stdin, as a hook event.
+func (w *world) runIn(stdin io.Reader, args ...string) (int, string, string) {
+	w.t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := Main(context.Background(), args, &stdout, &stderr)
+	code := Main(context.Background(), args, stdin, &stdout, &stderr)
 	return code, stdout.String(), stderr.String()
 }
 

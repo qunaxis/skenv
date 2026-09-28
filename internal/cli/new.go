@@ -56,10 +56,10 @@ skenv new release-checklist`,
 
 func runNew(ctx context.Context, env skills.Env, o skills.Options, name, visibility string, visibilitySet bool, dir string) (int, error) {
 	if err := skenvfile.ValidName(name); err != nil {
-		return skills.ExitFatal, fmt.Errorf("skill %w", err)
+		return 0, fmt.Errorf("skill %w", err)
 	}
 	if visibility != "private" && visibility != "public" {
-		return skills.ExitFatal, usageError{fmt.Sprintf("new: --visibility must be private or public, got %q", visibility)}
+		return 0, fmt.Errorf("new: --visibility must be private or public, got %q", visibility)
 	}
 	o.ReadOnly = true
 	e, openErr := skills.OpenUser(ctx, env, o)
@@ -74,7 +74,7 @@ func runNew(ctx context.Context, env skills.Env, o skills.Options, name, visibil
 	if dir != "" {
 		var err error
 		if root, err = gitRoot(ctx, dir); err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		skillsDir = "skills"
 		if openErr == nil {
@@ -84,11 +84,11 @@ func runNew(ctx context.Context, env skills.Env, o skills.Options, name, visibil
 		}
 	} else {
 		if openErr != nil {
-			return skills.ExitFatal, openErr
+			return 0, openErr
 		}
 		d, err := ownTarget(e.CheckoutDirs(), visibility)
 		if err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		target = &d
 		root, skillsDir = d.Path, d.SkillsDir
@@ -96,18 +96,18 @@ func runNew(ctx context.Context, env skills.Env, o skills.Options, name, visibil
 	// The repository's own [repository] section knows its visibility.
 	c, ok, err := skenvfile.ReadRepository(root)
 	if err != nil {
-		return skills.ExitFatal, err
+		return 0, err
 	}
 	if ok && c.Visibility != "" {
 		if visibilitySet && c.Visibility != visibility {
-			return skills.ExitFatal, fmt.Errorf("--visibility %s, but %s is %s according to its skenv file", visibility, paths.Collapse(env.Home, root), c.Visibility)
+			return 0, fmt.Errorf("--visibility %s, but %s is %s according to its skenv file", visibility, paths.Collapse(env.Home, root), c.Visibility)
 		}
 		visibility = c.Visibility
 	}
 
 	skill := filepath.Join(root, filepath.FromSlash(skillsDir), name)
 	if _, err := os.Lstat(skill); err == nil {
-		return skills.ExitFatal, fmt.Errorf("%s already exists", paths.Collapse(env.Home, skill))
+		return 0, fmt.Errorf("%s already exists", paths.Collapse(env.Home, skill))
 	}
 	title := strings.ReplaceAll(name, "-", " ")
 	title = strings.ToUpper(title[:1]) + title[1:]
@@ -120,10 +120,10 @@ func runNew(ctx context.Context, env skills.Env, o skills.Options, name, visibil
 	for rel, content := range files {
 		p := filepath.Join(skill, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 	}
 	fmt.Fprintf(env.Stdout, "created %s (SKILL.md, references/notes.md)\n", paths.Collapse(env.Home, skill))

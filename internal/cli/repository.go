@@ -41,9 +41,11 @@ skenv lint
 skenv lint skills/draft
 # Before the repository goes public
 skenv lint --publish`,
-		RunE: a.action(func(ctx context.Context, env skills.Env, pos []string) (int, error) {
-			return runLint(ctx, env, pos, staged, publish, hook)
-		}),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.action(func(ctx context.Context, env skills.Env, pos []string) (int, error) {
+				return runLint(ctx, env, cmd.InOrStdin(), pos, staged, publish, hook)
+			})(cmd, args)
+		},
 	}
 	c.Flags().BoolVar(&staged, "staged", false, "only skills with files changed in the git index")
 	c.Flags().BoolVar(&publish, "publish", false, "also run the publication checks (P1)")
@@ -51,29 +53,29 @@ skenv lint --publish`,
 	return c
 }
 
-func runLint(ctx context.Context, env skills.Env, pos []string, staged, publish, hook bool) (int, error) {
+func runLint(ctx context.Context, env skills.Env, stdin io.Reader, pos []string, staged, publish, hook bool) (int, error) {
 	var err error
 	if hook {
 		// The hook reads its skill from the event: paths, --staged and
 		// --publish would be ignored, so they are rejected instead.
 		if len(pos) > 0 || staged || publish {
-			return skills.ExitFatal, usageError{"lint: --hook takes the file from the hook event on stdin; it does not combine with paths, --staged or --publish"}
+			return 0, errors.New("lint: --hook takes the file from the hook event on stdin; it does not combine with paths, --staged or --publish")
 		}
-		return lintHook(env)
+		return lintHook(env, stdin)
 	}
 	var skillDirs []string
 	switch {
 	case staged:
 		if len(pos) > 0 {
-			return skills.ExitFatal, usageError{"lint: --staged takes no paths"}
+			return 0, errors.New("lint: --staged takes no paths")
 		}
 		root, err := gitRoot(ctx, ".")
 		if err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		out, err := gitx.Git{}.Run(ctx, root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z")
 		if err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		var files []string
 		for f := range strings.SplitSeq(out, "\x00") {
@@ -89,7 +91,7 @@ func runLint(ctx context.Context, env skills.Env, pos []string, staged, publish,
 		for _, p := range pos {
 			found, err := lint.Find(p)
 			if err != nil {
-				return skills.ExitFatal, err
+				return 0, err
 			}
 			skillDirs = append(skillDirs, found...)
 		}
@@ -97,7 +99,7 @@ func runLint(ctx context.Context, env skills.Env, pos []string, staged, publish,
 	var deny *lint.Denylist
 	if publish {
 		if deny, err = lint.LoadDenylist(env.Home, env.Getenv); err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 	}
 	cwd, _ := os.Getwd()
@@ -124,17 +126,17 @@ func runLint(ctx context.Context, env skills.Env, pos []string, staged, publish,
 		}
 		root, err := gitRoot(ctx, dir)
 		if err != nil {
-			return skills.ExitFatal, fmt.Errorf("--publish scans the repository and its history: %w", err)
+			return 0, fmt.Errorf("--publish scans the repository and its history: %w", err)
 		}
 		// The whole repository is published, not only the skills.
 		files, err := lint.RepoFiles(root)
 		if err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		report(lint.ScanDenylist(root, files, deny))
 		leaks, err := lint.Gitleaks(root)
 		if err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		if leaks != "" {
 			fmt.Fprintf(env.Stdout, "%s: P1: gitleaks found secrets in the history (redacted report below)\n%s", root, leaks)
@@ -148,22 +150,19 @@ func runLint(ctx context.Context, env skills.Env, pos []string, staged, publish,
 	return skills.ExitOK, nil
 }
 
-// hookStdin is the Claude Code hook event; replaced in tests.
-var hookStdin io.Reader = os.Stdin
-
-// lintHook handles a Claude Code PostToolUse event: lint the skill that
-// contains the edited file and, when there are findings, print them to
-// stderr with exit code 2, which Claude Code feeds back to the agent.
+// lintHook handles a Claude Code PostToolUse event on stdin: lint the
+// skill that contains the edited file and, when there are findings, print
+// them to stderr with exit code 2, which Claude Code feeds back to the agent.
 // Files outside skills and malformed events are ignored (exit 0) so the
 // hook never gets in the way of unrelated edits.
-func lintHook(env skills.Env) (int, error) {
+func lintHook(env skills.Env, stdin io.Reader) (int, error) {
 	var event struct {
 		ToolName  string `json:"tool_name"`
 		ToolInput struct {
 			FilePath string `json:"file_path"`
 		} `json:"tool_input"`
 	}
-	if err := json.NewDecoder(hookStdin).Decode(&event); err != nil || event.ToolInput.FilePath == "" {
+	if err := json.NewDecoder(stdin).Decode(&event); err != nil || event.ToolInput.FilePath == "" {
 		return skills.ExitOK, nil //nolint:nilerr // not an edit event: nothing to lint
 	}
 	skill, ok := lint.SkillOf(event.ToolInput.FilePath)
@@ -265,30 +264,30 @@ func repoCmd(a *app) *cobra.Command {
 func runRepo(ctx context.Context, env skills.Env, sub, dir, visibility, ci, format string, runner []string, runnerSet, dryRun, force bool) (int, error) {
 	root, err := gitRoot(ctx, dir)
 	if err != nil {
-		return skills.ExitFatal, err
+		return 0, err
 	}
 	switch sub {
 	case "init":
 		if visibility == "" {
-			return skills.ExitFatal, usageError{"repo init: --visibility private|public is required"}
+			return 0, errors.New("repo init: --visibility private|public is required")
 		}
 		if err := docedit.ValidFormat(format); err != nil {
-			return skills.ExitFatal, usageError{"repo init: " + err.Error()}
+			return 0, fmt.Errorf("repo init: %w", err)
 		}
 		detected := ""
 		switch {
 		case ci == "":
 			ci, detected = detectCI(ctx, env, root)
 		case !slices.Contains(skenvfile.CIs, ci):
-			return skills.ExitFatal, usageError{fmt.Sprintf("repo init: --ci must be github or gitlab, got %q", ci)}
+			return 0, fmt.Errorf("repo init: --ci must be github or gitlab, got %q", ci)
 		}
 		if len(runner) == 0 && runnerSet {
-			return skills.ExitFatal, usageError{"repo init: --runner needs at least one label"}
+			return 0, errors.New("repo init: --runner needs at least one label")
 		}
 		c, changes, err := repository.Init(root, visibility, ci, format, runner, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		if detected != "" {
 			fmt.Fprintf(env.Stdout, "ci %s: %s; --ci overrides it\n", c.Provider, detected)
@@ -310,16 +309,16 @@ func runRepo(ctx context.Context, env skills.Env, sub, dir, visibility, ci, form
 	case "apply":
 		c, err := skenvfile.LoadRepository(root)
 		if err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		if c.TemplateVersion != skenvfile.LatestTemplates {
-			return skills.ExitFatal, fmt.Errorf("%s: template_version %s is not the template set of this skenv (%s); "+
+			return 0, fmt.Errorf("%s: template_version %s is not the template set of this skenv (%s); "+
 				"run `skenv repo upgrade` to move the repository to %s, or use skenv %s", filepath.Base(c.File), c.TemplateVersion, skenvfile.LatestTemplates, skenvfile.LatestTemplates, c.TemplateVersion)
 		}
 		changes, err := repository.Apply(root, c, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		if len(changes) == 0 {
 			fmt.Fprintln(env.Stdout, "repo apply: up to date")
@@ -328,18 +327,18 @@ func runRepo(ctx context.Context, env skills.Env, sub, dir, visibility, ci, form
 	case "upgrade":
 		c, err := skenvfile.LoadRepository(root)
 		if err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		old := c.TemplateVersion
 		c.TemplateVersion = skenvfile.LatestTemplates
 		// Refuse (foreign files without --force) before the version moves.
 		if _, err := repository.Apply(root, c, true, force); err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		// repository.template_version and the schema directive.
 		updated, err := repository.Upgrade(root, skenvfile.LatestTemplates, dryRun)
 		if err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		prefix := ""
 		if dryRun {
@@ -356,13 +355,13 @@ func runRepo(ctx context.Context, env skills.Env, sub, dir, visibility, ci, form
 		changes, err := repository.Apply(root, c, dryRun, force)
 		printChanges(env, changes, dryRun)
 		if err != nil {
-			return skills.ExitFatal, err
+			return 0, err
 		}
 		return lefthookInstall(ctx, env, root, dryRun), nil
 	}
 	drift, err := repository.Check(root)
 	if err != nil {
-		return skills.ExitFatal, err
+		return 0, err
 	}
 	// A missing or outdated schema directive is a warning: it only helps
 	// editors, and the exit code stays.
