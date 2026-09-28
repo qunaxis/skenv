@@ -2,6 +2,7 @@ package schemagen
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -86,34 +87,35 @@ func schemaDirective(text, ext string) string {
 	return ""
 }
 
-var changelogVersionRe = regexp.MustCompile(`(?m)^## v(\d+\.\d+\.\d+)\b`)
+var directiveVersionRe = regexp.MustCompile(`/v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/(?:` + regexp.QuoteMeta(schemas.Skenv) + `|` + regexp.QuoteMeta(schemas.Config) + `)$`)
 
-// currentSchemaVersion is the release these docs describe: the newest one
-// in CHANGELOG.md. A doc example's #:schema URL must be pinned to it, not
-// to an older release it was copied from.
-func currentSchemaVersion(t *testing.T) string {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(root, "CHANGELOG.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	m := changelogVersionRe.FindSubmatch(data)
+// directiveVersion returns the release a #:schema URL pins to, or "" for an
+// unversioned URL (schemas.URL's "latest" form, which by construction
+// cannot go stale).
+func directiveVersion(directiveURL string) string {
+	m := directiveVersionRe.FindStringSubmatch(directiveURL)
 	if m == nil {
-		t.Fatal("CHANGELOG.md: no released version found")
+		return ""
 	}
-	return string(m[1])
+	return m[1]
 }
 
 // Every skenv file and tool config that a reader can copy from README.md,
 // the docs (except the generated command reference and the ADRs) and the
 // skenv skill is valid for the current release: for the real parser and
-// for the schema it names, with a #:schema URL pinned to that release.
+// for the schema it names. Every #:schema URL among them must also pin the
+// same release: release.sh runs `go test ./...` before it writes the new
+// CHANGELOG.md entry and pushes straight to main (AGENTS.md: only a
+// docs-impact PR touches docs), so comparing against "the newest release
+// in CHANGELOG.md" would fail on main after every release, until that
+// follow-up PR lands — pure churn, not a real finding. Pinned-but-mutually
+// -inconsistent URLs is the actual bug shape (docs/configuration.md and
+// docs/editor-support.md disagreeing), and needs no release-time state.
 func TestDocExamplesValid(t *testing.T) {
 	skenvSchema, cfgSchema := compile(t, schemas.Skenv), compile(t, schemas.Config)
-	version := currentSchemaVersion(t)
-	wantSkenvURL, wantCfgURL := schemas.URL(schemas.Skenv, version), schemas.URL(schemas.Config, version)
 
 	var skenvCount, cfgCount, skipped, snippets int
+	pinnedAt := map[string][]string{} // release -> "file:line" of each #:schema URL naming it
 	for _, p := range docFiles(t) {
 		data, err := os.ReadFile(p)
 		if err != nil {
@@ -142,30 +144,21 @@ func TestDocExamplesValid(t *testing.T) {
 			}
 
 			directive := schemaDirective(text, ext)
-			names := func(schema string) bool { return directive == schema || strings.HasSuffix(directive, "/"+schema) }
-			_, hasUser := top["user"]
-			_, hasProject := top["project"]
-			_, hasRepo := top["repository"]
-			isSkenv := names(schemas.Skenv) || hasUser || hasProject || hasRepo
-			isConfig := !isSkenv && (names(schemas.Config) || b.File == filepath.Join("docs", "configuration.md"))
+			if v := directiveVersion(directive); v != "" {
+				pinnedAt[v] = append(pinnedAt[v], where)
+			}
 
-			switch {
-			case isSkenv:
+			switch classify(top, b.File, directive) {
+			case skenvFile:
 				skenvCount++
-				if directive != "" && directive != wantSkenvURL {
-					t.Errorf("%s: #:schema %s, want %s (the schema of the current release)", where, directive, wantSkenvURL)
-				}
 				if err := skenvSchema.Validate(instance(t, text, ext)); err != nil {
 					t.Errorf("%s: schema rejects:\n%s\n%v", where, text, err)
 				}
 				if err := parseSkenv(text, ext); err != nil {
 					t.Errorf("%s: skenv rejects:\n%s\n%v", where, text, err)
 				}
-			case isConfig:
+			case toolConfig:
 				cfgCount++
-				if directive != "" && directive != wantCfgURL {
-					t.Errorf("%s: #:schema %s, want %s (the schema of the current release)", where, directive, wantCfgURL)
-				}
 				if err := cfgSchema.Validate(instance(t, text, ext)); err != nil {
 					t.Errorf("%s: schema rejects:\n%s\n%v", where, text, err)
 				}
@@ -180,6 +173,81 @@ func TestDocExamplesValid(t *testing.T) {
 	t.Logf("doc examples: %d skenv file(s), %d tool config(s), %d skipped (not a skenv file or tool config), %d snippet(s) marked incomplete", skenvCount, cfgCount, skipped, snippets)
 	if skenvCount < 15 || cfgCount < 2 {
 		t.Errorf("only %d skenv file and %d config examples found: the scan may be missing files", skenvCount, cfgCount)
+	}
+	if len(pinnedAt) > 1 {
+		releases := make([]string, 0, len(pinnedAt))
+		for v := range pinnedAt {
+			releases = append(releases, v)
+		}
+		sort.Strings(releases)
+		var detail strings.Builder
+		for _, v := range releases {
+			fmt.Fprintf(&detail, "\n  v%s: %s", v, strings.Join(pinnedAt[v], ", "))
+		}
+		t.Errorf("#:schema URLs pin different releases, so at least one is stale:%s", detail.String())
+	}
+}
+
+// kind classifies a doc example, per the rules of issue #81.
+type kind int
+
+const (
+	outOfScope kind = iota
+	skenvFile
+	toolConfig
+)
+
+// classify decides what a candidate block is, from its top-level table, the
+// #:schema directive it declares (possibly ""), and the file it is in. It
+// does not need top to come from the real parser: schemaDirective and the
+// real parsers in TestDocExamplesValid do the actual validation.
+func classify(top map[string]any, file, directive string) kind {
+	names := func(schema string) bool { return directive == schema || strings.HasSuffix(directive, "/"+schema) }
+	_, hasUser := top["user"]
+	_, hasProject := top["project"]
+	_, hasRepo := top["repository"]
+	if names(schemas.Skenv) || hasUser || hasProject || hasRepo {
+		return skenvFile
+	}
+	// A "manifest" key is config's one required-in-practice field (see
+	// examples() above), unambiguous enough to classify by even without a
+	// directive or the docs/configuration.md location.
+	_, hasManifest := top["manifest"]
+	if names(schemas.Config) || hasManifest || file == filepath.Join("docs", "configuration.md") {
+		return toolConfig
+	}
+	return outOfScope
+}
+
+// TestClassify pins classify's rules against synthetic fixtures, independent
+// of whatever the live docs happen to contain today (a scanner regression
+// that leaves the current docs tree passing, such as the one that slipped
+// past the info-string language split, would otherwise give no red signal).
+func TestClassify(t *testing.T) {
+	cases := []struct {
+		name      string
+		top       map[string]any
+		file      string
+		directive string
+		want      kind
+	}{
+		{"top-level user table", map[string]any{"user": map[string]any{}}, "docs/manifest.md", "", skenvFile},
+		{"top-level project table", map[string]any{"project": map[string]any{}}, "docs/project-skills.md", "", skenvFile},
+		{"top-level repository table", map[string]any{"repository": map[string]any{}}, "docs/harness.md", "", skenvFile},
+		{"#:schema names skenv.schema.json", map[string]any{}, "README.md", "https://qunaxis.github.io/skenv/schemas/v0.6.0/skenv.schema.json", skenvFile},
+		{"#:schema names config.schema.json", map[string]any{}, "README.md", "https://qunaxis.github.io/skenv/schemas/v0.6.0/config.schema.json", toolConfig},
+		{"manifest key, no directive, outside configuration.md", map[string]any{"manifest": "x"}, "docs/adopting.md", "", toolConfig},
+		{"in docs/configuration.md, no magic key or directive", map[string]any{"machine": "x"}, "docs/configuration.md", "", toolConfig},
+		{"unrelated top-level keys", map[string]any{"rule": map[string]any{}}, "docs/editor-support.md", "", outOfScope},
+		{"pre-0.6 legacy keys are not recognized as a skenv file", map[string]any{"repo": map[string]any{}, "environment": map[string]any{}}, "docs/skenv-file.md", "", outOfScope},
+		{"user table wins over docs/configuration.md location", map[string]any{"user": map[string]any{}}, "docs/configuration.md", "", skenvFile},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := classify(c.top, c.file, c.directive); got != c.want {
+				t.Errorf("classify(%v, %q, %q) = %v, want %v", c.top, c.file, c.directive, got, c.want)
+			}
+		})
 	}
 }
 
