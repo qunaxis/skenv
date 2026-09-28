@@ -220,16 +220,16 @@ commit = "`+strings.Repeat("a", 40)+`"
 	}
 
 	for body, want := range map[string]string{
-		`[user.git_hosts.Work]` + "\nbase_url = \"https://a.example\"\n":                             "git_hosts.Work: the alias must be",
-		`[user.git_hosts.gitlab]` + "\nbase_url = \"https://a.example\"\n":                           `"gitlab" is built in`,
-		`[user.git_hosts.github]` + "\nbase_url = \"https://a.example\"\n":                           `"github" is built in`,
-		`[user.git_hosts.work]` + "\nprovider = \"gitlab\"\n":                                        "git_hosts.work.base_url: is required",
-		`[user.git_hosts.work]` + "\nbase_url = \"git.example.com\"\n":                               "must be a base URL",
-		`[user.git_hosts.work]` + "\nbase_url = \"https://user:tok@git.example.com\"\n":              "must not carry credentials",
-		`[user.git_hosts.work]` + "\nbase_url = \"ssh://git:pw@git.example.com\"\n":                  "must not carry a password",
-		`[user.git_hosts.work]` + "\nbase_url = \"ftp://git.example.com\"\n":                         `scheme "ftp": use https:// or ssh://`,
-		`[user.git_hosts.work]` + "\nbase_url = \"oauth2:tok@git.example.com\"\n":                    "git_hosts.work.base_url: must be a base URL",
-		`[user.git_hosts.work]` + "\nbase_url = \"https://a.example\"\nprovider = \"bitbucket\"":     `git_hosts.work.provider: "bitbucket" must be one of github, gitlab, gitea, generic`,
+		`[user.git_hosts.Work]` + "\nbase_url = \"https://a.example\"\n":                             "[user.git_hosts] Work: invalid value. An alias is",
+		`[user.git_hosts.gitlab]` + "\nbase_url = \"https://a.example\"\n":                           "[user.git_hosts] gitlab: This prefix is built in",
+		`[user.git_hosts.github]` + "\nbase_url = \"https://a.example\"\n":                           "[user.git_hosts] github: This prefix is built in",
+		`[user.git_hosts.work]` + "\nprovider = \"gitlab\"\n":                                        "[user.git_hosts.work] base_url: is required",
+		`[user.git_hosts.work]` + "\nbase_url = \"git.example.com\"\n":                               "[user.git_hosts.work] base_url: invalid value. A base URL such as",
+		`[user.git_hosts.work]` + "\nbase_url = \"https://user:tok@git.example.com\"\n":              "without credentials: use a git credential helper",
+		`[user.git_hosts.work]` + "\nbase_url = \"ssh://git:pw@git.example.com\"\n":                  "base_url: invalid value",
+		`[user.git_hosts.work]` + "\nbase_url = \"ftp://git.example.com\"\n":                         "base_url: invalid value",
+		`[user.git_hosts.work]` + "\nbase_url = \"oauth2:tok@git.example.com\"\n":                    "[user.git_hosts.work] base_url: invalid value",
+		`[user.git_hosts.work]` + "\nbase_url = \"https://a.example\"\nprovider = \"bitbucket\"":     `[user.git_hosts.work] provider: must be one of "github", "gitlab", "gitea", "generic"`,
 		"[user.checkouts.x]\nrepo = \"acme:g/r\"\ncheckout_dir = \"~/x\"\n":                          `user.checkouts.x: repo "acme:g/r": unknown host prefix`,
 		"[user.dependencies.t]\nrepo = \"gitlab:r\"\ncommit = \"" + strings.Repeat("a", 40) + "\"\n": `user.dependencies.t: repo "gitlab:r"`,
 	} {
@@ -257,5 +257,26 @@ func TestResolveIn(t *testing.T) {
 	}
 	if r, err := m.Remote(m.Dependencies["x"].Repo); err != nil || r.URL != "/m/dir/r" {
 		t.Errorf("Remote = %+v, %v", r, err)
+	}
+}
+
+// The schema rejects these base URLs first; validate keeps refusing
+// credentials for a Hosts value that did not come through Parse, and never
+// echoes the URL.
+func TestHostsValidate(t *testing.T) {
+	for url, want := range map[string]string{
+		"https://user:tok@git.example.com": "must not carry credentials",
+		"ssh://git:pw@git.example.com":     "must not carry a password",
+		"ftp://git.example.com":            `scheme "ftp": use https:// or ssh://`,
+		"oauth2:tok@git.example.com":       "must be a base URL",
+		"https://git.example.com?x=1":      "must not have a query",
+	} {
+		errs := Hosts{"work": {BaseURL: url}}.validate()
+		if len(errs) != 1 || !strings.Contains(errs[0].Error(), "git_hosts.work.base_url: "+want) || strings.Contains(errs[0].Error(), "tok") {
+			t.Errorf("%s: %v, want %q", url, errs, want)
+		}
+	}
+	if errs := (Hosts{"work": {BaseURL: "ssh://git@git.example.com:2222/scm"}}).validate(); len(errs) != 0 {
+		t.Errorf("valid ssh base: %v", errs)
 	}
 }

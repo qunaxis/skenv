@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/qunaxis/skenv/internal/platform/docedit"
 )
 
 // Defaults of the [project] section.
@@ -141,20 +143,13 @@ func ParseProject(data []byte, ext string) (*Project, error) {
 	return &p, nil
 }
 
-// Validate checks the section: clean relative directories that do not
-// overlap, full SHAs, valid skill names that are unique across vendor and
-// from entries.
+// Validate checks what the schema cannot express (Parse checked the
+// rest): repo values resolve, dir and mirrors do not overlap, and skill
+// names are unique across vendor and from entries.
 func (p *Project) Validate() error {
 	var errs []error
-	if !cleanRel(p.Dir) || p.Dir == "." {
-		errs = append(errs, fmt.Errorf("project.dir %q must be a relative directory inside the repository", p.Dir))
-	}
 	dirs := []string{p.Dir}
 	for _, m := range p.Mirrors {
-		if !cleanRel(m) || m == "." {
-			errs = append(errs, fmt.Errorf("project.mirrors: %q must be a relative directory inside the repository", m))
-			continue
-		}
 		for _, d := range dirs {
 			if overlaps(d, m) {
 				errs = append(errs, fmt.Errorf("project.mirrors: %q overlaps %q; dir and mirrors are separate directories", m, d))
@@ -165,39 +160,12 @@ func (p *Project) Validate() error {
 	for _, err := range p.GitHosts.validate() {
 		errs = append(errs, fmt.Errorf("project.%w", err))
 	}
-	if !slices.Contains(MirrorModes, p.MirrorsMode) {
-		errs = append(errs, fmt.Errorf("project.mirrors_mode %q must be %s", p.MirrorsMode, strings.Join(quoted(MirrorModes), " or ")))
-	}
 	for _, d := range p.DependencyList() {
 		errs = append(errs, checkDependency("project.dependencies", d, p.GitHosts, SectionProject, "")...)
 	}
 	for _, f := range p.FromList() {
-		where := fmt.Sprintf("project.from.%s (%s)", f.ID, f.Repo)
-		if !idRe.MatchString(f.ID) {
-			errs = append(errs, fmt.Errorf("project.from.%s: the ID must be lowercase letters, digits, \"-\" and \"_\", starting with a letter or digit", f.ID))
-		}
-		if f.Repo == "" {
-			errs = append(errs, fmt.Errorf("project.from.%s: repo is required", f.ID))
-		} else if _, err := p.GitHosts.ResolveIn(SectionProject, "", f.Repo); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", where, err))
-		}
-		if !cleanRel(f.SkillsDir) {
-			errs = append(errs, fmt.Errorf("%s: skills_dir %q must be a relative path inside the repository", where, f.SkillsDir))
-		}
-		if len(f.Skills) == 0 {
-			errs = append(errs, fmt.Errorf("%s: skills is required; list the skills to copy", where))
-		}
-		seen := map[string]bool{}
-		for _, n := range f.Skills {
-			if err := ValidName(n); err != nil {
-				errs = append(errs, fmt.Errorf("%s: skills: %w", where, err))
-			} else if seen[n] {
-				errs = append(errs, fmt.Errorf("%s: skills lists %q twice", where, n))
-			}
-			seen[n] = true
-		}
-		if !shaRe.MatchString(f.Commit) {
-			errs = append(errs, fmt.Errorf("%s: commit %q must be a full 40-character lowercase commit SHA", where, f.Commit))
+		if _, err := p.GitHosts.ResolveIn(SectionProject, "", f.Repo); err != nil {
+			errs = append(errs, fmt.Errorf("project.from.%s (%s): %w", f.ID, f.Repo, err))
 		}
 	}
 	if len(errs) > 0 {
@@ -217,28 +185,14 @@ func (p *Project) Validate() error {
 	return errors.Join(errs...)
 }
 
-// checkDependency validates one dependency of [user] or [project] (in
-// section where, naming the git_hosts section too): the name, a repo that
-// hosts resolve (a local path against base), the skill directory and a
-// full SHA.
+// checkDependency checks that the repo of one dependency of [user] or
+// [project] resolves (in section, naming the git_hosts section too; a
+// local path against base).
 func checkDependency(where string, d *Dependency, hosts Hosts, section, base string) []error {
-	var errs []error
-	where = fmt.Sprintf("%s.%s", where, quoteKey(d.Name))
-	if err := ValidName(d.Name); err != nil {
-		errs = append(errs, fmt.Errorf("%s: %w", where, err))
+	if _, err := hosts.ResolveIn(section, base, d.Repo); err != nil {
+		return []error{fmt.Errorf("%s.%s: %w", where, docedit.QuoteKey(d.Name), err)}
 	}
-	if d.Repo == "" {
-		errs = append(errs, fmt.Errorf("%s: repo is required", where))
-	} else if _, err := hosts.ResolveIn(section, base, d.Repo); err != nil {
-		errs = append(errs, fmt.Errorf("%s: %w", where, err))
-	}
-	if !cleanRel(d.SkillDir) {
-		errs = append(errs, fmt.Errorf("%s: skill_dir %q must be a relative path inside the repository (\".\" for the root)", where, d.SkillDir))
-	}
-	if !shaRe.MatchString(d.Commit) {
-		errs = append(errs, fmt.Errorf("%s: commit %q must be a full 40-character lowercase commit SHA", where, d.Commit))
-	}
-	return errs
+	return nil
 }
 
 // overlaps reports whether one of the clean relative paths a and b is

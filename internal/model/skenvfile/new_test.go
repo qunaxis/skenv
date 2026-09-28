@@ -27,8 +27,8 @@ func TestAddUser(t *testing.T) {
 			want: "# keep me\nrepository:\n  template_version: 0.4.0 # and me\n  visibility: private\n" + userLead + userYAMLHint + "user: {}\n"},
 		{name: "new json", ext: ".json", own: own,
 			want: "{\n  \"user\": {\n    \"checkouts\": {\n      \"skills\": {\n        \"repo\": \"me/skills\",\n        \"checkout_dir\": \".\"\n      }\n    }\n  }\n}\n"},
-		{name: "json with repository", ext: ".json", in: `{"$schema": "x", "repository": {"template_version": "0.4.0", "visibility": "public"}}`,
-			want: "{\n  \"$schema\": \"x\",\n  \"repository\": {\n    \"template_version\": \"0.4.0\",\n    \"visibility\": \"public\"\n  },\n  \"user\": {}\n}\n"},
+		{name: "json with repository", ext: ".json", in: `{"$schema": "x", "repository": {"template_version": "0.4.0", "visibility": "private"}}`,
+			want: "{\n  \"$schema\": \"x\",\n  \"repository\": {\n    \"template_version\": \"0.4.0\",\n    \"visibility\": \"private\"\n  },\n  \"user\": {}\n}\n"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			out, err := AddUser([]byte(c.in), c.ext, c.own)
@@ -89,10 +89,10 @@ func TestAddProject(t *testing.T) {
 			want: projectLead + "[project]\ndir = \".agents/skills\"\nmirrors = [\".claude/skills\"]\n"},
 		{name: "toml with [user]", ext: ".toml", in: "# mine\n[user]\n",
 			want: "# mine\n[user]\n\n" + projectLead + "[project]\ndir = \".agents/skills\"\n"},
-		{name: "yaml with repository", ext: ".yaml", in: "# keep me\nrepository:\n  visibility: public\n", mirrors: []string{".claude/skills"},
-			want: "# keep me\nrepository:\n  visibility: public\n" + projectLead + "project:\n  dir: .agents/skills\n  mirrors: [.claude/skills]\n"},
-		{name: "json", ext: ".json", in: `{"repository": {"visibility": "public"}}`,
-			want: "{\n  \"repository\": {\n    \"visibility\": \"public\"\n  },\n  \"project\": {\n    \"dir\": \".agents/skills\"\n  }\n}\n"},
+		{name: "yaml with repository", ext: ".yaml", in: "# keep me\nrepository:\n  template_version: 0.4.0\n  visibility: public\n", mirrors: []string{".claude/skills"},
+			want: "# keep me\nrepository:\n  template_version: 0.4.0\n  visibility: public\n" + projectLead + "project:\n  dir: .agents/skills\n  mirrors: [.claude/skills]\n"},
+		{name: "json", ext: ".json", in: `{"repository": {"template_version": "0.4.0", "visibility": "public"}}`,
+			want: "{\n  \"repository\": {\n    \"template_version\": \"0.4.0\",\n    \"visibility\": \"public\"\n  },\n  \"project\": {\n    \"dir\": \".agents/skills\"\n  }\n}\n"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			out, err := AddProject([]byte(c.in), c.ext, c.mirrors)

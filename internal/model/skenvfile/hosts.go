@@ -316,8 +316,6 @@ func (g GitHost) sshBase() string {
 // shorthand already covers: they cannot be declared.
 var ReservedAliases = []string{"github", "gitlab", "codeberg"}
 
-var aliasRe = regexp.MustCompile(AliasPattern)
-
 // fillDefaults sets the provider of hosts that do not name one.
 func (h Hosts) fillDefaults() {
 	for a, g := range h {
@@ -328,22 +326,14 @@ func (h Hosts) fillDefaults() {
 	}
 }
 
-// validate checks the declared hosts; errors name git_hosts.<alias>.
+// validate checks the base URLs of the declared hosts; errors name
+// git_hosts.<alias>. The schema checks their form too, but a URL that
+// carries credentials must never be accepted, whatever the pattern says.
 func (h Hosts) validate() []error {
 	var errs []error
 	for _, alias := range slices.Sorted(maps.Keys(h)) {
-		g := h[alias]
-		where := "git_hosts." + alias
-		if !aliasRe.MatchString(alias) {
-			errs = append(errs, fmt.Errorf("%s: the alias must be lowercase letters, digits and \"-\", starting with a letter", where))
-		} else if slices.Contains(ReservedAliases, alias) {
-			errs = append(errs, fmt.Errorf("%s: %q is built in and cannot be declared", where, alias))
-		}
-		if err := checkHostURL(g.BaseURL); err != nil {
-			errs = append(errs, fmt.Errorf("%s.base_url: %w", where, err))
-		}
-		if g.Provider != "" && !slices.Contains(HostTypes, g.Provider) {
-			errs = append(errs, fmt.Errorf("%s.provider: %q must be one of %s", where, g.Provider, strings.Join(HostTypes, ", ")))
+		if err := checkHostURL(h[alias].BaseURL); err != nil {
+			errs = append(errs, fmt.Errorf("git_hosts.%s.base_url: %w", alias, err))
 		}
 	}
 	return errs

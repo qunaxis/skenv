@@ -197,19 +197,24 @@ func (g *gen) skenv() *Schema {
 	gitHost.Required = []string{"base_url"}
 	hostURL := gitHost.Properties.get("base_url")
 	hostURL.Pattern = `^([Hh][Tt][Tt][Pp][Ss]?://[^/@?#]+|[Ss][Ss][Hh]://([^/:@?#]+@)?[^/@?#]+)(/[^?#]*)?$`
-	hostURL.PatternErrorMessage = `A base URL such as "https://git.example.com" (no credentials) or "ssh://git@git.example.com".`
+	hostURL.PatternErrorMessage = `A base URL such as "https://git.example.com" or "ssh://git@git.example.com", without credentials: ` +
+		`use a git credential helper or an ssh key (https://qunaxis.github.io/skenv/git-hosts#authentication).`
 	hostURL.Examples = []any{"https://git.example.com", "ssh://git@git.example.com"}
 	provider := gitHost.Properties.get("provider")
 	provider.Enum = skenvfile.HostTypes
 	provider.Default = skenvfile.TypeGeneric
 
 	storage.Properties.get("dir").Examples = []any{"~/.agents/skills", "~/.local/share/skenv/skills"}
+	// Codex is the agent people expect here; it reads the store instead.
+	agentHint := "Add other directories to user.agents.extra_dirs; Codex needs no entry: " +
+		"it reads the store (user.storage.dir, default ~/.agents/skills) directly."
 	enabled := agentsDef.Properties.get("enabled")
 	enabled.UniqueItems = true
 	enabled.Items.Enum = agents.Names
+	enabled.Items.ErrorMessage = agentHint
 	agentPaths := agentsDef.Properties.get("paths")
 	agentPaths.AdditionalProperties = &Schema{Type: "string", MinLength: 1}
-	agentPaths.PropertyNames = &Schema{Enum: agents.Names}
+	agentPaths.PropertyNames = &Schema{Enum: agents.Names, ErrorMessage: agentHint}
 	agentsDef.Properties.get("extra_dirs").Items.MinLength = 1
 
 	selection := func(s *Schema) {

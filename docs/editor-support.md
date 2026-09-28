@@ -156,8 +156,9 @@ directive go into the `lsp` section of `settings.json`, as for VS Code
 
 ## What the schema cannot check
 
-Some rules need the file system or the whole file, so only skenv checks
-them (`skenv doctor`, `skenv sync`):
+skenv validates every file it reads against the same schema, then checks
+the rules a schema cannot express. Some of them need the file system or
+the whole file (`skenv doctor`, `skenv sync`):
 
 - skill names are unique across the skills checkouts select and the
   dependencies, and the skills of a checkout are the directories found in
@@ -168,4 +169,12 @@ them (`skenv doctor`, `skenv sync`):
 - `template_version` must not be newer than the templates of the skenv
   that reads it;
 - a directory holds only one skenv file, and `~/.config/skenv/` only one
-  config file.
+  config file;
+- a `repo` value resolves: its host prefix is built in or declared in
+  `git_hosts`, and its path fits the provider;
+- a literal name in `include` or `exclude` is a valid skill name, and a
+  pattern is a valid glob;
+- a `branch` has none of the sequences git forbids (`..`, `//`, a trailing
+  `/`, `.` or `.lock`);
+- `checkout_dirs` of a machine names checkouts that exist;
+- `project.dir` and `project.mirrors` do not overlap.

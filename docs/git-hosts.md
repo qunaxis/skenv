@@ -298,10 +298,9 @@ Check the path against the `provider` of the host (see the table above).
 **A host declaration that is not valid.**
 
 ```text
-git_hosts.work.base_url: must not carry credentials; use a git credential helper (https://qunaxis.github.io/skenv/git-hosts#authentication)
-git_hosts.work.base_url: scheme "git": use https:// or ssh://
-git_hosts.work.provider: "bitbucket" must be one of github, gitlab, gitea, generic
-git_hosts.gitlab: "gitlab" is built in and cannot be declared
+[user.git_hosts.work] base_url: invalid value. A base URL such as "https://git.example.com" or "ssh://git@git.example.com", without credentials: use a git credential helper or an ssh key (https://qunaxis.github.io/skenv/git-hosts#authentication).
+[user.git_hosts.work] provider: must be one of "github", "gitlab", "gitea", "generic"
+[user.git_hosts] gitlab: This prefix is built in and cannot be declared.
 ```
 
 **The server cannot be reached, or refuses you.**

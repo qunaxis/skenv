@@ -10,7 +10,8 @@
 // [project]) is not configuration of the tool and is read by
 // internal/model/skenvfile.
 //
-// Unknown keys are errors; "$schema" is allowed for editors. `skenv init`,
+// The file is validated against its JSON Schema (schemas.Config): unknown
+// keys are errors; "$schema" is allowed for editors. `skenv init`,
 // `skenv clone` and `skenv use` edit the file in place: comments, other keys and their order stay.
 package config
 
@@ -24,7 +25,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -136,25 +136,8 @@ func decode(path string, data []byte) (map[string]any, error) {
 	if values == nil { // an empty YAML document
 		values = map[string]any{}
 	}
-	var unknown []string
-	for k := range values {
-		if k != docedit.SchemaKey && !slices.Contains(Keys(), k) {
-			unknown = append(unknown, k)
-		}
-	}
-	if len(unknown) > 0 {
-		slices.Sort(unknown)
-		return nil, fmt.Errorf("unknown key %q (known keys: %s)", strings.Join(unknown, `", "`), strings.Join(Keys(), ", "))
-	}
-	for _, k := range append([]string{docedit.SchemaKey}, Keys()...) {
-		if v, ok := values[k]; ok {
-			if v == nil {
-				return nil, fmt.Errorf("%s must be a string, got an empty value (null); give it a value or remove it", k)
-			}
-			if _, isString := v.(string); !isString {
-				return nil, fmt.Errorf("%s must be a string, got %v", k, v)
-			}
-		}
+	if err := schemas.Validate(schemas.Config, values); err != nil {
+		return nil, err
 	}
 	return values, nil
 }

@@ -114,24 +114,24 @@ func TestParseManifestErrors(t *testing.T) {
 		"bad name":                 {dependency(`"X"`, sha), "single hyphens"},
 		"dotted name":              {dependency(`"foo.bar_v2"`, sha), "single hyphens"},
 		"reserved name":            {dependency("synced", sha), "reserved"},
-		"unknown key":              {checkout("path2 = \"main\"\n"), "unknown keys: user.checkouts.a.path2"},
-		"checkout without dir":     {"[user.checkouts.a]\nrepo = \"a/b\"\n", "checkout_dir is required"},
-		"bad checkout id":          {"[user.checkouts.A]\nrepo = \"a/b\"\ncheckout_dir = \"x\"\n", "the ID must be lowercase"},
+		"unknown key":              {checkout("path2 = \"main\"\n"), "[user.checkouts.a] path2: unknown key"},
+		"checkout without dir":     {"[user.checkouts.a]\nrepo = \"a/b\"\n", "[user.checkouts.a] checkout_dir: is required"},
+		"bad checkout id":          {"[user.checkouts.A]\nrepo = \"a/b\"\ncheckout_dir = \"x\"\n", "[user.checkouts] A: invalid value. An ID is lowercase"},
 		"dependency escapes repo":  {"[user.dependencies.x]\nrepo = \"a/b\"\nskill_dir = \"../x\"\ncommit = \"" + sha + "\"\n", "relative path"},
 		"syntax":                   {"[[vendor]\n", "expected"},
 		"bad include name":         {checkout("include = [\"Foo\"]\n"), "single hyphens"},
 		"reserved include":         {checkout("include = [\"synced\"]\n"), "reserved"},
-		"duplicate include":        {checkout("include = [\"a\", \"a\"]\n"), "lists \"a\" twice"},
+		"duplicate include":        {checkout("include = [\"a\", \"a\"]\n"), "include: items 0 and 1 are the same"},
 		"exclude with slash":       {checkout("exclude = [\"a/b\"]\n"), "glob over names"},
 		"exclude bad glob":         {checkout("exclude = [\"[\"]\n"), "glob over names"},
 		"exclude empty":            {checkout("exclude = [\"\"]\n"), "glob over names"},
 		"machine unknown checkout": {checkout("[user.machines.m.checkout_dirs]\nb = \"~/y\"\n"), `checkout_dirs: "b" is not a checkout ID (known: a)`},
-		"machine bad exclude":      {"[user.machines.m]\nexclude = [\"a/b\"]\n", "user.machines.m.exclude"},
-		"codex is not an agent":    {"[user.agents]\nenabled = [\"codex\"]\n", "codex is not a link destination"},
-		"unknown agent":            {"[user.agents]\nenabled = [\"cursor\"]\n", `unknown agent "cursor" (built in: claude, pi`},
-		"unknown agent path":       {"[user.agents.paths]\ncursor = \"~/c\"\n", "user.agents.paths: unknown agent"},
-		"agent twice":              {"[user.agents]\nenabled = [\"pi\", \"pi\"]\n", `lists "pi" twice`},
-		"unmanaged slash":          {"[user]\nunmanaged = [\"a/b\"]\n", "user.unmanaged"},
+		"machine bad exclude":      {"[user.machines.m]\nexclude = [\"a/b\"]\n", "[user.machines.m] exclude[0]"},
+		"codex is not an agent":    {"[user.agents]\nenabled = [\"codex\"]\n", "Codex needs no entry"},
+		"unknown agent":            {"[user.agents]\nenabled = [\"cursor\"]\n", `[user.agents] enabled[0]: must be one of "claude", "pi"`},
+		"unknown agent path":       {"[user.agents.paths]\ncursor = \"~/c\"\n", `[user.agents.paths] cursor: must be one of "claude", "pi"`},
+		"agent twice":              {"[user.agents]\nenabled = [\"pi\", \"pi\"]\n", "enabled: items 0 and 1 are the same"},
+		"unmanaged slash":          {"[user]\nunmanaged = [\"a/b\"]\n", "[user] unmanaged[0]"},
 		"old key":                  {"[user]\nlayout = {}\n", "user.layout → user.storage"},
 	}
 	for name, c := range cases {
@@ -328,7 +328,7 @@ func TestUnmanaged(t *testing.T) {
 		t.Errorf("unmanaged entry names: %v", err)
 	}
 	for _, bad := range []string{`unmanaged = ["[x"]`, `unmanaged = ["a/b"]`, `unmanaged = [""]`} {
-		if _, err := ParseManifest([]byte("[user]\n"+bad+"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "user.unmanaged") {
+		if _, err := ParseManifest([]byte("[user]\n"+bad+"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "unmanaged") {
 			t.Errorf("%s: err = %v", bad, err)
 		}
 	}

@@ -9,10 +9,10 @@ import (
 
 // The same document in every format.
 var docs = map[string]string{
-	".toml": "[repository]\ntemplate_version = \"0.4.0\"\n\n[user.agents]\nenabled = []\n",
-	".yaml": "repository:\n  template_version: 0.4.0\nuser:\n  agents:\n    enabled: []\n",
-	".yml":  "repository: {template_version: \"0.4.0\"}\nuser: {agents: {enabled: []}}\n",
-	".json": `{"repository": {"template_version": "0.4.0"}, "user": {"agents": {"enabled": []}}}`,
+	".toml": "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"private\"\n\n[user.agents]\nenabled = []\n",
+	".yaml": "repository:\n  template_version: 0.4.0\n  visibility: private\nuser:\n  agents:\n    enabled: []\n",
+	".yml":  "repository: {template_version: \"0.4.0\", visibility: private}\nuser: {agents: {enabled: []}}\n",
+	".json": `{"repository": {"template_version": "0.4.0", "visibility": "private"}, "user": {"agents": {"enabled": []}}}`,
 }
 
 func TestParseFormats(t *testing.T) {
@@ -30,25 +30,18 @@ func TestParseFormats(t *testing.T) {
 		if !d.Has(SectionUser) || !d.IsDefined(SectionUser, "agents", "enabled") || d.IsDefined(SectionUser, "agents", "paths") {
 			t.Errorf("%s: Has/IsDefined wrong", ext)
 		}
-		// Unknown keys inside a section are errors in every format.
-		var strict struct {
-			Other string `toml:"other" yaml:"other" json:"other"`
-		}
-		if err := d.Decode(SectionRepository, &strict); err == nil || !strings.Contains(err.Error(), "template_version") {
-			t.Errorf("%s: unknown key accepted: %v", ext, err)
-		}
 	}
 }
 
 func TestParseErrors(t *testing.T) {
 	for _, c := range []struct{ text, ext, want string }{
 		{"harness = \"0.3.0\"\n", ".toml", "harness (top level) → under [repository]: template_version"},
-		{"[[vendor]]\nname = \"x\"\n", ".toml", "unknown top-level keys: vendor"},
-		{"layout:\n  store: x\n", ".yaml", "unknown top-level keys: layout"},
-		{`{"repository": 1}`, ".json", "repository must be a table"},
-		{`{"user": {"dependencies": null}}`, ".json", "user.dependencies is empty (null)"},
-		{"repository:\n  ci:\n    github:\n      runs_on: [ubuntu, 1]\n", ".yaml", "repository.ci.github.runs_on[1] must be a string, got 1; quote it"},
-		{"user:\n  dependencies:\n    x:\n      commit: 1234\n", ".yaml", "user.dependencies.x.commit must be a string"},
+		{"[[vendor]]\nname = \"x\"\n", ".toml", "vendor: unknown key (known: $schema, project, repository, user)"},
+		{"layout:\n  store: x\n", ".yaml", "layout: unknown key"},
+		{`{"repository": 1}`, ".json", "repository: must be a table, got a number"},
+		{`{"user": {"dependencies": null}}`, ".json", "[user] dependencies: is empty (null)"},
+		{"repository:\n  ci:\n    github:\n      runs_on: [ubuntu, 1]\n", ".yaml", "[repository.ci.github] runs_on[1]: must be a string, got a number; quote it"},
+		{"user:\n  dependencies:\n    x:\n      commit: 1234\n", ".yaml", "[user.dependencies.x] commit: must be a string"},
 		{"x", ".ini", "unsupported format"},
 	} {
 		if _, err := Parse([]byte(c.text), c.ext); err == nil || !strings.Contains(err.Error(), c.want) {
@@ -103,9 +96,9 @@ func TestSchemaKey(t *testing.T) {
 		}
 	}
 	for ext, c := range map[string]struct{ text, want string }{
-		".json": {`{"$schema": 1}`, "$schema must be a string"},
-		".yaml": {"$schema: [x]\n", "$schema must be a string"},
-		".toml": {"\"$schema\" = \"x\"\nother = 1\n", "unknown top-level keys: other"},
+		".json": {`{"$schema": 1}`, `"$schema": must be a string`},
+		".yaml": {"$schema: [x]\n", `"$schema": must be a string, got a list`},
+		".toml": {"\"$schema\" = \"x\"\nother = 1\n", "other: unknown key"},
 	} {
 		if _, err := Parse([]byte(c.text), ext); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s %q: err = %v, want %q", ext, c.text, err, c.want)
@@ -115,9 +108,8 @@ func TestSchemaKey(t *testing.T) {
 
 func TestSchemaVersion(t *testing.T) {
 	for text, want := range map[string]string{
-		"[repository]\ntemplate_version = \"0.4.0\"\n": "0.4.0",
-		"[repository]\ntemplate_version = \"x\"\n":     "", // a test binary is a development build
-		"[user]\n": "",
+		"[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"private\"\n": "0.4.0",
+		"[user]\n": "", // a test binary is a development build
 	} {
 		d, err := Parse([]byte(text), ".toml")
 		if err != nil {
@@ -132,15 +124,9 @@ func TestSchemaVersion(t *testing.T) {
 // Keys are case-sensitive in JSON too (encoding/json alone would ignore
 // case).
 func TestJSONKeysAreCaseSensitive(t *testing.T) {
-	d, err := Parse([]byte(`{"repository": {"Template_version": "0.4.0"}}`), ".json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var repo struct {
-		TemplateVersion string `yaml:"template_version" json:"template_version"`
-	}
-	if err := d.Decode(SectionRepository, &repo); err == nil {
-		t.Errorf("Template_version accepted as template_version: %+v", repo)
+	_, err := Parse([]byte(`{"repository": {"Template_version": "0.4.0", "template_version": "0.4.0", "visibility": "private"}}`), ".json")
+	if err == nil || !strings.Contains(err.Error(), "[repository] Template_version: unknown key") {
+		t.Errorf("Template_version accepted: %v", err)
 	}
 }
 

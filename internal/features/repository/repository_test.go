@@ -190,7 +190,7 @@ func TestConfig(t *testing.T) {
 		t.Error("bad visibility accepted")
 	}
 	write(t, cfg, "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"public\"\nbranch = \"main\"\n")
-	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "repository.branch") {
+	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "[repository] branch: unknown key") {
 		t.Errorf("unknown key: %v", err)
 	}
 	// Top-level keys of the skenv.toml of older skenv versions are rejected.
@@ -208,20 +208,20 @@ func TestConfig(t *testing.T) {
 		t.Errorf("runs_on of a public repository: %v", err)
 	}
 	write(t, cfg, "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"private\"\n[repository.ci.github]\n[repository.ci.gitlab]\n")
-	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "both github and gitlab") {
+	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "[repository] ci: Keep one CI table: github or gitlab.") {
 		t.Errorf("two CI tables: %v", err)
 	}
 	write(t, cfg, "[repository]\ntemplate_version = \"0.4\"\nvisibility = \"public\"\n")
-	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "must be a version") {
+	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "[repository] template_version: invalid value. A version such as") {
 		t.Errorf("bad version: %v", err)
 	}
 	// Upgrade only touches the template_version line under [repository],
 	// and adds the schema directive of that version.
-	write(t, cfg, "# keep\n[user.storage]\ndir = \"x\"\n\n[repository]\ntemplate_version = \"0.1.0\" # old\nvisibility = \"public\"\n")
+	write(t, cfg, "# keep\n[user.storage]\ndir = \"x\"\n\n[repository]\ntemplate_version = \"0.1.0\" # old\nvisibility = \"private\"\n")
 	if changed, err := Upgrade(root, "0.4.0", false); err != nil || !changed {
 		t.Fatal(changed, err)
 	}
-	want := "#:schema " + schemas.URL(schemas.Skenv, "0.4.0") + "\n# keep\n[user.storage]\ndir = \"x\"\n\n[repository]\ntemplate_version = \"0.4.0\" # old\nvisibility = \"public\"\n"
+	want := "#:schema " + schemas.URL(schemas.Skenv, "0.4.0") + "\n# keep\n[user.storage]\ndir = \"x\"\n\n[repository]\ntemplate_version = \"0.4.0\" # old\nvisibility = \"private\"\n"
 	if got := read(t, cfg); got != want {
 		t.Errorf("Upgrade:\n%s", got)
 	}
@@ -260,7 +260,7 @@ func TestInitNextToUser(t *testing.T) {
 			if _, _, err := Init(root, "private", "", "", nil, false, false); err == nil || !strings.Contains(err.Error(), "already has [repository]") {
 				t.Errorf("second init: %v", err)
 			}
-			// Turning it public is reported by check.
+			// Turning it public makes the file invalid for check.
 			public := strings.Replace(got, "private", "public", 1)
 			// A public repository has no runner labels.
 			public = regexp.MustCompile(`(?m)^runs_on = .*\n`).ReplaceAllString(public, "")
@@ -269,13 +269,8 @@ func TestInitNextToUser(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(root, c.name), []byte(public), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			d, _ := Check(root)
-			found := false
-			for _, x := range d {
-				found = found || strings.Contains(x.Reason, "must not carry [user]")
-			}
-			if !found {
-				t.Errorf("public + [user] not reported: %v", d)
+			if _, err := Check(root); err == nil || !strings.Contains(err.Error(), "must not carry [user]") {
+				t.Errorf("public + [user] not reported: %v", err)
 			}
 		})
 	}
@@ -790,7 +785,7 @@ func TestCIValue(t *testing.T) {
 		t.Errorf("gitlab tags: %+v %v", c, err)
 	}
 	write(t, cfg, "[repository]\ntemplate_version = \""+skenvfile.LatestTemplates+"\"\nvisibility = \"public\"\n[repository.ci.jenkins]\n")
-	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "repository.ci.jenkins") {
+	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "[repository.ci] jenkins: unknown key") {
 		t.Errorf("bad ci: %v", err)
 	}
 	for host, want := range map[string]string{"gitlab": skenvfile.CIGitLab, "github": skenvfile.CIGitHub, "gitea": skenvfile.CIGitHub, "generic": skenvfile.CIGitHub, "": skenvfile.CIGitHub} {

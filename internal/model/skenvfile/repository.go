@@ -126,7 +126,8 @@ func (c *Repository) decode(doc *Doc) error {
 var ErrNoRepository = errors.New("no [repository] section in the skenv file; run `skenv repo init`")
 
 // ReadRepository decodes the [repository] section of the skenv file in root
-// without validating it; ok is false when there is no skenv file or no
+// without the checks of Repository.Validate (Read validates the whole file
+// against the schema); ok is false when there is no skenv file or no
 // [repository].
 func ReadRepository(root string) (*Repository, bool, error) {
 	file, err := Find(root)
@@ -161,7 +162,7 @@ func LoadRepository(root string) (*Repository, error) {
 }
 
 // RepositoryVersion returns the template version recorded in root without
-// validating the rest; ok is false when root has no [repository] section.
+// the checks of Repository.Validate; ok is false when root has no [repository] section.
 func RepositoryVersion(root string) (version string, ok bool, err error) {
 	c, ok, err := ReadRepository(root)
 	if c == nil {
@@ -177,8 +178,7 @@ const VersionPattern = `^[0-9]+\.[0-9]+\.[0-9]+$`
 var VersionRe = regexp.MustCompile(VersionPattern)
 
 // ParseRepository decodes and validates the [repository] section of a skenv file in
-// the format of ext, with the rule that a public repository has no
-// [user]. ok is false when there is no [repository].
+// the format of ext. ok is false when there is no [repository].
 func ParseRepository(data []byte, ext string) (c *Repository, ok bool, err error) {
 	doc, err := Parse(data, ext)
 	if err != nil || !doc.Has(SectionRepository) {
@@ -190,9 +190,6 @@ func ParseRepository(data []byte, ext string) (c *Repository, ok bool, err error
 	}
 	if err := c.Validate(); err != nil {
 		return nil, true, err
-	}
-	if c.Visibility == "public" && c.HasUser {
-		return nil, true, errors.New(PublicUserReason)
 	}
 	return c, true, nil
 }

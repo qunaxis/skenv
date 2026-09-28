@@ -57,21 +57,21 @@ func TestParseProjectErrors(t *testing.T) {
 		return "[project.from." + id + "]\n" + lines
 	}
 	for _, c := range []struct{ text, want string }{
-		{"[project]\ndir = \".\"\n", "must be a relative directory"},
-		{"[project]\ndir = \"/abs\"\n", "must be a relative directory"},
+		{"[project]\ndir = \".\"\n", "[project] dir: dir must be a directory inside the repository, not its root."},
+		{"[project]\ndir = \"/abs\"\n", "[project] dir: invalid value. A relative path"},
 		{"[project]\nmirrors = [\".agents/skills\"]\n", "overlaps"},
 		{"[project]\nmirrors = [\".agents\"]\n", "overlaps"},
 		{"[project]\nmirrors = [\"a\", \"a/b\"]\n", "overlaps"},
-		{"[project]\nmirrors = [\"../x\"]\n", "must be a relative directory"},
-		{"[project]\nmirrors_mode = \"hardlink\"\n", `must be "symlink" or "copy"`},
-		{"[project]\ndirs = \"x\"\n", "unknown keys"},
+		{"[project]\nmirrors = [\"../x\"]\n", "[project] mirrors[0]: invalid value. A relative path"},
+		{"[project]\nmirrors_mode = \"hardlink\"\n", `[project] mirrors_mode: must be one of "symlink", "copy"`},
+		{"[project]\ndirs = \"x\"\n", "[project] dirs: unknown key"},
 		{d("a") + from("s", "repo = \"me/s\"\nskills = [\"a\"]\ncommit = \""+sha+"\"\n"), `project skill "a" is defined twice: dependency a (x/a) and from.s (me/s)`},
-		{from("s", "repo = \"me/s\"\ncommit = \""+sha+"\"\n"), "skills is required"},
-		{from("s", "repo = \"me/s\"\nskills = [\"a\", \"a\"]\ncommit = \""+sha+"\"\n"), `lists "a" twice`},
+		{from("s", "repo = \"me/s\"\ncommit = \""+sha+"\"\n"), "[project.from.s] skills: is required"},
+		{from("s", "repo = \"me/s\"\nskills = [\"a\", \"a\"]\ncommit = \""+sha+"\"\n"), "skills: items 0 and 1 are the same"},
 		{from("s", "repo = \"me/s\"\nskills = [\"a\"]\ncommit = \"main\"\n"), "full 40-character"},
-		{from("s", "skills = [\"a\"]\ncommit = \""+sha+"\"\n"), "repo is required"},
-		{from("S", "repo = \"me/s\"\nskills = [\"a\"]\ncommit = \""+sha+"\"\n"), "the ID must be lowercase"},
-		{d(`"Bad"`), "project.dependencies"},
+		{from("s", "skills = [\"a\"]\ncommit = \""+sha+"\"\n"), "[project.from.s] repo: is required"},
+		{from("S", "repo = \"me/s\"\nskills = [\"a\"]\ncommit = \""+sha+"\"\n"), "[project.from] S: invalid value. An ID is lowercase"},
+		{d(`"Bad"`), "[project.dependencies] Bad: invalid value. A skill name is"},
 	} {
 		if _, err := ParseProject([]byte(c.text), ".toml"); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%q: err = %v, want %q", c.text, err, c.want)
@@ -82,7 +82,7 @@ func TestParseProjectErrors(t *testing.T) {
 const projectBase = `# my project
 [repository]
 template_version = "0.4.0"
-visibility       = "public"
+visibility       = "private"
 
 [project]
 dir     = ".agents/skills"
@@ -196,7 +196,7 @@ func TestProjectHosts(t *testing.T) {
 	if _, err := ParseProject([]byte("[project.from.x]\nrepo = \"gitlab:g/sub/r\"\nskills = [\"x\"]\ncommit = \""+sha+"\"\n"), ".toml"); err != nil {
 		t.Errorf("built-in prefix: %v", err)
 	}
-	if _, err := ParseProject([]byte("[project.git_hosts.gitlab]\nbase_url = \"https://a.example\"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "project.git_hosts.gitlab") {
+	if _, err := ParseProject([]byte("[project.git_hosts.gitlab]\nbase_url = \"https://a.example\"\n"), ".toml"); err == nil || !strings.Contains(err.Error(), "[project.git_hosts] gitlab: This prefix is built in") {
 		t.Errorf("built-in alias: %v", err)
 	}
 }
