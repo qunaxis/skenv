@@ -77,7 +77,7 @@ func runLint(ctx context.Context, env engine.Env, pos []string, staged, publish,
 			return engine.ExitFatal, err
 		}
 		var files []string
-		for _, f := range strings.Split(out, "\x00") {
+		for f := range strings.SplitSeq(out, "\x00") {
 			if f != "" {
 				files = append(files, f)
 			}
@@ -458,8 +458,7 @@ func lefthookInstall(ctx context.Context, env engine.Env, root string, dryRun bo
 	cmd := exec.CommandContext(ctx, bin, "install")
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		if _, ok := errors.AsType[*exec.ExitError](err); ok {
 			fmt.Fprintf(env.Stderr, "error: lefthook install failed: %s\n", strings.TrimSpace(string(out)))
 			return engine.ExitProblems
 		}

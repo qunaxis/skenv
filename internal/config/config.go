@@ -25,7 +25,6 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -145,7 +144,7 @@ func decode(path string, data []byte) (map[string]any, error) {
 		}
 	}
 	if len(unknown) > 0 {
-		sort.Strings(unknown)
+		slices.Sort(unknown)
 		return nil, fmt.Errorf("unknown key %q (known keys: %s)", strings.Join(unknown, `", "`), strings.Join(Keys(), ", "))
 	}
 	for _, k := range append([]string{docedit.SchemaKey}, Keys()...) {

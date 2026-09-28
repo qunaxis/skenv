@@ -9,7 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"github.com/qunaxis/skenv/internal/atomicfile"
 )
@@ -76,6 +76,6 @@ func (s *State) Paths() []string {
 	for p := range s.Managed {
 		out = append(out, p)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }

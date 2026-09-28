@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -100,7 +99,7 @@ func (e *Engine) List(asJSON bool) (int, error) {
 			r.Skills = append(r.Skills, e.listEntry(Skill{Name: d.Name, Dependency: d}, StateSkipped))
 		}
 	}
-	sort.SliceStable(r.Skills, func(a, b int) bool { return r.Skills[a].Name < r.Skills[b].Name })
+	slices.SortStableFunc(r.Skills, func(a, b ListEntry) int { return strings.Compare(a.Name, b.Name) })
 
 	if asJSON {
 		enc := json.NewEncoder(e.env.Stdout)

@@ -13,7 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -351,7 +351,7 @@ func (e *base) candidates(cache, head, folder string, le lockEntry) ([]string, e
 		}
 	}
 	var before, after []string
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		sha, ct, ok := strings.Cut(line, " ")
 		if !ok {
 			continue
@@ -387,7 +387,7 @@ func (e *base) commitBlobs(cache, commit, folder string) (map[string]string, err
 		return nil, err
 	}
 	files := map[string]string{}
-	for _, rec := range strings.Split(out, "\x00") {
+	for rec := range strings.SplitSeq(out, "\x00") {
 		meta, name, ok := strings.Cut(rec, "\t")
 		f := strings.Fields(meta)
 		if !ok || len(f) != 3 || f[1] != "blob" || copiedOut(name) {
@@ -529,7 +529,7 @@ func sortedKeys[V any](m map[string]V) []string {
 	for k := range m {
 		out = append(out, k)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

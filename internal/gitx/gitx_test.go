@@ -23,8 +23,7 @@ func TestMask(t *testing.T) {
 
 func TestErrorIsMasked(t *testing.T) {
 	_, err := Git{}.Run(context.Background(), t.TempDir(), "ls-remote", "https://user:secret@127.0.0.1:1/o/r.git")
-	var ge *Error
-	if !errors.As(err, &ge) {
+	if _, ok := errors.AsType[*Error](err); !ok {
 		t.Fatalf("err = %v", err)
 	}
 	if strings.Contains(err.Error(), "secret") {

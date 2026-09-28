@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -541,7 +540,7 @@ func (m *Manifest) CheckNames(selected map[string][]string) ([]SkillRef, error) 
 			errs = append(errs, fmt.Errorf("skill %q matches user.unmanaged; rename it or change the pattern", r.Name))
 		}
 	}
-	sort.Slice(refs, func(a, b int) bool { return refs[a].Name < refs[b].Name })
+	slices.SortFunc(refs, func(a, b SkillRef) int { return strings.Compare(a.Name, b.Name) })
 	return refs, errors.Join(errs...)
 }
 

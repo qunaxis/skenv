@@ -8,7 +8,6 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/skenvfile"
@@ -308,7 +307,7 @@ func (p *Project) Skills() []ProjectSkill {
 			out = append(out, ProjectSkill{Name: n, Repo: f.Repo, Path: path.Join(f.SkillsDir, n), Commit: f.Commit, From: f})
 		}
 	}
-	sort.SliceStable(out, func(a, b int) bool { return out[a].Name < out[b].Name })
+	slices.SortStableFunc(out, func(a, b ProjectSkill) int { return strings.Compare(a.Name, b.Name) })
 	return out
 }
 

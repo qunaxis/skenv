@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -38,13 +39,11 @@ func skill(t *testing.T, files map[string]string) string {
 		"references/guide.md": "# Guide\n\nBack to [skill](../SKILL.md).\n",
 		"assets/a b.png":      "png",
 	}
-	for k, v := range files {
-		base[k] = v
-	}
+	maps.Copy(base, files)
 	for p, content := range base {
 		mode := os.FileMode(0o644)
-		if strings.HasSuffix(p, "*") {
-			p, mode = strings.TrimSuffix(p, "*"), 0o755
+		if before, ok := strings.CutSuffix(p, "*"); ok {
+			p, mode = before, 0o755
 		}
 		if content == "<delete>" {
 			continue

@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -22,13 +22,7 @@ func TestAgentsLayout(t *testing.T) {
 	// Check for missing packages (in actualPkgs but not in agentsPkgs)
 	var missing []string
 	for _, pkg := range actualPkgs {
-		found := false
-		for _, a := range agentsPkgs {
-			if a == pkg {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(agentsPkgs, pkg)
 		if !found {
 			missing = append(missing, pkg)
 		}
@@ -37,24 +31,18 @@ func TestAgentsLayout(t *testing.T) {
 	// Check for stale packages (in agentsPkgs but not in actualPkgs)
 	var stale []string
 	for _, a := range agentsPkgs {
-		found := false
-		for _, pkg := range actualPkgs {
-			if pkg == a {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(actualPkgs, a)
 		if !found {
 			stale = append(stale, a)
 		}
 	}
 
 	if len(missing) > 0 {
-		sort.Strings(missing)
+		slices.Sort(missing)
 		t.Errorf("packages missing from AGENTS.md: %v", missing)
 	}
 	if len(stale) > 0 {
-		sort.Strings(stale)
+		slices.Sort(stale)
 		t.Errorf("packages in AGENTS.md but not found: %v", stale)
 	}
 }
@@ -86,7 +74,7 @@ func getInternalPackages(t *testing.T) []string {
 		}
 	}
 
-	sort.Strings(pkgs)
+	slices.Sort(pkgs)
 	return pkgs
 }
 
@@ -126,7 +114,7 @@ func getAgentsPackages(t *testing.T) []string {
 		pkgs = append(pkgs, pkg)
 	}
 
-	sort.Strings(pkgs)
+	slices.Sort(pkgs)
 	return pkgs
 }
 

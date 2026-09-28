@@ -12,7 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -92,7 +92,7 @@ func gitFiles(dir string) fileSet {
 	}
 	pre := strings.TrimSpace(string(prefix))
 	set := fileSet{}
-	for _, f := range strings.Split(string(out), "\x00") {
+	for f := range strings.SplitSeq(string(out), "\x00") {
 		if rel, ok := strings.CutPrefix(f, pre); ok && rel != "" {
 			set[rel] = true
 		}
@@ -377,7 +377,7 @@ func Find(path string) ([]string, error) {
 		}
 		return nil
 	})
-	sort.Strings(out)
+	slices.Sort(out)
 	return out, err
 }
 
@@ -406,7 +406,7 @@ func ForFiles(root string, files []string) []string {
 			dir = filepath.Dir(dir)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -415,7 +415,7 @@ func sortedKeys(m map[string]any) []string {
 	for k := range m {
 		out = append(out, k)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

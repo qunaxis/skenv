@@ -47,7 +47,7 @@ func openJSON(data []byte) (*jsonDoc, error) {
 // data, or two spaces when none is found (a file with no indentation, such
 // as a compact one-liner).
 func detectIndent(data []byte) string {
-	for _, line := range bytes.Split(data, []byte("\n")) {
+	for line := range bytes.SplitSeq(data, []byte("\n")) {
 		trimmed := bytes.TrimLeft(line, " \t")
 		if len(trimmed) > 0 && len(trimmed) < len(line) {
 			return string(line[:len(line)-len(trimmed)])

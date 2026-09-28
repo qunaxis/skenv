@@ -247,9 +247,9 @@ func rangeArgs(minimum, maximum int) cobra.PositionalArgs {
 
 func argError(cmd *cobra.Command, problem string) error {
 	msg := fmt.Sprintf("%s: %s\nUsage: %s", cmdName(cmd), problem, cmd.UseLine())
-	for _, line := range strings.Split(cmd.Example, "\n") {
+	for line := range strings.SplitSeq(cmd.Example, "\n") {
 		if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
-			msg += "\nExample: " + line
+			msg += "\nExample: " + line //nolint:modernize // loop breaks after one append
 			break
 		}
 	}

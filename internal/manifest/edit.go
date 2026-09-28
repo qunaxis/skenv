@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/atomicfile"
@@ -137,8 +138,8 @@ func insertTable(data []byte, section, table string) []byte {
 	lines := splitLines(data)
 	at := len(lines)
 	re := sectionRe(section)
-	for i := len(lines) - 1; i >= 0; i-- {
-		if re.MatchString(lines[i]) {
+	for i, line := range slices.Backward(lines) {
+		if re.MatchString(line) {
 			at = tableEnd(lines, i)
 			for at > i+1 && isBlankOrComment(lines[at-1]) {
 				at--

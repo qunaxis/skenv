@@ -101,7 +101,7 @@ func (e *base) matchFolderHash(cache string, commits []string, folder, hash stri
 			continue // the commit removed the folder
 		}
 		f := folderAt{commit: c}
-		for _, rec := range strings.Split(string(out), "\x00") {
+		for rec := range strings.SplitSeq(string(out), "\x00") {
 			meta, name, ok := strings.Cut(rec, "\t")
 			fields := strings.Fields(meta)
 			if !ok || len(fields) != 3 || fields[1] != "blob" || (fields[0] != "100644" && fields[0] != "100755") {
@@ -151,7 +151,7 @@ func (e *base) blobs(cache string, trees, oids []string) (map[string][]byte, err
 		return nil, err
 	}
 	var missing []string
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if id, ok := strings.CutPrefix(line, "?"); ok {
 			missing = append(missing, id)
 		}

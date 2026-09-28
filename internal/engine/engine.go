@@ -656,7 +656,7 @@ func (e *Engine) targetBranch(dir string, c *manifest.Checkout) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if ref, ok := strings.CutPrefix(line, "ref: refs/heads/"); ok {
 			if name, _, ok := strings.Cut(ref, "\t"); ok {
 				return name, nil
