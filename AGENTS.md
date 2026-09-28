@@ -5,26 +5,28 @@ it would stop Claude Code from loading this file.
 
 - Go CLI, module `github.com/qunaxis/skenv`, binary `cmd/skenv`. Runtime
   dependency: `git` only. No network services, no other executables.
-- Layout: `internal/agents`, `internal/atomicfile` (atomic file writes),
-  `internal/autostart`, `internal/buildinfo`, `internal/cli` (flags, integration tests),
-  `internal/clidocs` (command reference and man pages), `internal/cliexample` (command examples),
-  `internal/cli/new.go` (`skenv new`), `internal/config` (tool config),
-  `internal/docedit` (YAML/JSON document editing), `internal/engine`
+- Layout: `internal/model/agents`, `internal/platform/atomicfile` (atomic file writes),
+  `internal/features/autostart`, `internal/platform/buildinfo`, `internal/cli` (flags, integration tests),
+  `internal/devtools/clidocs` (command reference and man pages), `internal/devtools/clidocs/example` (command examples),
+  `internal/cli/new.go` (`skenv new`), `internal/model/config` (tool config),
+  `internal/platform/docedit` (YAML/JSON document editing; `format.go`: `--format` of new files; no write changes a file's
+  format, `TestWritesKeepFormat` covers every write path), `internal/features/skills`
   (sync, link, doctor, list, vendor, init, clone, use, import; `project*.go`: `[project]` in a
-  project repository), `internal/fileformat` (`--format` of new files; no write changes a file's
-  format, `TestWritesKeepFormat` covers every write path), `internal/gitx`,
-  `internal/harness` (`[repository]`, `repo init|apply|upgrade|check`, templates in
-  `internal/harness/templates/`), `internal/lint` (L1-L6; `publish.go`: P1 publication check,
-  stop-list phrases are never printed), `internal/manifest` (`[user]` and `[project]`
-  parsing and in-place editing), `internal/mdscan` (fenced-code-block scanner for doc
-  example tests), `internal/paths` (file location resolution), `internal/release`
-  (tests for `cliff.toml` and the commit check), `internal/schemagen` (JSON Schema generation),
-  `internal/skenvfile` (the skenv file: `[repository]`, `[user]` and `[project]`,
-  TOML/YAML/JSON; `legacy.go`: errors for the keys before 0.6), `internal/skillname` (skill name validation),
-  `internal/state`, `internal/tools/gendocs` (command reference generation tool),
-  `internal/tools/genschemas` (schema generation tool).
-- One template set is embedded, version `harness.Latest`. A template change
-  bumps `harness.Latest` to the release that ships it; `skenv repo check`
+  project repository), `internal/platform/gitx`,
+  `internal/features/repository` (`[repository]`, `repo init|apply|upgrade|check`, templates in
+  `internal/features/repository/templates/`), `internal/features/lint` (L1-L6; `publish.go`: P1 publication check,
+  stop-list phrases are never printed), `internal/devtools/mdscan` (fenced-code-block scanner for doc
+  example tests), `internal/platform/paths` (file location resolution), `internal/devtools/release`
+  (tests for `cliff.toml` and the commit check), `internal/devtools/schemagen` (JSON Schema generation),
+  `internal/model/skenvfile` (the skenv file: `[repository]`, `[user]` and `[project]`,
+  TOML/YAML/JSON, parsing and in-place editing; `legacy.go`: errors for the keys before 0.6), `internal/model/skillname` (skill name validation),
+  `internal/features/skills/state`, `internal/devtools/gendocs` (command reference generation tool),
+  `internal/devtools/genschemas` (schema generation tool).
+- Layers, enforced by depguard in `.golangci.yml`: `platform` imports no internal
+  package, `model` only `platform` and `model`, features never import each other,
+  and only `devtools` and tests import `devtools`.
+- One template set is embedded, version `skenvfile.LatestTemplates`. A template change
+  bumps `skenvfile.LatestTemplates` to the release that ships it; `skenv repo check`
   then reports older repositories and `skenv repo upgrade` moves them
   (`repository.template_version` is desired state: `repo apply` never
   edits it).

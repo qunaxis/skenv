@@ -16,11 +16,10 @@ pr_labels=${PR_LABELS:-}
 # User-facing paths: changes to these require docs updates
 user_facing=(
 	"internal/cli"
-	"internal/skenvfile"
-	"internal/manifest"
-	"internal/config"
+	"internal/model/skenvfile"
+	"internal/model/config"
 	"schemas"
-	"internal/harness/templates"
+	"internal/features/repository/templates"
 )
 
 # Docs paths: changes to these count as documentation updates

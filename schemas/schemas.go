@@ -1,5 +1,5 @@
 // Package schemas holds the JSON Schemas of skenv's files, generated from
-// the Go types by `make schemas` (internal/tools/genschemas), and the URLs
+// the Go types by `make schemas` (internal/devtools/genschemas), and the URLs
 // they are published at.
 //
 // A file skenv writes names its schema in a directive (TOML "#:schema",
@@ -16,8 +16,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/buildinfo"
-	"github.com/qunaxis/skenv/internal/docedit"
+	"github.com/qunaxis/skenv/internal/platform/buildinfo"
+	"github.com/qunaxis/skenv/internal/platform/docedit"
 )
 
 // Schema file names.

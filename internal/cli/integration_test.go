@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qunaxis/skenv/internal/engine"
-	"github.com/qunaxis/skenv/internal/harness"
+	"github.com/qunaxis/skenv/internal/features/skills"
+	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -566,7 +566,7 @@ func TestVendorAddRejectsOwnNameClash(t *testing.T) {
 func TestConcurrentRunIsRejected(t *testing.T) {
 	w := newWorld(t)
 	w.initStandard("")
-	e, err := engine.OpenUser(context.Background(), engine.Env{Home: w.home, Getenv: os.Getenv, Stdout: io.Discard, Stderr: io.Discard}, engine.Options{})
+	e, err := skills.OpenUser(context.Background(), skills.Env{Home: w.home, Getenv: os.Getenv, Stdout: io.Discard, Stderr: io.Discard}, skills.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -585,7 +585,7 @@ func TestDoctorWarnsAboutOldHarness(t *testing.T) {
 	w.standard("\n[repository]\ntemplate_version = \"0.1.0\"\nvisibility = \"private\"\n")
 	w.cloneSync("me/skills", "~/"+ownPath)
 	_, errOut := w.mustRun(0, "doctor")
-	if !strings.Contains(errOut, "template_version 0.1.0 is older than "+harness.Latest) {
+	if !strings.Contains(errOut, "template_version 0.1.0 is older than "+skenvfile.LatestTemplates) {
 		t.Errorf("stderr = %q", errOut)
 	}
 	out, _ := w.mustRun(0, "doctor", "--json")

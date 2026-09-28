@@ -21,7 +21,7 @@ make demo      # re-record docs/demo/demo.gif with vhs
 Schemas are generated and committed; tests fail when they are stale, so run
 `make examples docs` after changing a command or its output and `make schemas` after changing the
 types or doc comments of the skenv file or the tool config
-(`internal/manifest`, `internal/harness`, `internal/config`). Integration tests run skenv against a
+(`internal/model/skenvfile`, `internal/model/config`). Integration tests run skenv against a
 temporary `$HOME` with local bare repositories standing in for GitHub; they
 never touch your real home.
 
