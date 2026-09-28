@@ -20,7 +20,7 @@ ignores), and unknown keys inside a section are errors.
 
 | Section        | What it is                                                                                                        | Who writes it                              | Reference                     |
 | -------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ----------------------------- |
-| `[repository]` | The development tooling of a skills repository: `template_version`, `visibility`, `ci`.                           | [`skenv repo init`](harness.md#skenv-repo-init), [`skenv repo upgrade`](harness.md#skenv-repo-upgrade) | [harness](harness.md)         |
+| `[repository]` | The development tooling of a skills repository: `template_version`, `visibility`, `ci`.                           | [`skenv repo init`](repository.md#skenv-repo-init), [`skenv repo upgrade`](repository.md#skenv-repo-upgrade) | [repository templates](repository.md) |
 | `[user]`       | The manifest: skills for the agents of your OS user, across projects: `checkouts`, `dependencies`, `machines`, `agents`, `storage`, `unmanaged`, `git_hosts`. | you, [`skenv init`](#creating-the-file) (starts it), [`skenv import`](adopting.md), [`skenv vendor add`](manage-skills.md#add-a-third-party-skill), [`update`](manage-skills.md#update-pinned-skills), [`remove`](manage-skills.md#remove-a-skill) | [manifest](manifest.md)       |
 | `[project]`    | The skills a project repository carries: `dir`, `mirrors`, `mirrors_mode`, `git_hosts`, `dependencies`, `from`.   | you, [`skenv vendor add`, `update`, `remove`](project-skills.md#commands) with `--project` | [project skills](project-skills.md) |
 
@@ -184,7 +184,7 @@ Editors then complete keys, describe them on hover and mark mistakes. See
 
 - The manifest: `--manifest`, then `$SKENV_MANIFEST`, then `manifest` in the
   tool config. See [Precedence](configuration.md#precedence) for the full order.
-- The harness: the skenv file at the root of the repository (`--dir`,
+- The repository: the skenv file at the root of the repository (`--dir`,
   default: the current repository).
 - Project skills: the skenv file at the root of the git repository of the
   current directory, when it has `[project]`.
@@ -226,7 +226,7 @@ run `skenv doctor` (and `skenv repo check` in a skills repository).
 | `environment.layout.targets` | `[user.agents]` | `enabled` (`"claude"`, `"pi"`), `paths.<agent>`, `extra_dirs`. `targets` replaced the whole agent table; list the agents in `enabled` and other directories in `extra_dirs`. |
 | `environment.layout.ignore` | `user.unmanaged` | |
 | `[repo]` | `[repository]` | |
-| `repo.harness` | `repository.template_version` | The version the repository asks for; `skenv repo apply` no longer changes it, [`skenv repo upgrade`](harness.md#skenv-repo-upgrade) does. |
+| `repo.harness` | `repository.template_version` | The version the repository asks for; `skenv repo apply` no longer changes it, [`skenv repo upgrade`](repository.md#skenv-repo-upgrade) does. |
 | `repo.visibility` | `repository.visibility` | Unchanged values; a declared policy. |
 | `repo.ci = "github"` | `[repository.ci.github]` | The table present selects the CI system; neither means GitHub Actions. |
 | `repo.ci = "gitlab"` | `[repository.ci.gitlab]` | |

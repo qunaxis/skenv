@@ -109,6 +109,6 @@ project it checks the project instead. Reference:
 `doctor` also warns about checkouts whose `template_version` is older than
 the templates of the installed skenv; `skenv repo upgrade` there moves
 them (see
-[Repository checks and CI](harness.md)). Inside a project `doctor` has its
+[Repository checks and CI](repository.md)). Inside a project `doctor` has its
 own classes; see
 [`doctor` classes in a project](project-skills.md#doctor-classes-in-a-project).

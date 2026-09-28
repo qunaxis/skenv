@@ -12,8 +12,8 @@ import (
 	"github.com/qunaxis/skenv/schemas"
 )
 
-// harnessRepo is a git repository inside a temporary $HOME.
-func harnessRepo(t *testing.T) (*world, string) {
+// newRepoWorld is a git repository inside a temporary $HOME.
+func newRepoWorld(t *testing.T) (*world, string) {
 	t.Helper()
 	w := newWorld(t)
 	repo := filepath.Join(w.home, "skills-repo")
@@ -26,7 +26,7 @@ func harnessRepo(t *testing.T) (*world, string) {
 // check = 1; apply → check = 0; local AGENTS.md text outside the block
 // survives apply.
 func TestRepoInitCheckApply(t *testing.T) {
-	w, repo := harnessRepo(t)
+	w, repo := newRepoWorld(t)
 	// Without lefthook, init still succeeds, with a warning.
 	lookLefthook = func(string) (string, error) { return "", exec.ErrNotFound }
 	t.Cleanup(func() { lookLefthook = exec.LookPath })
@@ -114,7 +114,7 @@ func TestRepoInitCheckApply(t *testing.T) {
 }
 
 func TestLintCommand(t *testing.T) {
-	w, repo := harnessRepo(t)
+	w, repo := newRepoWorld(t)
 	writeFile(t, filepath.Join(repo, "skills/good/SKILL.md"), skillMD("good", ""))
 	writeFile(t, filepath.Join(repo, "skills/bad/SKILL.md"), skillMD("wrong", "[x](missing.md)"))
 	t.Chdir(repo)
@@ -151,7 +151,7 @@ func TestLefthookRejectsBadSkill(t *testing.T) {
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
-	w, repo := harnessRepo(t)
+	w, repo := newRepoWorld(t)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	run := func(dir string, args ...string) (string, error) {
@@ -164,8 +164,8 @@ func TestLefthookRejectsBadSkill(t *testing.T) {
 		t.Fatalf("repo init: %v\n%s", err, out)
 	}
 	w.git(repo, "add", "-A")
-	if out, err := run(repo, "git", "commit", "-q", "-m", "chore: harness"); err != nil {
-		t.Fatalf("committing the harness: %v\n%s", err, out)
+	if out, err := run(repo, "git", "commit", "-q", "-m", "chore: repository templates"); err != nil {
+		t.Fatalf("committing the repository templates: %v\n%s", err, out)
 	}
 
 	writeFile(t, filepath.Join(repo, "skills/demo/SKILL.md"), "---\nname: Demo\ndescription: x\n---\n")
@@ -188,8 +188,8 @@ func TestLefthookRejectsBadSkill(t *testing.T) {
 // template_version is desired state: repo apply refuses a version it does
 // not embed and never edits it; repo upgrade moves it, only when it can
 // regenerate the files; --dry-run says "would".
-func TestRepoApplyOlderHarness(t *testing.T) {
-	w, repo := harnessRepo(t)
+func TestRepoApplyOlderTemplateVersion(t *testing.T) {
+	w, repo := newRepoWorld(t)
 	lookLefthook = func(string) (string, error) { return "", exec.ErrNotFound }
 	t.Cleanup(func() { lookLefthook = exec.LookPath })
 	file := filepath.Join(repo, "skenv.toml")
@@ -331,7 +331,7 @@ func fileExists(p string) bool {
 // --runner sets the runners of a private repository's CI jobs; init names
 // them and the tools the generated hooks need that are missing.
 func TestRepoInitRunner(t *testing.T) {
-	w, repo := harnessRepo(t)
+	w, repo := newRepoWorld(t)
 	lookLefthook = func(string) (string, error) { return "", exec.ErrNotFound }
 	lookTool = func(name string) (string, error) {
 		if name == "gitleaks" {

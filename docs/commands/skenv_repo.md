@@ -2,7 +2,7 @@
 
 ## skenv repo
 
-Set up and check the harness of a skills repository
+Set up and check the repository templates of a skills repository
 
 ```
 skenv repo [flags]
@@ -28,8 +28,8 @@ $ skenv repo upgrade
 ### SEE ALSO
 
 * [skenv](skenv.md)	 - Install agent skills (Claude Code, Codex, pi) from a manifest in git
-* [skenv repo apply](skenv_repo_apply.md)	 - Regenerate the managed files of the harness
-* [skenv repo check](skenv_repo_check.md)	 - Compare the managed files with the harness templates
-* [skenv repo init](skenv_repo_init.md)	 - Set up the harness of a skills repository
+* [skenv repo apply](skenv_repo_apply.md)	 - Regenerate the managed files from the repository templates
+* [skenv repo check](skenv_repo_check.md)	 - Compare the managed files with the repository templates
+* [skenv repo init](skenv_repo_init.md)	 - Set up the repository templates of a skills repository
 * [skenv repo upgrade](skenv_repo_upgrade.md)	 - Move the repository to the templates of this skenv
 

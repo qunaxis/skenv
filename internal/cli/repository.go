@@ -210,12 +210,12 @@ func repoCmd(a *app) *cobra.Command {
 		}
 		return c
 	}
-	initC := sub("init", "init --visibility private|public [--ci github|gitlab] [--runner label,...]", "Set up the harness of a skills repository",
-		"Set up the harness of a skills repository: the [repository] section and the\nschema directive of the skenv file, lefthook.yml, the CI pipeline, linter\nconfigs and the managed blocks of AGENTS.md and .gitignore; then `lefthook\ninstall`. Refuses if [repository] exists.\n\n"+
+	initC := sub("init", "init --visibility private|public [--ci github|gitlab] [--runner label,...]", "Set up the repository templates of a skills repository",
+		"Set up the repository templates of a skills repository: the [repository] section and the\nschema directive of the skenv file, lefthook.yml, the CI pipeline, linter\nconfigs and the managed blocks of AGENTS.md and .gitignore; then `lefthook\ninstall`. Refuses if [repository] exists.\n\n"+
 			"--visibility is a declared policy: skenv never reads or changes the access\nsetting on the hosting service. A public repository must not carry [user],\nand its CI also runs `skenv lint --publish`.\n\n"+
 			"--ci picks the CI system: github (.github/workflows/check.yml) or gitlab\n(.gitlab-ci.yml). Without it, the host of origin decides: gitlab when origin\nis on gitlab.com or on a host declared with provider \"gitlab\" in the manifest\n(this repository's own [user], else the manifest in the config file),\ngithub otherwise, also when there is no origin.\n\n"+
 			"CI jobs of a public repository run on the hosted runners (ubuntu-latest on\nGitHub, the shared runners on GitLab). Those of a private one run on --runner: the runs-on labels on GitHub, the\nrunner tags on GitLab; default self-hosted, linux, docker (a self-hosted\nDocker runner). --runner ubuntu-latest picks the GitHub-hosted runners.\nAfterwards repository.ci.github.runs_on (or repository.ci.gitlab.tags) holds\nit; change it there and run `skenv repo apply`.\n\n"+
-			"The generated git hooks need lefthook, uv and gitleaks on PATH; the output\nsays which of them are missing. Skill management and sync need none of\nthem: this harness is optional tooling for a repository you publish or\nshare.\n\n"+
+			"The generated git hooks need lefthook, uv and gitleaks on PATH; the output\nsays which of them are missing. Skill management and sync need none of\nthem: these repository templates are optional tooling for a repository you\npublish or share.\n\n"+
 			"Without a skenv file it creates skenv.toml, or skenv.yaml or skenv.json with\n--format. An existing skenv file gets [repository] added in its own format;\n--format that disagrees with it is an error, and nothing is written.\n\n"+
 			"- Reads: the repository, its origin and skenv file, and the hosts declared\n  in the manifest (to detect the CI system).\n"+
 			"- Changes: the skenv file ([repository], created if absent), the managed\n  files and blocks, and the git hooks (lefthook install).\n"+
@@ -223,7 +223,7 @@ func repoCmd(a *app) *cobra.Command {
 			"- Conflicts: a file that exists and that skenv does not manage yet is an\n  error; --force replaces it.\n"+
 			"- Preview: --dry-run writes nothing and does not run lefthook install.\n"+
 			"- Next: commit the generated files; \"skenv repo check\" compares them\n  with the templates later.",
-		"# Set up the harness of a public skills repository in the current directory\n"+
+		"# Set up the repository templates of a public skills repository in the current directory\n"+
 			"skenv repo init --visibility public\n"+
 			"# A private repository on GitLab, with jobs on runners tagged self-hosted, linux, docker\n"+
 			"skenv repo init --visibility private --ci gitlab\n"+
@@ -235,7 +235,7 @@ func repoCmd(a *app) *cobra.Command {
 	initC.Flags().StringVar(&ci, "ci", "", "CI system: github or gitlab (default: detected from the host of origin, else github)")
 	_ = initC.RegisterFlagCompletionFunc("ci", cobra.FixedCompletions(skenvfile.CIs, cobra.ShellCompDirectiveNoFileComp))
 	formatFlag(initC, &format, "format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)")
-	apply := sub("apply", "apply", "Regenerate the managed files of the harness",
+	apply := sub("apply", "apply", "Regenerate the managed files from the repository templates",
 		"Regenerate the managed files and blocks from the templates of\nrepository.template_version; then `lefthook install`. apply never changes\nthe skenv file: template_version is what the repository asks for, and\nthis skenv embeds the templates of "+skenvfile.LatestTemplates+" only. Another version\nis an error: run `skenv repo upgrade` to move the repository to "+skenvfile.LatestTemplates+",\nor use the skenv release it names.\n\nThe CI pipeline follows the table under repository.ci. To switch CI systems,\nreplace [repository.ci.github] with [repository.ci.gitlab] (or back) and run\napply: it writes the pipeline of the new one and removes the managed file\nof the other (.github/workflows/check.yml or .gitlab-ci.yml).\n\n"+
 			"- Reads: the skenv file ([repository]) and the managed files.\n"+
 			"- Changes: the managed files and blocks, and the git hooks (lefthook\n  install).\n"+
@@ -253,10 +253,10 @@ func repoCmd(a *app) *cobra.Command {
 			"- Preview: --dry-run writes nothing and does not run lefthook install.\n"+
 			"- Next: commit the skenv file and the changed files.",
 		"# Move the repository to the templates of the installed skenv\nskenv repo upgrade --dry-run\nskenv repo upgrade")
-	check := sub("check", "check", "Compare the managed files with the harness templates",
+	check := sub("check", "check", "Compare the managed files with the repository templates",
 		"Compare repository.template_version with the templates of this skenv\n("+skenvfile.LatestTemplates+"), and the managed files and blocks with the templates of that\nversion: a file generated by another version (its header), or edited by\nhand, is drift. Exit code 0: in sync, 1: drift (files listed), 2: error.\nA missing or outdated schema directive in the skenv file is a warning that\ndoes not change the exit code.",
-		"# The managed files match the harness\nskenv repo check\n# A managed file was edited by hand\nskenv repo check")
-	c := group("repo", "Set up and check the harness of a skills repository", initC, apply, upgrade, check)
+		"# The managed files match the repository templates\nskenv repo check\n# A managed file was edited by hand\nskenv repo check")
+	c := group("repo", "Set up and check the repository templates of a skills repository", initC, apply, upgrade, check)
 	c.Example = "skenv repo init --visibility private\nskenv repo init --visibility public --ci gitlab\nskenv repo check\nskenv repo apply\nskenv repo upgrade"
 	c.PersistentFlags().StringVar(&dir, "dir", ".", "repository (any directory inside it)")
 	return c
@@ -297,7 +297,7 @@ func runRepo(ctx context.Context, env skills.Env, sub, dir, visibility, ci, form
 		if dryRun {
 			setUp, run = "would be set up", "would run"
 		}
-		fmt.Fprintf(env.Stdout, "harness %s (%s, ci %s) %s in %s\n", c.TemplateVersion, c.Visibility, c.Provider, setUp, root)
+		fmt.Fprintf(env.Stdout, "repository templates %s (%s, ci %s) %s in %s\n", c.TemplateVersion, c.Visibility, c.Provider, setUp, root)
 		if c.Visibility == "private" {
 			key := "repository.ci.github.runs_on"
 			if c.Provider == skenvfile.CIGitLab {
@@ -337,7 +337,7 @@ func runRepo(ctx context.Context, env skills.Env, sub, dir, visibility, ci, form
 			return skills.ExitFatal, err
 		}
 		// repository.template_version and the schema directive.
-		updated, err := repository.Update(root, skenvfile.LatestTemplates, dryRun)
+		updated, err := repository.Upgrade(root, skenvfile.LatestTemplates, dryRun)
 		if err != nil {
 			return skills.ExitFatal, err
 		}
@@ -378,7 +378,7 @@ func runRepo(ctx context.Context, env skills.Env, sub, dir, visibility, ci, form
 		fmt.Fprintf(env.Stdout, "repo check: %d files differ; run `skenv repo apply` (templates live in skenv, not in this repository)\n", len(drift))
 		return skills.ExitProblems, nil
 	}
-	fmt.Fprintln(env.Stdout, "repo check: managed files match the harness")
+	fmt.Fprintln(env.Stdout, "repo check: managed files match the repository templates")
 	return skills.ExitOK, nil
 }
 

@@ -1,8 +1,7 @@
-// Package repository generates and verifies the tooling of a skills
-// repository ("repository harness"): git hooks, the CI pipeline of GitHub
-// Actions or GitLab CI, linter configs and the managed blocks of AGENTS.md
-// and .gitignore. The templates of one version
-// (skenvfile.LatestTemplates) are embedded. Its settings are the
+// Package repository generates and verifies the repository templates: git
+// hooks, the CI pipeline of GitHub Actions or GitLab CI, linter configs and
+// the managed blocks of AGENTS.md and .gitignore. The templates of one
+// version (skenvfile.LatestTemplates) are embedded. Its settings are the
 // [repository] section of the skenv file (skenvfile.Repository).
 package repository
 
@@ -138,11 +137,11 @@ const jsonHeader = "json"
 func Header(version string) string { return "managed by skenv " + version + " — do not edit" }
 
 type tmplData struct {
-	Harness string
-	Private bool
-	GitLab  bool
-	RunsOn  string // GitHub runs-on
-	Tags    string // GitLab tags of a private repository
+	TemplateVersion string
+	Private         bool
+	GitLab          bool
+	RunsOn          string // GitHub runs-on
+	Tags            string // GitLab tags of a private repository
 }
 
 // render returns the expected content of it: the whole file for managed
@@ -156,7 +155,7 @@ func render(c *skenvfile.Repository, it item) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	data := tmplData{Harness: c.TemplateVersion, Private: c.Visibility == "private", GitLab: c.Provider == skenvfile.CIGitLab, RunsOn: "ubuntu-latest"}
+	data := tmplData{TemplateVersion: c.TemplateVersion, Private: c.Visibility == "private", GitLab: c.Provider == skenvfile.CIGitLab, RunsOn: "ubuntu-latest"}
 	if data.Private {
 		data.RunsOn = "[" + strings.Join(c.Runner, ", ") + "]"
 		quoted := make([]string, len(c.Runner))
@@ -560,12 +559,11 @@ var (
 	versionKeyRe = regexp.MustCompile(`^(\s*template_version\s*=\s*)"[^"]*"(.*)$`)
 )
 
-// Update sets repository.template_version in the skenv file of root to
-// version and moves
-// its schema directive there (adding it when missing). Comments, key order
-// and formatting stay in every format. It reports whether the file
-// changes; with dryRun nothing is written.
-func Update(root, version string, dryRun bool) (bool, error) {
+// Upgrade sets repository.template_version in the skenv file of root to
+// version and moves its schema directive there (adding it when missing).
+// Comments, key order and formatting stay in every format. It reports
+// whether the file changes; with dryRun nothing is written.
+func Upgrade(root, version string, dryRun bool) (bool, error) {
 	file, err := skenvfile.Find(root)
 	if err != nil {
 		return false, err
@@ -577,7 +575,7 @@ func Update(root, version string, dryRun bool) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	out, err := setHarness(data, filepath.Ext(file), version)
+	out, err := setTemplateVersion(data, filepath.Ext(file), version)
 	if err != nil {
 		return false, fmt.Errorf("%s: %w", filepath.Base(file), err)
 	}
@@ -593,7 +591,7 @@ func Update(root, version string, dryRun bool) (bool, error) {
 	return true, writeKeepMode(file, out)
 }
 
-func setHarness(data []byte, ext, version string) ([]byte, error) {
+func setTemplateVersion(data []byte, ext, version string) ([]byte, error) {
 	doc, err := skenvfile.Parse(data, ext)
 	if err != nil {
 		return nil, err

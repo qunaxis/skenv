@@ -109,7 +109,7 @@ func TestDocsImpact(t *testing.T) {
 			wantFail: true,
 		},
 		{
-			name: "harness template change without docs",
+			name: "repository template change without docs",
 			changes: map[string]bool{
 				"internal/features/repository/templates/x": true,
 			},

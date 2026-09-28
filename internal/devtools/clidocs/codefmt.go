@@ -26,7 +26,7 @@ var (
 		regexp.MustCompile(`^[\w.-]+(/[\w.-]+)*/$`),                                                  // references/
 		regexp.MustCompile(`^(\*|[\w-]+[\w.-]*)\.(toml|ya?ml|json|md|txt|log|fish|sh|bash|zsh|go)$`), // SKILL.md, *.md
 		regexp.MustCompile(`^\.[A-Za-z][\w.-]*$`),                                                    // .gitignore
-		regexp.MustCompile(`^[a-z][a-z0-9_-]+(\.[a-z][a-z0-9_-]+)+$`),                                // repo.harness, not e.g.
+		regexp.MustCompile(`^[a-z][a-z0-9_-]+(\.[a-z][a-z0-9_-]+)+$`),                                // repository.template_version, not e.g.
 		regexp.MustCompile(`^\[[A-Za-z][\w.-]*\]$`),                                                  // [repo]
 	}
 )

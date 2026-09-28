@@ -105,10 +105,10 @@ Its design is guided by these mantras:
 - `skenv new` scaffolds a skill and lints it; `skenv lint` checks skills
   against the Agent Skills rules and, with `--publish`, runs a publication
   check before a skill goes public.
-- Optional for skill authors: `skenv repo` generates and verifies a
-  versioned harness for skills repositories (lefthook hooks, a CI
-  workflow, linter configs and a Claude Code hook that lints skills as the
-  agent edits them). Nothing else needs it.
+- Optional for skill authors: `skenv repo` generates and verifies
+  versioned repository templates for skills repositories (lefthook hooks,
+  a CI workflow, linter configs and a Claude Code hook that lints skills
+  as the agent edits them). Nothing else needs it.
 
 ## Prerequisites
 

@@ -93,4 +93,4 @@ secrets, a CI pipeline (GitHub Actions or GitLab CI) and linter configs.
 It needs extra tools (lefthook, gitleaks, uv) and, for private
 repositories, a choice of CI runner. It is useful once a repository has
 several skills or several authors, and not needed to create or use a
-skill. See [Repository checks and CI](harness.md).
+skill. See [Repository checks and CI](repository.md).

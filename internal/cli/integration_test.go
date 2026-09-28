@@ -580,7 +580,7 @@ func TestConcurrentRunIsRejected(t *testing.T) {
 
 // doctor warns about checkouts whose template_version is older than the
 // templates of the installed skenv (PRD v0.2).
-func TestDoctorWarnsAboutOldHarness(t *testing.T) {
+func TestDoctorWarnsAboutOldTemplateVersion(t *testing.T) {
 	w := newWorld(t)
 	w.standard("\n[repository]\ntemplate_version = \"0.1.0\"\nvisibility = \"private\"\n")
 	w.cloneSync("me/skills", "~/"+ownPath)

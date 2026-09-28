@@ -401,7 +401,7 @@ func TestImportWithoutManifest(t *testing.T) {
 // [repository] refuses and writes nothing.
 func TestImportAddsUser(t *testing.T) {
 	noLefthook(t)
-	w, repo := harnessRepo(t)
+	w, repo := newRepoWorld(t)
 	w.mustRun(0, "repo", "init", "--visibility", "private", "--dir", repo)
 	file := filepath.Join(repo, "skenv.toml")
 	withRepo := readFile(t, file)

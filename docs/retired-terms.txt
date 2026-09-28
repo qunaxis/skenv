@@ -4,3 +4,4 @@
 # <!-- docs-check: legacy --> ... <!-- /docs-check --> block. Retired
 # skenv-file keys go in internal/model/skenvfile/legacy.go (LegacyKeys), not here:
 # this file is for concepts, not TOML keys.
+harness

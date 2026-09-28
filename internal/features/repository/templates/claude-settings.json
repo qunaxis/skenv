@@ -1,5 +1,5 @@
 {
-  "$comment": "managed by skenv [[ .Harness ]] — do not edit; personal settings go to .claude/settings.local.json",
+  "$comment": "managed by skenv [[ .TemplateVersion ]] — do not edit; personal settings go to .claude/settings.local.json",
   "hooks": {
     "PostToolUse": [
       {

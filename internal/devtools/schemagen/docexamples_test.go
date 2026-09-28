@@ -235,7 +235,7 @@ func TestClassify(t *testing.T) {
 	}{
 		{"top-level user table", map[string]any{"user": map[string]any{}}, "docs/manifest.md", "", skenvFile},
 		{"top-level project table", map[string]any{"project": map[string]any{}}, "docs/project-skills.md", "", skenvFile},
-		{"top-level repository table", map[string]any{"repository": map[string]any{}}, "docs/harness.md", "", skenvFile},
+		{"top-level repository table", map[string]any{"repository": map[string]any{}}, "docs/repository.md", "", skenvFile},
 		{"#:schema names skenv.schema.json", map[string]any{}, "README.md", "https://qunaxis.github.io/skenv/schemas/v0.6.0/skenv.schema.json", skenvFile},
 		{"#:schema names config.schema.json", map[string]any{}, "README.md", "https://qunaxis.github.io/skenv/schemas/v0.6.0/config.schema.json", toolConfig},
 		{"manifest key, no directive, outside configuration.md", map[string]any{"manifest": "x"}, "docs/adopting.md", "", toolConfig},

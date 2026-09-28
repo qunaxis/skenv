@@ -1,9 +1,9 @@
 # Repository checks and CI
 
-`skenv repo` sets up and verifies optional tooling around a repository of
-skills, called the harness: git hooks, the CI pipeline (GitHub Actions or
-GitLab CI), linter configs and the rules for coding agents. It works in any
-git repository with skills under `skills/<name>/`.
+`skenv repo` sets up and verifies the repository templates: git hooks, the
+CI pipeline (GitHub Actions or GitLab CI), linter configs and the rules for
+coding agents. It works in any git repository with skills under
+`skills/<name>/`.
 
 You do not need it to install, sync or create skills: `skenv new`,
 `skenv lint` and everything in the manifest work without it. Set it up when
@@ -19,7 +19,7 @@ public.
 - [Examples](#examples)
 - [Troubleshooting](#troubleshooting)
 - [Skill tests](#skill-tests)
-- [Harness versions](#harness-versions)
+- [Template versions](#template-versions)
 
 ## Before you start
 
@@ -55,7 +55,7 @@ cd ~/src/<skills-repo>
 skenv repo init --visibility private --runner ubuntu-latest --dry-run
 skenv repo init --visibility private --runner ubuntu-latest
 skenv repo check        # exit 0: the managed files match the templates
-git add -A && git commit -m "chore: set up the skenv harness" && git push
+git add -A && git commit -m "chore: set up the skenv repository templates" && git push
 ```
 
 `ubuntu-latest` is a GitHub runner. For a repository on GitLab, pass the
@@ -71,7 +71,7 @@ create skenv.toml
 create lefthook.yml
 create .github/workflows/check.yml
 ...
-harness 0.6.0 (private, ci github) set up in ~/src/<skills-repo>
+repository templates 0.6.0 (private, ci github) set up in ~/src/<skills-repo>
 CI jobs run on runners ubuntu-latest (repository.ci.github.runs_on); to change them, edit it and run `skenv repo apply`
 git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active
@@ -82,9 +82,9 @@ pipelines.
 
 ## `[repository]` in `skenv.toml`
 
-A repository describes its harness in the `[repository]` section of its
-skenv file (`skenv.toml`, or `skenv.yaml`/`skenv.yml`/`skenv.json`; see
-[the skenv file](skenv-file.md)):
+The `[repository]` section of the skenv file (`skenv.toml`, or
+`skenv.yaml`/`skenv.yml`/`skenv.json`; see [the skenv file](skenv-file.md))
+configures the repository templates:
 
 ```toml
 [repository]
@@ -97,7 +97,7 @@ runs_on = ["self-hosted", "linux", "docker"]   # private only; GitLab: tags = [.
 
 | Key                              | Values                    | Default                               | Meaning |
 | -------------------------------- | ------------------------- | ------------------------------------- | ------- |
-| `template_version`               | a version such as `0.6.0` | required                              | The template version the repository asks for, and the skenv release its CI installs. Only `skenv repo init` and `skenv repo upgrade` write it; see [Harness versions](#harness-versions). |
+| `template_version`               | a version such as `0.6.0` | required                              | The template version the repository asks for, and the skenv release its CI installs. Only `skenv repo init` and `skenv repo upgrade` write it; see [Template versions](#template-versions). |
 | `visibility`                     | `private`, `public`       | required                              | The declared publication policy. It decides the runners, the publication check and whether `[user]` is allowed. skenv never reads or changes the access setting on the hosting service: keep the two in line yourself. |
 | `[repository.ci.github]`         | a table                   | used when neither table exists        | Generate GitHub Actions (`.github/workflows/check.yml`). |
 | `[repository.ci.gitlab]`         | a table                   |                                       | Generate GitLab CI (`.gitlab-ci.yml`). Both tables at once are an error. See [Choosing the CI system](#choosing-the-ci-system). |
@@ -217,7 +217,7 @@ hand-written workflow or `.claude/settings.json` is never lost silently).
 When `lefthook` is not installed, `init`, `apply` and `upgrade` still write the files
 and print a warning.
 
-### `skenv init` and the harness
+### `skenv init` and the repository templates
 
 `skenv init` starts a manifest (`[user]`) and
 does not set up `[repository]`, so it has no `--ci`: run `skenv repo init`
@@ -286,7 +286,7 @@ request:
 | `check` of changed skills, Python 3.9 and 3.12 | `changes` + `skills` (matrix skill × Python) | `skills` (matrix over Python, the changed skills in turn) |
 
 Every tool version is pinned in the templates and changes only with a new
-harness version:
+template version:
 
 | Tool                     | Version                          |
 | ------------------------ | -------------------------------- |
@@ -517,7 +517,7 @@ repository:
 
 ```sh
 skenv repo init --ci github --visibility private
-git add -A && git commit -m "chore: skenv harness"
+git add -A && git commit -m "chore: skenv repository templates"
 ```
 
 The runner must carry the labels `self-hosted`, `linux` and `docker`.
@@ -557,7 +557,7 @@ repository:
 ```sh
 skenv repo init --ci github --visibility public
 gh secret set SKENV_DENYLIST < ~/.config/skenv/denylist.txt
-git add -A && git commit -m "chore: skenv harness"
+git add -A && git commit -m "chore: skenv repository templates"
 ```
 
 ### GitLab.com, private, tagged runner
@@ -596,7 +596,7 @@ repository:
 
 ```sh
 skenv repo init --ci gitlab --visibility private
-git add -A && git commit -m "chore: skenv harness"
+git add -A && git commit -m "chore: skenv repository templates"
 ```
 
 Create a project runner (**Settings → CI/CD → Runners**) with the tags
@@ -644,7 +644,7 @@ repository:
 ```sh
 skenv repo init --ci gitlab --visibility public
 base64 < ~/.config/skenv/denylist.txt | tr -d '\n' | glab variable set SKENV_DENYLIST_B64 --masked --hidden
-git add -A && git commit -m "chore: skenv harness"
+git add -A && git commit -m "chore: skenv repository templates"
 ```
 
 The jobs run on the GitLab.com instance runners, without tags.
@@ -766,9 +766,9 @@ against the upstream branch. CI sets `CHECK_PYTHON` and `UV_PYTHON` to 3.9
 and 3.12. Third-party Python imports for pyright go to
 `requirements-dev.txt`.
 
-## Harness versions
+## Template versions
 
-skenv embeds one template set, the harness version of its release (0.6.0).
+skenv embeds one template set, the template version of its release (0.6.0).
 Two versions describe a repository:
 
 - **Desired**: `repository.template_version`, the version the repository

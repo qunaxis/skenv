@@ -131,7 +131,7 @@ The alias is lowercase letters, digits and `-`, starting with a letter.
 
 Besides the paths, skenv records the provider for features that depend on
 the server software: the default CI system of
-[`skenv repo init`](harness.md#choosing-the-ci-system) (GitLab CI for
+[`skenv repo init`](repository.md#choosing-the-ci-system) (GitLab CI for
 `gitlab`) and imports from other tools.
 
 ### https or ssh
@@ -355,6 +355,6 @@ not add a git remote either; run `git remote add origin …` when the
 repository exists on the server.
 
 The host provider also decides the CI system of
-[`skenv repo init`](harness.md#choosing-the-ci-system): GitLab CI for an
+[`skenv repo init`](repository.md#choosing-the-ci-system): GitLab CI for an
 `origin` on gitlab.com or on a declared host with `provider = "gitlab"`,
 GitHub Actions otherwise.

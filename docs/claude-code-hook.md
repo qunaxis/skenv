@@ -1,6 +1,6 @@
 # Claude Code hook
 
-`.claude/settings.json` (a managed file, see [harness](harness.md)) runs
+`.claude/settings.json` (a managed file, see [repository templates](repository.md)) runs
 `skenv lint --hook` after every `Edit`, `Write` or `MultiEdit`
 (PostToolUse). Machines without skenv on `PATH` are not interrupted.
 

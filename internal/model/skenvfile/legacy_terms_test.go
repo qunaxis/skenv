@@ -42,7 +42,7 @@ func TestNoRetiredTerms(t *testing.T) {
 // must not leak into the following line).
 func TestNoRetiredTermsDetection(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "docs/retired-terms.txt", "# comment\nharness\n")
+	writeFile(t, root, "docs/retired-terms.txt", "# comment\ngizmo\n")
 	writeFile(t, root, "README.md", strings.Join([]string{
 		"# skenv",                            // 1
 		"",                                   // 2
@@ -52,7 +52,7 @@ func TestNoRetiredTermsDetection(t *testing.T) {
 		"",                                   // 6
 		"Retired dotted key in code: `environment.vendor`.", // 7
 		"", // 8
-		"The retired prose term Harness appears here.", // 9
+		"The retired prose term Gizmo appears here.", // 9
 		"", // 10
 		"`project.from` still names the current project.from.<id> family.", // 11
 		"", // 12
@@ -68,7 +68,7 @@ func TestNoRetiredTermsDetection(t *testing.T) {
 		"",                            // 22
 		"<!-- docs-check: legacy -->", // 23
 		"[environment]",               // 24
-		"the harness term too",        // 25
+		"the gizmo term too",          // 25
 		"<!-- /docs-check -->",        // 26
 		"",                            // 27
 		"After the exempt block, `[environment]` is flagged again.", // 28
@@ -83,7 +83,7 @@ func TestNoRetiredTermsDetection(t *testing.T) {
 	want := []string{
 		`README.md:5: retired skenv-file key "environment" (see internal/model/skenvfile.LegacyKeys)`,
 		`README.md:7: retired skenv-file key "environment.vendor" (see internal/model/skenvfile.LegacyKeys)`,
-		`README.md:9: retired term "harness" (see docs/retired-terms.txt)`,
+		`README.md:9: retired term "gizmo" (see docs/retired-terms.txt)`,
 		`README.md:13: retired skenv-file key "environment" (see internal/model/skenvfile.LegacyKeys)`,
 		`README.md:17: retired skenv-file key "environment.vendor" (see internal/model/skenvfile.LegacyKeys)`,
 		`README.md:21: retired skenv-file key "project.from" (see internal/model/skenvfile.LegacyKeys)`,

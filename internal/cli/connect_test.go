@@ -69,8 +69,8 @@ func TestUse(t *testing.T) {
 	if !strings.Contains(out, "it replaces manifest ~/src/other/skenv.toml") {
 		t.Errorf("use after another manifest:\n%s", out)
 	}
-	writeFile(t, w.path("src/harness-only/skenv.toml"), "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"private\"\n")
-	if _, errOut := w.mustRun(2, "use", "~/src/harness-only"); !strings.Contains(errOut, "not a manifest") {
+	writeFile(t, w.path("src/repository-only/skenv.toml"), "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"private\"\n")
+	if _, errOut := w.mustRun(2, "use", "~/src/repository-only"); !strings.Contains(errOut, "not a manifest") {
 		t.Errorf("use of a file without [user]: %s", errOut)
 	}
 }

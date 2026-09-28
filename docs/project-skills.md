@@ -395,8 +395,8 @@ is also installed for your user is a warning too (see
 
 `skenv doctor --project` fails the build when a copy was edited, a mirror
 is broken or a pinned skill is missing. (A skills repository gets its pipeline
-from the harness instead, for GitHub Actions or GitLab CI: see
-[Harness: CI](harness.md#ci).) The job needs git and the skenv
+from the repository templates instead, for GitHub Actions or GitLab CI: see
+[Repository templates: CI](repository.md#ci).) The job needs git and the skenv
 binary from the [releases](https://github.com/qunaxis/skenv/releases);
 set `SKENV_VERSION` to a release, without the `v` (the first release with
 `[project]` or later), for a reproducible build, or leave it empty for the

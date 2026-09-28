@@ -70,7 +70,7 @@ $ skenv doctor
 * [skenv lint](skenv_lint.md)	 - Check skills for format, links, size and secrets
 * [skenv list](skenv_list.md)	 - List the skills of the manifest and whether they are installed
 * [skenv new](skenv_new.md)	 - Scaffold a skill
-* [skenv repo](skenv_repo.md)	 - Set up and check the harness of a skills repository
+* [skenv repo](skenv_repo.md)	 - Set up and check the repository templates of a skills repository
 * [skenv schema](skenv_schema.md)	 - Print the JSON Schema of the skenv file or the tool config
 * [skenv sync](skenv_sync.md)	 - Apply the manifest to this machine, or sync a project
 * [skenv use](skenv_use.md)	 - Use an existing manifest on this machine

@@ -3,7 +3,8 @@
 `skenv lint` checks skills before they reach your agents or the public:
 the format of `SKILL.md`, links, sizes and secret-like files, and, with
 `--publish`, what must hold before a repository goes public. It works in
-any directory; hooks and CI of a [harness](harness.md) run the same checks.
+any directory; the hooks and CI of [repository templates](repository.md) run
+the same checks.
 
 - [Checking skills](#checking-skills)
 - [Rules](#rules)
@@ -66,5 +67,5 @@ requires:
 
 `skenv lint --hook` is the Claude Code PostToolUse mode: it reads the hook
 event on stdin and lints the skill of the edited file. It takes no paths,
-`--staged` or `--publish`. The harness installs it in
+`--staged` or `--publish`. The repository templates install it in
 `.claude/settings.json`; see [Claude Code hook](claude-code-hook.md).

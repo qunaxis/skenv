@@ -2,11 +2,11 @@
 
 ## skenv repo init
 
-Set up the harness of a skills repository
+Set up the repository templates of a skills repository
 
 ### Synopsis
 
-Set up the harness of a skills repository: the `[repository]` section and the
+Set up the repository templates of a skills repository: the `[repository]` section and the
 schema directive of the skenv file, `lefthook.yml`, the CI pipeline, linter
 configs and the managed blocks of `AGENTS.md` and `.gitignore`; then `lefthook
 install`. Refuses if [repository] exists.
@@ -30,8 +30,8 @@ it; change it there and run `skenv repo apply`.
 
 The generated git hooks need lefthook, uv and gitleaks on PATH; the output
 says which of them are missing. Skill management and sync need none of
-them: this harness is optional tooling for a repository you publish or
-share.
+them: these repository templates are optional tooling for a repository you
+publish or share.
 
 Without a skenv file it creates `skenv.toml`, or `skenv.yaml` or `skenv.json` with
 `--format`. An existing skenv file gets `[repository]` added in its own format;
@@ -54,7 +54,7 @@ skenv repo init --visibility private|public [--ci github|gitlab] [--runner label
 
 ### Examples
 
-Set up the harness of a public skills repository in the current directory:
+Set up the repository templates of a public skills repository in the current directory:
 
 ```console
 $ skenv repo init --visibility public
@@ -69,7 +69,7 @@ create AGENTS.md
 create .gitignore
 create .claude/settings.json
 ci github: the default, the repository has no origin; --ci overrides it
-harness 0.6.0 (public, ci github) set up in ~/src/public-skills
+repository templates 0.6.0 (public, ci github) set up in ~/src/public-skills
 git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active
 ```
@@ -88,7 +88,7 @@ create .markdownlint.yaml
 create AGENTS.md
 create .gitignore
 create .claude/settings.json
-harness 0.6.0 (private, ci gitlab) set up in ~/src/team-skills
+repository templates 0.6.0 (private, ci gitlab) set up in ~/src/team-skills
 CI jobs run on runners self-hosted, linux, docker (repository.ci.gitlab.tags); to change them, edit it and run `skenv repo apply`
 git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active
@@ -109,7 +109,7 @@ create AGENTS.md
 create .gitignore
 create .claude/settings.json
 ci github: the default, the repository has no origin; --ci overrides it
-harness 0.6.0 (private, ci github) set up in ~/src/my-skills
+repository templates 0.6.0 (private, ci github) set up in ~/src/my-skills
 CI jobs run on runners ubuntu-latest (repository.ci.github.runs_on); to change them, edit it and run `skenv repo apply`
 git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
 lefthook install: hooks active
@@ -135,5 +135,5 @@ lefthook install: hooks active
 
 ### SEE ALSO
 
-* [skenv repo](skenv_repo.md)	 - Set up and check the harness of a skills repository
+* [skenv repo](skenv_repo.md)	 - Set up and check the repository templates of a skills repository
 

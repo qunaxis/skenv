@@ -108,7 +108,7 @@ const reference: DefaultTheme.SidebarItem[] = [
 
 const authors: DefaultTheme.SidebarItem[] = [
   { text: 'Validation and publication', link: '/lint' },
-  { text: 'Repository checks and CI', link: '/harness' },
+  { text: 'Repository checks and CI', link: '/repository' },
   { text: 'Claude Code hook', link: '/claude-code-hook' },
 ]
 
@@ -181,7 +181,7 @@ export default defineConfig({
         link: '/commands/README',
         activeMatch: '^/(commands/|manifest|skenv-file|configuration|git-hosts|project-skills|editor-support)',
       },
-      { text: 'Skill authors', link: '/lint', activeMatch: '^/(lint|harness|claude-code-hook)' },
+      { text: 'Skill authors', link: '/lint', activeMatch: '^/(lint|repository|claude-code-hook)' },
       { text: 'Contributing', link: '/contributing', activeMatch: '^/(contributing|releasing)' },
       { text: 'Releases', link: `${repo}/releases` },
     ],
