@@ -68,17 +68,17 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 	if err != nil {
 		return ExitFatal, fmt.Errorf("%s: %w", homeShow(env.Home)(file), err)
 	}
-	e := &ProjectEngine{base: newBase(ctx, env, Options{DryRun: dryRun}), root: root, file: file, p: p, removed: map[string]bool{}}
+	e := &ProjectScope{scope: newBase(ctx, env, Options{DryRun: dryRun}), root: root, file: file, project: p, removed: map[string]bool{}}
 	e.hosts, e.hostsDir = p.GitHosts, e.root
 	if err := e.checkDirs(); err != nil {
-		return ExitFatal, fmt.Errorf("%s: %w", e.show(file), err)
+		return ExitFatal, fmt.Errorf("%s: %w", e.displayPath(file), err)
 	}
 	e.user = userDirs(ctx, env)
 	if err := e.checkScope(e.user); err != nil {
-		return ExitFatal, fmt.Errorf("%s: %w", e.show(file), err)
+		return ExitFatal, fmt.Errorf("%s: %w", e.displayPath(file), err)
 	}
 	if !dryRun {
-		if err := e.lock(); err != nil {
+		if err := e.acquireLock(); err != nil {
 			return ExitFatal, err
 		}
 	}
@@ -90,10 +90,10 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 	}
 	if r.changed() && !dryRun {
 		if fresh {
-			e.infof("add [project] to %s", e.show(file))
+			e.infof("add [project] to %s", e.displayPath(file))
 		}
 		if err := manifest.WriteFile(file, r.out); err != nil {
-			return ExitFatal, fmt.Errorf("write %s: %w", e.show(file), err)
+			return ExitFatal, fmt.Errorf("write %s: %w", e.displayPath(file), err)
 		}
 	}
 	if len(r.unlock) > 0 {
@@ -115,8 +115,8 @@ func ImportProject(ctx context.Context, env Env, dir string, dryRun, sync bool) 
 	if err != nil {
 		return code, err
 	}
-	s.reportTakeover(&r.imported, s.show(file), " --project", func(name string) bool {
-		_, err := readMarker(s.abs(s.p.Dir, name))
+	s.reportTakeover(&r.imported, s.displayPath(file), " --project", func(name string) bool {
+		_, err := readMarker(s.abs(s.project.Dir, name))
 		return err == nil
 	})
 	return code, nil
@@ -133,7 +133,7 @@ type projectImport struct {
 // start (before is the file as it is on disk; fresh when [project] was
 // just added), prints the report and the diff, and returns the new text
 // and the lock entries to remove.
-func (e *ProjectEngine) importLock(before, start []byte, fresh bool) (*projectImport, error) {
+func (e *ProjectScope) importLock(before, start []byte, fresh bool) (*projectImport, error) {
 	r := &projectImport{before: before, out: start}
 	lock, err := readSkillsLock(filepath.Join(e.root, projectLockName), projectLockVersion)
 	if err != nil {
@@ -141,7 +141,7 @@ func (e *ProjectEngine) importLock(before, start []byte, fresh bool) (*projectIm
 	}
 	r.lock = lock
 	inProject := map[string]bool{}
-	for _, s := range e.p.Skills() {
+	for _, s := range e.project.Skills() {
 		inProject[s.Name] = true
 	}
 	ext := filepath.Ext(e.file)
@@ -177,19 +177,19 @@ func (e *ProjectEngine) importLock(before, start []byte, fresh bool) (*projectIm
 	if err != nil {
 		return nil, fmt.Errorf("the imported [project] is invalid, nothing was written: %w", err)
 	}
-	e.p = p
+	e.project = p
 	r.out = out
-	r.diff = strings.TrimSuffix(lineDiff(e.show(e.file), before, out), "\n")
-	e.report(&r.imported, e.show(e.file))
+	r.diff = strings.TrimSuffix(lineDiff(e.displayPath(e.file), before, out), "\n")
+	e.report(&r.imported, e.displayPath(e.file))
 	e.reportOwn(r, lock)
 	return r, nil
 }
 
 // scanDirs are the directories import looks at: dir, the mirrors and the
 // agent directories, each once.
-func (e *ProjectEngine) scanDirs() []string {
+func (e *ProjectScope) scanDirs() []string {
 	var dirs []string
-	for _, d := range append(append([]string{e.p.Dir}, e.p.Mirrors...), agentDirs...) {
+	for _, d := range append(append([]string{e.project.Dir}, e.project.Mirrors...), agentDirs...) {
 		if !slices.Contains(dirs, d) {
 			dirs = append(dirs, d)
 		}
@@ -200,7 +200,7 @@ func (e *ProjectEngine) scanDirs() []string {
 // installedCopy is the copy of a lock skill that the skills CLI installed,
 // the first skill directory of that name among scanDirs; "" when there is
 // none.
-func (e *ProjectEngine) installedCopy(name string) string {
+func (e *ProjectScope) installedCopy(name string) string {
 	for _, d := range e.scanDirs() {
 		if p := e.abs(d, name); fileExists(filepath.Join(p, "SKILL.md")) {
 			return p
@@ -221,12 +221,12 @@ type ownCopy struct {
 // only in another directory, or in several directories, with a summary
 // of how their files differ so the owner picks one before sync mirrors
 // dir. Nothing is changed or removed.
-func (e *ProjectEngine) reportOwn(r *projectImport, lock *skillsLock) {
+func (e *ProjectScope) reportOwn(r *projectImport, lock *skillsLock) {
 	managed := map[string]bool{}
 	for name := range lock.entries {
 		managed[name] = true
 	}
-	for _, s := range e.p.Skills() {
+	for _, s := range e.project.Skills() {
 		managed[s.Name] = true
 	}
 	found := map[string][]ownCopy{}
@@ -254,11 +254,11 @@ func (e *ProjectEngine) reportOwn(r *projectImport, lock *skillsLock) {
 	for _, name := range sortedKeys(found) {
 		r.own++
 		copies := distinct(found[name])
-		home := e.abs(e.p.Dir, name)
+		home := e.abs(e.project.Dir, name)
 		if len(copies) == 1 {
-			if c := copies[0]; c.dir != e.p.Dir {
+			if c := copies[0]; c.dir != e.project.Dir {
 				e.warnf("project-own skill %s is only in %s: move it to %s/%s, which skenv mirrors (sync leaves it where it is, doctor reports it unmanaged)",
-					name, e.rel(c.path), e.p.Dir, name)
+					name, e.rel(c.path), e.project.Dir, name)
 			} else {
 				e.infof("project-own skill %s: kept as it is; sync mirrors it", e.rel(home))
 			}
@@ -274,17 +274,17 @@ func (e *ProjectEngine) reportOwn(r *projectImport, lock *skillsLock) {
 		for i, c := range copies {
 			where[i] = e.rel(c.path)
 		}
-		inDir := copies[0].dir == e.p.Dir
+		inDir := copies[0].dir == e.project.Dir
 		switch {
 		case len(diffs) > 0:
 			r.duplicates++
 			e.warnf("project-own skill %s is in %s, and the copies differ (%s); pick the version to keep, put it in %s/%s "+
 				"and remove the others: skenv never removes a project-own skill, and sync --adopt would replace a differing mirror with a link to %s",
-				name, strings.Join(where, ", "), strings.Join(diffs, "; "), e.p.Dir, name, e.p.Dir)
+				name, strings.Join(where, ", "), strings.Join(diffs, "; "), e.project.Dir, name, e.project.Dir)
 		case inDir:
 			e.infof("project-own skill %s is in %s with the same files; %s is the one skenv mirrors", name, strings.Join(where, ", "), e.rel(home))
 		default:
-			e.warnf("project-own skill %s is in %s with the same files, but not in %s: move one there, skenv mirrors it", name, strings.Join(where, ", "), e.p.Dir)
+			e.warnf("project-own skill %s is in %s with the same files, but not in %s: move one there, skenv mirrors it", name, strings.Join(where, ", "), e.project.Dir)
 		}
 	}
 }
@@ -303,7 +303,7 @@ func distinct(copies []ownCopy) []ownCopy {
 
 // dirDiff summarizes how the files of the skill directories a and b
 // differ: "" when they are the same.
-func (e *ProjectEngine) dirDiff(a, b string) string {
+func (e *ProjectScope) dirDiff(a, b string) string {
 	skipGit := func(name string, dir bool) bool { return dir && name == ".git" }
 	fa, errA := dirBlobs(a, skipGit)
 	fb, errB := dirBlobs(b, skipGit)
@@ -353,7 +353,7 @@ func fileList(paths []string) string {
 
 // finishProjectImport prints the diff, the summary and the next step and
 // returns the exit code. sync says `skenv sync --adopt` follows.
-func (e *ProjectEngine) finishProjectImport(r *projectImport, sync bool) int {
+func (e *ProjectScope) finishProjectImport(r *projectImport, sync bool) int {
 	if r.diff != "" {
 		e.infof("%s", r.diff)
 	}

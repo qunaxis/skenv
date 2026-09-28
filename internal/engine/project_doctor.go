@@ -11,7 +11,7 @@ import (
 	"github.com/qunaxis/skenv/internal/manifest"
 )
 
-// ProjectReport is the result of ProjectEngine.Doctor.
+// ProjectReport is the result of ProjectScope.Doctor.
 type ProjectReport struct {
 	OK          bool     `json:"ok"`
 	File        string   `json:"file"`
@@ -25,15 +25,15 @@ type ProjectReport struct {
 
 // Doctor compares the project with its [project] section without changing
 // anything and without the network, so it can run in CI.
-func (e *ProjectEngine) Doctor(asJSON bool) (int, error) {
-	r := &ProjectReport{File: e.show(e.file), Dir: e.p.Dir, Mirrors: append([]string{}, e.p.Mirrors...),
-		MirrorsMode: e.p.MirrorsMode, Issues: []Issue{}, Warnings: []string{}}
+func (e *ProjectScope) Doctor(asJSON bool) (int, error) {
+	r := &ProjectReport{File: e.displayPath(e.file), Dir: e.project.Dir, Mirrors: append([]string{}, e.project.Mirrors...),
+		MirrorsMode: e.project.MirrorsMode, Issues: []Issue{}, Warnings: []string{}}
 	add := func(class, skill, p, detail string) {
 		r.Issues = append(r.Issues, Issue{Class: class, Skill: skill, Path: e.rel(p), Detail: detail})
 	}
-	dir := e.abs(e.p.Dir)
+	dir := e.abs(e.project.Dir)
 	want := map[string]bool{}
-	for _, s := range e.p.Skills() {
+	for _, s := range e.project.Skills() {
 		want[s.Name] = true
 		e.doctorCopy(s, filepath.Join(dir, s.Name), add)
 	}
@@ -58,16 +58,16 @@ func (e *ProjectEngine) Doctor(asJSON bool) (int, error) {
 	r.Warnings = append(r.Warnings, e.shadowed(e.user)...)
 	names := e.skillNames()
 	r.Skills = len(names)
-	for _, m := range e.p.Mirrors {
+	for _, m := range e.project.Mirrors {
 		e.doctorMirror(e.abs(m), names, add)
 	}
 	sortIssues(r.Issues)
 	r.OK = len(r.Issues) == 0
 	mirrors := "no mirrors"
-	if len(e.p.Mirrors) > 0 {
-		mirrors = fmt.Sprintf("mirrors %s (%s)", strings.Join(e.p.Mirrors, ", "), e.p.MirrorsMode)
+	if len(e.project.Mirrors) > 0 {
+		mirrors = fmt.Sprintf("mirrors %s (%s)", strings.Join(e.project.Mirrors, ", "), e.project.MirrorsMode)
 	}
-	ok := fmt.Sprintf("ok: %d project skills match %s (dir %s, %s)", r.Skills, e.rel(e.file), e.p.Dir, mirrors)
+	ok := fmt.Sprintf("ok: %d project skills match %s (dir %s, %s)", r.Skills, e.rel(e.file), e.project.Dir, mirrors)
 	if err := e.printReport(r, asJSON, r.Warnings, r.Issues, ok); err != nil {
 		return ExitFatal, err
 	}
@@ -78,7 +78,7 @@ func (e *ProjectEngine) Doctor(asJSON bool) (int, error) {
 }
 
 // doctorCopy checks the copy of s in dir.
-func (e *ProjectEngine) doctorCopy(s manifest.ProjectSkill, p string, add func(class, skill, p, detail string)) {
+func (e *ProjectScope) doctorCopy(s manifest.ProjectSkill, p string, add func(class, skill, p, detail string)) {
 	fi, err := os.Lstat(p)
 	if errors.Is(err, fs.ErrNotExist) {
 		add(ClassMissing, s.Name, p, "not copied yet; run `skenv sync`")
@@ -107,13 +107,13 @@ func (e *ProjectEngine) doctorCopy(s manifest.ProjectSkill, p string, add func(c
 }
 
 // doctorMirror checks the mirror mdir against the skills of dir.
-func (e *ProjectEngine) doctorMirror(mdir string, names []string, add func(class, skill, p, detail string)) {
-	copyMode := e.p.MirrorsMode == manifest.MirrorCopy
+func (e *ProjectScope) doctorMirror(mdir string, names []string, add func(class, skill, p, detail string)) {
+	copyMode := e.project.MirrorsMode == manifest.MirrorCopy
 	in := map[string]bool{}
 	for _, name := range names {
 		in[name] = true
 		p := filepath.Join(mdir, name)
-		src := e.abs(e.p.Dir, name)
+		src := e.abs(e.project.Dir, name)
 		fi, err := os.Lstat(p)
 		if err != nil {
 			add(ClassBrokenMirror, name, p, fmt.Sprintf("missing; run `skenv sync` to %s %s", map[bool]string{true: "copy", false: "link"}[copyMode], e.rel(src)))
@@ -160,9 +160,9 @@ func (e *ProjectEngine) doctorMirror(mdir string, names []string, add func(class
 			continue
 		}
 		if e.isMirrorEntry(p, name) {
-			add(ClassBrokenMirror, name, p, fmt.Sprintf("no skill %s in %s any more; `skenv sync` removes it", name, e.p.Dir))
+			add(ClassBrokenMirror, name, p, fmt.Sprintf("no skill %s in %s any more; `skenv sync` removes it", name, e.project.Dir))
 			continue
 		}
-		add(ClassUnmanaged, name, p, fmt.Sprintf("only in this mirror, not in %s; move it to %s so every agent gets it", e.p.Dir, e.p.Dir))
+		add(ClassUnmanaged, name, p, fmt.Sprintf("only in this mirror, not in %s; move it to %s so every agent gets it", e.project.Dir, e.project.Dir))
 	}
 }

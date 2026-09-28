@@ -92,7 +92,7 @@ type folderAt struct {
 // vercel-labs), the same over the files it installs: without
 // metadata.json, __pycache__ and __pypackages__, with node_modules. The
 // blobs of every commit are fetched into the partial clone in one go.
-func (e *base) matchFolderHash(cache string, commits []string, folder, hash string) (string, error) {
+func (e *scope) matchFolderHash(cache string, commits []string, folder, hash string) (string, error) {
 	var list []folderAt
 	var trees, oids []string
 	for _, c := range commits {
@@ -141,7 +141,7 @@ func (e *base) matchFolderHash(cache string, commits []string, folder, hash stri
 // (--filter=blob:none): the blobs it lacks are listed without fetching
 // them (rev-list --missing=print, which also works on git before 2.44) and
 // fetched in a few requests, not one per blob.
-func (e *base) blobs(cache string, trees, oids []string) (map[string][]byte, error) {
+func (e *scope) blobs(cache string, trees, oids []string) (map[string][]byte, error) {
 	oids = slices.Compact(slices.Sorted(slices.Values(oids)))
 	if len(oids) == 0 {
 		return nil, nil

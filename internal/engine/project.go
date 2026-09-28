@@ -15,16 +15,16 @@ import (
 	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
-// ProjectEngine runs a command on the [project] section of a repository:
+// ProjectScope runs a command on the [project] section of a repository:
 // the skills committed with a project. Nothing of it lives on the machine
 // (no state.json, no store): a copy is skenv's when it carries a .skenv
 // marker, and everything else in dir is the project's own and never
 // changed.
-type ProjectEngine struct {
-	base
-	root string // the repository root
-	file string // its skenv file
-	p    *manifest.Project
+type ProjectScope struct {
+	scope
+	root    string // the repository root
+	file    string // its skenv file
+	project *manifest.Project
 
 	// removed are the copies sync removes (or would, under --dry-run), so
 	// that mirrors follow the plan.
@@ -64,7 +64,7 @@ func FindProject(ctx context.Context, env Env, dir string) (string, error) {
 // OpenProject loads the [project] section of file, the skenv file at the
 // root of a repository. Commands that write take the skenv lock: the
 // vendor cache is shared with the user-level commands.
-func OpenProject(ctx context.Context, env Env, opts Options, file string) (*ProjectEngine, error) {
+func OpenProject(ctx context.Context, env Env, opts Options, file string) (*ProjectScope, error) {
 	if err := gitx.Available(); err != nil {
 		return nil, err
 	}
@@ -72,17 +72,17 @@ func OpenProject(ctx context.Context, env Env, opts Options, file string) (*Proj
 	if err != nil {
 		return nil, err
 	}
-	e := &ProjectEngine{base: newBase(ctx, env, opts), root: filepath.Dir(file), file: file, p: p, removed: map[string]bool{}}
+	e := &ProjectScope{scope: newBase(ctx, env, opts), root: filepath.Dir(file), file: file, project: p, removed: map[string]bool{}}
 	e.hosts, e.hostsDir = p.GitHosts, e.root
 	if err := e.checkDirs(); err != nil {
-		return nil, fmt.Errorf("%s: %w", e.show(file), err)
+		return nil, fmt.Errorf("%s: %w", e.displayPath(file), err)
 	}
 	e.user = userDirs(ctx, env)
 	if err := e.checkScope(e.user); err != nil {
-		return nil, fmt.Errorf("%s: %w", e.show(file), err)
+		return nil, fmt.Errorf("%s: %w", e.displayPath(file), err)
 	}
 	if !opts.ReadOnly && !opts.DryRun {
-		if err := e.lock(); err != nil {
+		if err := e.acquireLock(); err != nil {
 			return nil, err
 		}
 	}
@@ -93,13 +93,13 @@ func OpenProject(ctx context.Context, env Env, opts Options, file string) (*Proj
 // onto dir or another mirror, through a symlink: the checks of
 // manifest.Project.Validate on the paths as the file system resolves them.
 // sync would otherwise replace the skills of dir through a mirror.
-func (e *ProjectEngine) checkDirs() error {
+func (e *ProjectScope) checkDirs() error {
 	root, err := filepath.EvalSymlinks(e.root)
 	if err != nil {
 		return err
 	}
 	seen := map[string]string{}
-	for _, rel := range append([]string{e.p.Dir}, e.p.Mirrors...) {
+	for _, rel := range append([]string{e.project.Dir}, e.project.Mirrors...) {
 		real := resolveExisting(e.abs(rel))
 		in, err := filepath.Rel(root, real)
 		if err != nil || in == "." || in == ".." || strings.HasPrefix(in, ".."+string(filepath.Separator)) {
@@ -130,29 +130,29 @@ func resolveExisting(p string) string {
 }
 
 // inRepo reports whether p, after cleaning, is inside the repository.
-func (e *ProjectEngine) inRepo(p string) bool {
+func (e *ProjectScope) inRepo(p string) bool {
 	in, err := filepath.Rel(e.root, filepath.Clean(p))
 	return err == nil && in != ".." && !strings.HasPrefix(in, ".."+string(filepath.Separator))
 }
 
 // abs is the path of rel, a slash path relative to the repository root.
-func (e *ProjectEngine) abs(rel ...string) string {
+func (e *ProjectScope) abs(rel ...string) string {
 	return filepath.Join(append([]string{e.root}, rel...)...)
 }
 
 // rel shows p relative to the repository root.
-func (e *ProjectEngine) rel(p string) string {
+func (e *ProjectScope) rel(p string) string {
 	if r, err := filepath.Rel(e.root, p); err == nil && !strings.HasPrefix(r, "..") {
 		return filepath.ToSlash(r)
 	}
-	return e.show(p)
+	return e.displayPath(p)
 }
 
 // Sync runs `skenv sync` in a project: copy every pinned skill into dir at
 // its rev, remove copies whose entry is gone, and give every skill of dir
 // to each mirror.
-func (e *ProjectEngine) Sync() (int, error) {
-	e.keep()
+func (e *ProjectScope) Sync() (int, error) {
+	e.computeKept()
 	e.syncCopies()
 	e.syncMirrors()
 	e.warnIgnored()
@@ -160,22 +160,22 @@ func (e *ProjectEngine) Sync() (int, error) {
 	return e.summary("project sync"), nil
 }
 
-// keep sets kept: the skills of opts.Keep whose copy in dir has no
+// computeKept sets kept: the skills of opts.Keep whose copy in dir has no
 // marker, or whose mirror entry skenv did not place.
-func (e *ProjectEngine) keep() {
+func (e *ProjectScope) computeKept() {
 	e.kept = map[string]bool{}
 	for _, name := range e.opts.Keep {
-		if _, ok := e.p.Skill(name); !ok {
+		if _, ok := e.project.Skill(name); !ok {
 			continue
 		}
 		var found []string
-		p := e.abs(e.p.Dir, name)
+		p := e.abs(e.project.Dir, name)
 		if _, err := os.Lstat(p); err == nil {
 			if _, err := readMarker(p); err != nil {
 				found = append(found, p)
 			}
 		}
-		for _, m := range e.p.Mirrors {
+		for _, m := range e.project.Mirrors {
 			p := e.abs(m, name)
 			if _, err := os.Lstat(p); err == nil && !e.isMirrorEntry(p, name) {
 				found = append(found, p)
@@ -190,10 +190,10 @@ func (e *ProjectEngine) keep() {
 
 // syncCopies brings the copies in dir in line with the entries of
 // [project].
-func (e *ProjectEngine) syncCopies() {
-	dir := e.abs(e.p.Dir)
+func (e *ProjectScope) syncCopies() {
+	dir := e.abs(e.project.Dir)
 	want := map[string]bool{}
-	for _, s := range e.p.Skills() {
+	for _, s := range e.project.Skills() {
 		want[s.Name] = true
 		if !e.kept[s.Name] {
 			e.syncCopy(s, filepath.Join(dir, s.Name))
@@ -213,7 +213,7 @@ func (e *ProjectEngine) syncCopies() {
 		if modified, _ := e.modified(p, mk); modified {
 			if !e.opts.Adopt {
 				e.errorf("%s is no longer in [project] but was edited locally; not removed: keep it as a project-own skill "+
-					"by deleting its %s, or rerun with --adopt to move it to %s", e.rel(p), markerName, e.show(e.layout.Backup()))
+					"by deleting its %s, or rerun with --adopt to move it to %s", e.rel(p), markerName, e.displayPath(e.layout.Backup()))
 				continue
 			}
 			if err := e.backup(p); err != nil {
@@ -237,7 +237,7 @@ func (e *ProjectEngine) syncCopies() {
 // modified reports whether the copy at p differs from what skenv copied:
 // its content hash is not the one in the marker. A marker without a hash
 // cannot vouch for the content, so it counts as modified.
-func (e *ProjectEngine) modified(p string, mk marker) (bool, error) {
+func (e *ProjectScope) modified(p string, mk marker) (bool, error) {
 	if mk.Hash == "" {
 		return true, nil
 	}
@@ -251,7 +251,7 @@ func (e *ProjectEngine) modified(p string, mk marker) (bool, error) {
 // syncCopy makes dst the copy of s at its rev. A directory without a marker
 // (a project-own skill) and a copy edited locally are replaced only with
 // --adopt, after a backup.
-func (e *ProjectEngine) syncCopy(s manifest.ProjectSkill, dst string) {
+func (e *ProjectScope) syncCopy(s manifest.ProjectSkill, dst string) {
 	from := fmt.Sprintf("%s@%.12s (%s)", s.Repo, s.Commit, s.Path)
 	fi, err := os.Lstat(dst)
 	switch {
@@ -267,11 +267,11 @@ func (e *ProjectEngine) syncCopy(s manifest.ProjectSkill, dst string) {
 			case e.opts.Adopt:
 			case fi.IsDir() && e.hasPinnedFiles(s, dst):
 				e.errorf("conflict: %s has the files of %s but no %s marker: installed another way, as by the skills CLI before "+
-					"`skenv import --project`; run `skenv sync --adopt` to take it over (the copy goes to %s)", e.rel(dst), from, markerName, e.show(e.layout.Backup()))
+					"`skenv import --project`; run `skenv sync --adopt` to take it over (the copy goes to %s)", e.rel(dst), from, markerName, e.displayPath(e.layout.Backup()))
 				return
 			default:
 				e.errorf("conflict: %s exists without a %s marker (a project-own skill?) and is never replaced; "+
-					"rename it or the entry, or rerun with --adopt to move it to %s and copy %s", e.rel(dst), markerName, e.show(e.layout.Backup()), s.Name)
+					"rename it or the entry, or rerun with --adopt to move it to %s and copy %s", e.rel(dst), markerName, e.displayPath(e.layout.Backup()), s.Name)
 				return
 			}
 			if err := e.backup(dst); err != nil {
@@ -294,7 +294,7 @@ func (e *ProjectEngine) syncCopy(s manifest.ProjectSkill, dst string) {
 		if modified {
 			if !e.opts.Adopt {
 				e.errorf("%s was edited locally (it differs from %s@%.12s) and is not overwritten; move the change upstream "+
-					"or into a project-own skill, or rerun with --adopt to move it to %s and copy %s", e.rel(dst), mk.Repo, mk.Rev, e.show(e.layout.Backup()), from)
+					"or into a project-own skill, or rerun with --adopt to move it to %s and copy %s", e.rel(dst), mk.Repo, mk.Rev, e.displayPath(e.layout.Backup()), from)
 				return
 			}
 			if err := e.backup(dst); err != nil {
@@ -325,7 +325,7 @@ func (e *ProjectEngine) syncCopy(s manifest.ProjectSkill, dst string) {
 // hasPinnedFiles reports whether the unmarked copy dir has the files of
 // s at its commit, as the skills CLI installs them: a copy that sync
 // --adopt only takes over.
-func (e *ProjectEngine) hasPinnedFiles(s manifest.ProjectSkill, dir string) bool {
+func (e *ProjectScope) hasPinnedFiles(s manifest.ProjectSkill, dir string) bool {
 	cache, err := e.ensureCache(s.Repo, s.Commit)
 	if err != nil {
 		return false
@@ -341,8 +341,8 @@ func (e *ProjectEngine) hasPinnedFiles(s manifest.ProjectSkill, dir string) bool
 // skillNames lists the skills of dir that mirrors get: its directories with
 // a SKILL.md, plus the copies sync is about to make under --dry-run, minus
 // the ones it removes.
-func (e *ProjectEngine) skillNames() []string {
-	dir := e.abs(e.p.Dir)
+func (e *ProjectScope) skillNames() []string {
+	dir := e.abs(e.project.Dir)
 	set := map[string]bool{}
 	entries, _ := os.ReadDir(dir)
 	for _, de := range entries {
@@ -355,7 +355,7 @@ func (e *ProjectEngine) skillNames() []string {
 		}
 	}
 	if e.opts.DryRun {
-		for _, s := range e.p.Skills() {
+		for _, s := range e.project.Skills() {
 			set[s.Name] = true
 		}
 	}
@@ -369,9 +369,9 @@ func (e *ProjectEngine) skillNames() []string {
 
 // syncMirrors gives each mirror every skill of dir and removes the mirror
 // entries of skills that left it.
-func (e *ProjectEngine) syncMirrors() {
+func (e *ProjectScope) syncMirrors() {
 	names := e.skillNames()
-	for _, m := range e.p.Mirrors {
+	for _, m := range e.project.Mirrors {
 		mdir := e.abs(m)
 		in := map[string]bool{}
 		for _, name := range names {
@@ -387,7 +387,7 @@ func (e *ProjectEngine) syncMirrors() {
 			if in[name] || strings.HasPrefix(name, ".") || !e.isMirrorEntry(p, name) {
 				continue
 			}
-			e.changef("remove %s (no skill %s in %s)", e.rel(p), name, e.p.Dir)
+			e.changef("remove %s (no skill %s in %s)", e.rel(p), name, e.project.Dir)
 			if e.opts.DryRun {
 				continue
 			}
@@ -400,10 +400,10 @@ func (e *ProjectEngine) syncMirrors() {
 
 // linkDest is the relative symlink destination from <mirror>/<name> to
 // <dir>/<name>.
-func (e *ProjectEngine) linkDest(mdir, name string) string {
-	rel, err := filepath.Rel(mdir, e.abs(e.p.Dir, name))
+func (e *ProjectScope) linkDest(mdir, name string) string {
+	rel, err := filepath.Rel(mdir, e.abs(e.project.Dir, name))
 	if err != nil {
-		return e.abs(e.p.Dir, name)
+		return e.abs(e.project.Dir, name)
 	}
 	return rel
 }
@@ -411,7 +411,7 @@ func (e *ProjectEngine) linkDest(mdir, name string) string {
 // isMirrorEntry reports whether p, an entry of a mirror, is one skenv
 // placed there for the skill name: a symlink to <dir>/<name>, or an
 // unedited copy with a mirror marker.
-func (e *ProjectEngine) isMirrorEntry(p, name string) bool {
+func (e *ProjectScope) isMirrorEntry(p, name string) bool {
 	fi, err := os.Lstat(p)
 	if err != nil {
 		return false
@@ -431,10 +431,10 @@ func (e *ProjectEngine) isMirrorEntry(p, name string) bool {
 // syncMirror makes <mirror>/<name> a symlink to or a copy of <dir>/<name>.
 // It replaces a symlink, a copy skenv made, or a directory with the same
 // content freely; anything else only with --adopt, after a backup.
-func (e *ProjectEngine) syncMirror(mdir, name string) {
+func (e *ProjectScope) syncMirror(mdir, name string) {
 	p := filepath.Join(mdir, name)
-	src := e.abs(e.p.Dir, name)
-	copyMode := e.p.MirrorsMode == manifest.MirrorCopy
+	src := e.abs(e.project.Dir, name)
+	copyMode := e.project.MirrorsMode == manifest.MirrorCopy
 	fi, err := os.Lstat(p)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -491,9 +491,9 @@ func (e *ProjectEngine) syncMirror(mdir, name string) {
 // adoptMirror handles a mirror entry p that skenv may not replace on its
 // own: a conflict, or under --adopt a backup. It reports whether p may be
 // replaced now.
-func (e *ProjectEngine) adoptMirror(p, src, why string) bool {
+func (e *ProjectScope) adoptMirror(p, src, why string) bool {
 	if !e.opts.Adopt {
-		e.errorf("conflict: %s %s, or rerun with --adopt to move it to %s and replace it", e.rel(p), why, e.show(e.layout.Backup()))
+		e.errorf("conflict: %s %s, or rerun with --adopt to move it to %s and replace it", e.rel(p), why, e.displayPath(e.layout.Backup()))
 		return false
 	}
 	if err := e.backup(p); err != nil {
@@ -505,7 +505,7 @@ func (e *ProjectEngine) adoptMirror(p, src, why string) bool {
 
 // copyMirror makes dst a copy of the skill directory src (without its
 // marker) with a mirror marker.
-func (e *ProjectEngine) copyMirror(src, dst string) error {
+func (e *ProjectScope) copyMirror(src, dst string) error {
 	parent := filepath.Dir(dst)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return err
@@ -523,7 +523,7 @@ func (e *ProjectEngine) copyMirror(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	if err := writeMarker(content, marker{Mirror: e.p.Dir + "/" + filepath.Base(dst), Hash: h}); err != nil {
+	if err := writeMarker(content, marker{Mirror: e.project.Dir + "/" + filepath.Base(dst), Hash: h}); err != nil {
 		return err
 	}
 	return replace(content, dst)
@@ -532,8 +532,8 @@ func (e *ProjectEngine) copyMirror(src, dst string) error {
 // ignored lists the files of dir and the mirrors that .gitignore keeps
 // out of the commit: a clone would not have them, and doctor there would
 // report the copy as modified.
-func (e *ProjectEngine) ignored() []string {
-	args := append([]string{"ls-files", "--others", "--ignored", "--exclude-standard", "--", e.p.Dir}, e.p.Mirrors...)
+func (e *ProjectScope) ignored() []string {
+	args := append([]string{"ls-files", "--others", "--ignored", "--exclude-standard", "--", e.project.Dir}, e.project.Mirrors...)
 	out, err := e.env.Git.Run(e.ctx, e.root, args...)
 	if err != nil || out == "" {
 		return nil
@@ -541,16 +541,16 @@ func (e *ProjectEngine) ignored() []string {
 	return strings.Split(out, "\n")
 }
 
-func (e *ProjectEngine) ignoredWarning() string {
+func (e *ProjectScope) ignoredWarning() string {
 	files := e.ignored()
 	if len(files) == 0 {
 		return ""
 	}
 	return fmt.Sprintf("git ignores %d files of the project skills (%s ...), so they are not committed and a clone reports "+
-		"the copy as modified; exclude them from .gitignore, for example with !%s/**", len(files), files[0], e.p.Dir)
+		"the copy as modified; exclude them from .gitignore, for example with !%s/**", len(files), files[0], e.project.Dir)
 }
 
-func (e *ProjectEngine) warnIgnored() {
+func (e *ProjectScope) warnIgnored() {
 	if e.opts.DryRun {
 		return
 	}
@@ -561,7 +561,7 @@ func (e *ProjectEngine) warnIgnored() {
 
 // warnLinks warns about symlinks in the copy dst that point out of it:
 // they are committed with the project, and agents and CI follow them.
-func (e *ProjectEngine) warnLinks(dst string) {
+func (e *ProjectScope) warnLinks(dst string) {
 	_ = filepath.WalkDir(dst, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.Type()&fs.ModeSymlink == 0 {
 			return nil //nolint:nilerr // a warning only
@@ -581,11 +581,11 @@ func (e *ProjectEngine) warnLinks(dst string) {
 // commitHint tells how to commit what changed: the copies and mirrors are
 // part of the project, and so is the lock of the skills CLI while git sees
 // it edited or removed (by an import, which a later sync --adopt completes).
-func (e *ProjectEngine) commitHint(msg string) {
+func (e *ProjectScope) commitHint(msg string) {
 	if e.opts.DryRun || e.changes == 0 {
 		return
 	}
-	paths := append([]string{filepath.Base(e.file), e.p.Dir}, e.p.Mirrors...)
+	paths := append([]string{filepath.Base(e.file), e.project.Dir}, e.project.Mirrors...)
 	if st, err := e.env.Git.Run(e.ctx, e.root, "status", "--porcelain", "--", projectLockName); err == nil && st != "" {
 		paths = append(paths, projectLockName)
 	}
@@ -593,5 +593,5 @@ func (e *ProjectEngine) commitHint(msg string) {
 		msg = "sync project skills"
 	}
 	e.infof("the project skills changed; to commit them:\n  git -C %s add -- %s\n  git -C %s commit -m %q",
-		e.show(e.root), strings.Join(paths, " "), e.show(e.root), "chore(skills): "+msg)
+		e.displayPath(e.root), strings.Join(paths, " "), e.displayPath(e.root), "chore(skills): "+msg)
 }

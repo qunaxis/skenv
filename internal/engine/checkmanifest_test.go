@@ -12,7 +12,7 @@ import (
 	"github.com/qunaxis/skenv/internal/gitx"
 )
 
-// checkManifestEngine opens a read-only Engine on a manifest with the given
+// checkManifestEngine opens a read-only UserScope on a manifest with the given
 // text, for a package-level test of checkManifest (#56): the CLI never
 // drives it into a parse error or a resolveMachine error (importUser only
 // appends text it built itself, and the machine that opened successfully
@@ -21,7 +21,7 @@ import (
 // candidate list before it ever reaches checkManifest. Pinning the three
 // error returns here keeps them from silently changing meaning once N1/N2
 // move this code.
-func checkManifestEngine(t *testing.T, manifestText string) *Engine {
+func checkManifestEngine(t *testing.T, manifestText string) *UserScope {
 	t.Helper()
 	home := t.TempDir()
 	mp := filepath.Join(home, "skenv.toml")
@@ -37,7 +37,7 @@ func checkManifestEngine(t *testing.T, manifestText string) *Engine {
 		Git:      gitx.Git{},
 		Now:      time.Now,
 	}
-	e, err := Open(context.Background(), env, Options{Manifest: mp, ReadOnly: true})
+	e, err := OpenUser(context.Background(), env, Options{Manifest: mp, ReadOnly: true})
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -50,18 +50,18 @@ func checkManifestEngine(t *testing.T, manifestText string) *Engine {
 // no longer resolves on this machine, or a skill selection error.
 func TestCheckManifestParseError(t *testing.T) {
 	e := checkManifestEngine(t, "[user]\n")
-	prev := e.m
+	prev := e.manifest
 	if err := e.checkManifest([]byte("not = [valid toml")); err == nil {
 		t.Fatal("want a parse error")
 	}
-	if e.m != prev {
+	if e.manifest != prev {
 		t.Error("a parse error must not change the engine's manifest")
 	}
 }
 
 func TestCheckManifestMachineError(t *testing.T) {
 	e := checkManifestEngine(t, "[user]\n")
-	prev := e.m
+	prev := e.manifest
 	e.env.Getenv = func(k string) string {
 		if k == "SKENV_MACHINE" {
 			return "office"
@@ -72,14 +72,14 @@ func TestCheckManifestMachineError(t *testing.T) {
 	if err := e.checkManifest([]byte(candidate)); err == nil || !strings.Contains(err.Error(), `machine "office"`) {
 		t.Fatalf("want an unresolvable machine, got %v", err)
 	}
-	if e.m != prev {
+	if e.manifest != prev {
 		t.Error("a machine error must not change the engine's manifest")
 	}
 }
 
 func TestCheckManifestSkillsError(t *testing.T) {
 	e := checkManifestEngine(t, "[user]\n")
-	prev := e.m
+	prev := e.manifest
 	// A dependency named after a user.unmanaged pattern: valid TOML, a
 	// machine that resolves, but skills() rejects the selection.
 	candidate := "[user]\nunmanaged = [\"foo\"]\n\n[user.dependencies.foo]\nrepo = \"ext/tools\"\nskill_dir = \"tools/foo\"\ncommit = \"" +
@@ -87,7 +87,7 @@ func TestCheckManifestSkillsError(t *testing.T) {
 	if err := e.checkManifest([]byte(candidate)); err == nil || !strings.Contains(err.Error(), `"foo" matches user.unmanaged`) {
 		t.Fatalf("want a selection error, got %v", err)
 	}
-	if e.m != prev {
+	if e.manifest != prev {
 		t.Error("a selection error must not change the engine's manifest")
 	}
 }
@@ -99,7 +99,7 @@ func TestCheckManifestOK(t *testing.T) {
 	if err := e.checkManifest([]byte(candidate)); err != nil {
 		t.Fatalf("valid manifest: %v", err)
 	}
-	if len(e.m.DependencyList()) != 1 {
+	if len(e.manifest.DependencyList()) != 1 {
 		t.Error("checkManifest did not adopt the valid candidate")
 	}
 }

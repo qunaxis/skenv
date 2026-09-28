@@ -566,7 +566,7 @@ func TestVendorAddRejectsOwnNameClash(t *testing.T) {
 func TestConcurrentRunIsRejected(t *testing.T) {
 	w := newWorld(t)
 	w.initStandard("")
-	e, err := engine.Open(context.Background(), engine.Env{Home: w.home, Getenv: os.Getenv, Stdout: io.Discard, Stderr: io.Discard}, engine.Options{})
+	e, err := engine.OpenUser(context.Background(), engine.Env{Home: w.home, Getenv: os.Getenv, Stdout: io.Discard, Stderr: io.Discard}, engine.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
