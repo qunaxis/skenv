@@ -199,6 +199,13 @@ func (r *imported) groups() string {
 	return " (" + strings.Join(parts, ", ") + ")"
 }
 
+// addUnmanaged records the installed entry shown (a display path) that
+// the import leaves alone, and why.
+func (r *imported) addUnmanaged(shown, why string) {
+	r.unmanaged++
+	r.skipped = append(r.skipped, fmt.Sprintf("%s: %s", shown, why))
+}
+
 func (r *imported) changed() bool { return string(r.before) != string(r.out) }
 
 // found is a skill installed on the machine.
@@ -237,15 +244,46 @@ func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *skenv
 	for _, s := range skills {
 		inManifest[s.Name] = true
 	}
-	unmanaged := func(p, why string) {
-		r.unmanaged++
-		r.skipped = append(r.skipped, fmt.Sprintf("%s: %s", e.displayPath(p), why))
+
+	list, seen := e.scanInstalled(r, inManifest)
+	groups, vendors := e.classify(r, list, lock)
+	taken := map[string]bool{}
+	for id := range e.manifest.Checkouts {
+		taken[id] = true
+	}
+	own := ownCheckouts(groups, taken)
+	vend := e.importVendors(r, vendors)
+	e.recordOwn(r, own)
+	for _, name := range sortedKeys(lock.entries) {
+		if _, ok := seen[name]; !ok && !inManifest[name] {
+			r.skipped = append(r.skipped, fmt.Sprintf("%s, in %s: not installed in %s or an agent directory; it stays in the lock",
+				name, e.displayPath(lock.path), e.displayPath(e.store)))
+		}
 	}
 
-	// Everything installed in the store and the agent directories, once per
-	// name.
-	var list []found
-	seen := map[string]found{}
+	if r.out, err = e.renderManifest(r, start, fresh, own, vend, e.extraCheckout(own, extraOwn, taken)); err != nil {
+		return nil, err
+	}
+	// Lock entries of every skill the manifest now has.
+	if skills, err = e.skills(); err != nil {
+		return nil, err
+	}
+	for _, s := range skills {
+		if _, ok := lock.entries[s.Name]; ok {
+			r.unlock = append(r.unlock, s.Name)
+		}
+	}
+	slices.Sort(r.unlock)
+	r.diff = strings.TrimSuffix(lineDiff(e.displayPath(e.manifestPath), before, r.out), "\n")
+	e.report(r, e.displayPath(e.manifestPath))
+	return r, nil
+}
+
+// scanInstalled lists everything installed in the store and the agent
+// directories that the manifest does not have, once per name; seen is the
+// list by name.
+func (e *UserScope) scanInstalled(r *imported, inManifest map[string]bool) (list []found, seen map[string]found) {
+	seen = map[string]found{}
 	plugins := e.claudePlugins()
 	for _, dir := range append([]string{e.store}, e.targets...) {
 		entries, err := os.ReadDir(dir)
@@ -258,39 +296,54 @@ func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *skenv
 			if strings.HasPrefix(name, ".") || e.isClaudeSynced(p) || e.manifest.IsUnmanaged(name) || e.owned(p) || inManifest[name] {
 				continue
 			}
-			resolved, err := filepath.EvalSymlinks(p)
-			if err != nil {
-				unmanaged(p, "a broken link; remove it")
-				continue
+			f, ok := e.installed(r, seen, name, p, plugins)
+			if ok {
+				seen[name] = f
+				list = append(list, f)
 			}
-			if plugins != "" && strings.HasPrefix(resolved, plugins+string(filepath.Separator)) {
-				continue // a Claude Code plugin's
-			}
-			if why, ok := e.unselected[name]; ok {
-				unmanaged(p, why+"; change the manifest to install it")
-				continue
-			}
-			if prev, ok := seen[name]; ok {
-				if prev.resolved != resolved {
-					unmanaged(p, fmt.Sprintf("%s is also installed from %s; keep one", name, e.displayPath(prev.resolved)))
-				}
-				continue
-			}
-			fi, err := os.Lstat(p)
-			if err != nil {
-				continue
-			}
-			f := found{name: name, path: p, resolved: resolved, link: fi.Mode()&fs.ModeSymlink != 0}
-			seen[name] = f
-			list = append(list, f)
 		}
 	}
+	return list, seen
+}
 
-	groups := map[string]*ownGroup{}
-	vendors := map[string]found{}
+// installed resolves the entry p named name, false when the import skips
+// it: a Claude Code plugin's, not selected on this machine, or a name
+// seen already.
+func (e *UserScope) installed(r *imported, seen map[string]found, name, p, plugins string) (found, bool) {
+	resolved, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		r.addUnmanaged(e.displayPath(p), "a broken link; remove it")
+		return found{}, false
+	}
+	if plugins != "" && strings.HasPrefix(resolved, plugins+string(filepath.Separator)) {
+		return found{}, false // a Claude Code plugin's
+	}
+	if why, ok := e.unselected[name]; ok {
+		r.addUnmanaged(e.displayPath(p), why+"; change the manifest to install it")
+		return found{}, false
+	}
+	if prev, ok := seen[name]; ok {
+		if prev.resolved != resolved {
+			r.addUnmanaged(e.displayPath(p), fmt.Sprintf("%s is also installed from %s; keep one", name, e.displayPath(prev.resolved)))
+		}
+		return found{}, false
+	}
+	fi, err := os.Lstat(p)
+	if err != nil {
+		return found{}, false
+	}
+	return found{name: name, path: p, resolved: resolved, link: fi.Mode()&fs.ModeSymlink != 0}, true
+}
+
+// classify sorts the installed skills into the working copies they link
+// into (by working copy and skills directory) and the vendored ones of
+// the lock, by name.
+func (e *UserScope) classify(r *imported, list []found, lock *skillsLock) (groups map[string]*ownGroup, vendors map[string]found) {
+	groups = map[string]*ownGroup{}
+	vendors = map[string]found{}
 	for _, f := range list {
 		if g, why := e.ownOf(f); why != "" {
-			unmanaged(f.path, why)
+			r.addUnmanaged(e.displayPath(f.path), why)
 			continue
 		} else if g != nil {
 			key := g.top + "\x00" + g.own.SkillsDir
@@ -302,21 +355,23 @@ func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *skenv
 		}
 		if le, ok := lock.entries[f.name]; ok {
 			if _, err := lockRepo(le, e.hosts); err != nil {
-				unmanaged(f.path, fmt.Sprintf("in %s, but %v", e.displayPath(lock.path), err))
+				r.addUnmanaged(e.displayPath(f.path), fmt.Sprintf("in %s, but %v", e.displayPath(lock.path), err))
 				continue
 			}
 			vendors[f.name] = f
 			continue
 		}
-		unmanaged(f.path, fmt.Sprintf("not in %s and not a link into a git working copy; move it into a checkout, "+
+		r.addUnmanaged(e.displayPath(f.path), fmt.Sprintf("not in %s and not a link into a git working copy; move it into a checkout, "+
 			"or add %q to user.unmanaged", e.displayPath(lock.path), f.name))
 	}
+	return groups, vendors
+}
 
+// ownCheckouts turns the groups into checkouts, in key order, with an
+// include list when they cover part of the skills directory and an ID
+// not in taken (which records it).
+func ownCheckouts(groups map[string]*ownGroup, taken map[string]bool) []ownGroup {
 	var own []ownGroup
-	taken := map[string]bool{}
-	for id := range e.manifest.Checkouts {
-		taken[id] = true
-	}
 	for _, k := range sortedKeys(groups) {
 		g := groups[k]
 		all := skillDirs(filepath.Join(g.top, filepath.FromSlash(g.own.SkillsDir)))
@@ -328,9 +383,15 @@ func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *skenv
 		taken[g.own.ID] = true
 		own = append(own, *g)
 	}
+	return own
+}
+
+// importVendors turns the vendored skills into dependencies, by name,
+// recording each in r.
+func (e *UserScope) importVendors(r *imported, vendors map[string]found) []skenvfile.Dependency {
 	var vend []skenvfile.Dependency
 	for _, name := range sortedKeys(vendors) {
-		v, how, note, err := e.lockVendor(name, lock.entries[name], vendors[name].resolved)
+		v, how, note, err := e.lockVendor(name, r.lock.entries[name], vendors[name].resolved)
 		if err != nil {
 			r.failed = append(r.failed, fmt.Sprintf("cannot import %s: %v", name, err))
 			continue
@@ -338,6 +399,11 @@ func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *skenv
 		r.addVendor(v, how, note)
 		vend = append(vend, v)
 	}
+	return vend
+}
+
+// recordOwn records the checkouts own in r.
+func (e *UserScope) recordOwn(r *imported, own []ownGroup) {
 	for _, g := range own {
 		detail := "every skill"
 		if g.own.Include != nil {
@@ -347,14 +413,43 @@ func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *skenv
 		r.names = append(r.names, g.names...)
 	}
 	slices.Sort(r.names)
-	for _, name := range sortedKeys(lock.entries) {
-		if _, ok := seen[name]; !ok && !inManifest[name] {
-			r.skipped = append(r.skipped, fmt.Sprintf("%s, in %s: not installed in %s or an agent directory; it stays in the lock",
-				name, e.displayPath(lock.path), e.displayPath(e.store)))
-		}
-	}
+}
 
-	// The manifest text, validated with the checkouts listed.
+// extraCheckout is extraOwn with an ID not in taken, nil when there is
+// none or own has its working copy already.
+func (e *UserScope) extraCheckout(own []ownGroup, extraOwn *skenvfile.Checkout, taken map[string]bool) *skenvfile.Checkout {
+	if extraOwn == nil || slices.ContainsFunc(own, func(g ownGroup) bool { return samePath(e.resolvedCheckout(g.own), e.resolvedCheckout(*extraOwn)) }) {
+		return nil
+	}
+	extra := *extraOwn
+	extra.ID = skenvfile.NewID(extra.Repo, taken)
+	return &extra
+}
+
+func (e *UserScope) resolvedCheckout(c skenvfile.Checkout) string {
+	return e.manifest.Path(e.env.Home, c.CheckoutDir)
+}
+
+// appendExtra is out with the checkout extra appended, or out itself when
+// that makes the manifest invalid (a warning).
+func (e *UserScope) appendExtra(r *imported, out []byte, extra skenvfile.Checkout) []byte {
+	withExtra, err := skenvfile.AppendCheckout(out, filepath.Ext(e.manifestPath), extra)
+	if err == nil {
+		err = e.checkManifest(withExtra)
+	}
+	if err != nil {
+		e.warnf("not adding %s as a checkout: %v", extra.Repo, err)
+		return out
+	}
+	r.entries++
+	r.managed[byOwn] = append(r.managed[byOwn], fmt.Sprintf("%s: %s at %s (the repository of the manifest)", extra.ID, extra.Repo, e.displayPath(e.resolvedCheckout(extra))))
+	return withExtra
+}
+
+// renderManifest is the manifest text start with the checkouts own and
+// the dependencies vend appended, then extra (when not nil) unless it
+// makes the manifest invalid, stamped and validated with the checkouts listed.
+func (e *UserScope) renderManifest(r *imported, start []byte, fresh bool, own []ownGroup, vend []skenvfile.Dependency, extra *skenvfile.Checkout) ([]byte, error) {
 	ext := filepath.Ext(e.manifestPath)
 	out := start
 	for _, g := range own {
@@ -371,21 +466,8 @@ func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *skenv
 		}
 		r.entries++
 	}
-	resolved := func(c skenvfile.Checkout) string { return e.manifest.Path(e.env.Home, c.CheckoutDir) }
-	if extraOwn != nil && !slices.ContainsFunc(own, func(g ownGroup) bool { return samePath(resolved(g.own), resolved(*extraOwn)) }) {
-		extra := *extraOwn
-		extra.ID = skenvfile.NewID(extra.Repo, taken)
-		withExtra, err := skenvfile.AppendCheckout(out, ext, extra)
-		if err == nil {
-			err = e.checkManifest(withExtra)
-		}
-		if err != nil {
-			e.warnf("not adding %s as a checkout: %v", extra.Repo, err)
-		} else {
-			out = withExtra
-			r.entries++
-			r.managed[byOwn] = append(r.managed[byOwn], fmt.Sprintf("%s: %s at %s (the repository of the manifest)", extra.ID, extra.Repo, e.displayPath(resolved(extra))))
-		}
+	if extra != nil {
+		out = e.appendExtra(r, out, *extra)
 	}
 	if string(out) != string(start) || fresh {
 		var err error
@@ -396,22 +478,7 @@ func (e *UserScope) importUser(before, start []byte, fresh bool, extraOwn *skenv
 	if err := e.checkManifest(out); err != nil {
 		return nil, fmt.Errorf("the imported manifest is invalid, nothing was written: %w", err)
 	}
-	r.out = out
-
-	// Lock entries of every skill the manifest now has.
-	skills, err = e.skills()
-	if err != nil {
-		return nil, err
-	}
-	for _, s := range skills {
-		if _, ok := lock.entries[s.Name]; ok {
-			r.unlock = append(r.unlock, s.Name)
-		}
-	}
-	slices.Sort(r.unlock)
-	r.diff = strings.TrimSuffix(lineDiff(e.displayPath(e.manifestPath), before, out), "\n")
-	e.report(r, e.displayPath(e.manifestPath))
-	return r, nil
+	return out, nil
 }
 
 // checkManifest parses the manifest text and makes it the engine's
