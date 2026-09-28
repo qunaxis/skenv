@@ -9,7 +9,89 @@ linters:
     - unconvert
     - usestdlibvars
     - modernize
+    - depguard
   settings:
+    depguard:
+      # The layers of internal/ (#61): cli on top, then features, model,
+      # platform; devtools beside them. A package imports only layers below
+      # its own, so a feature can be read without the others and the file
+      # model without any feature.
+      rules:
+        platform:
+          files: ["**/internal/platform/**"]
+          deny:
+            - pkg: github.com/qunaxis/skenv/internal
+              desc: platform packages import no internal package
+        model:
+          files: ["**/internal/model/**"]
+          deny:
+            - pkg: github.com/qunaxis/skenv/internal/features
+              desc: the model is shared by the features and imports none of them
+            - pkg: github.com/qunaxis/skenv/internal/cli
+              desc: the model does not import the command layer
+            - pkg: github.com/qunaxis/skenv/internal/devtools
+              desc: devtools are build-time only
+        # A feature does not import another one: what two features share is
+        # model or platform.
+        features-skills:
+          files: ["**/internal/features/skills/**"]
+          deny:
+            - pkg: github.com/qunaxis/skenv/internal/features/repository
+              desc: features do not import each other; move the shared part to internal/model
+            - pkg: github.com/qunaxis/skenv/internal/features/lint
+              desc: features do not import each other; move the shared part to internal/model
+            - pkg: github.com/qunaxis/skenv/internal/features/autostart
+              desc: features do not import each other; move the shared part to internal/model
+            - pkg: github.com/qunaxis/skenv/internal/cli
+              desc: features do not import the command layer
+            - pkg: github.com/qunaxis/skenv/internal/devtools
+              desc: devtools are build-time only
+        features-repository:
+          files: ["**/internal/features/repository/**"]
+          deny:
+            - pkg: github.com/qunaxis/skenv/internal/features/skills
+              desc: features do not import each other; move the shared part to internal/model
+            - pkg: github.com/qunaxis/skenv/internal/features/lint
+              desc: features do not import each other; move the shared part to internal/model
+            - pkg: github.com/qunaxis/skenv/internal/features/autostart
+              desc: features do not import each other; move the shared part to internal/model
+            - pkg: github.com/qunaxis/skenv/internal/cli
+              desc: features do not import the command layer
+            - pkg: github.com/qunaxis/skenv/internal/devtools
+              desc: devtools are build-time only
+        features-lint:
+          files: ["**/internal/features/lint/**"]
+          deny:
+            - pkg: github.com/qunaxis/skenv/internal/features/skills
+              desc: features do not import each other; move the shared part to internal/model
+            - pkg: github.com/qunaxis/skenv/internal/features/repository
+              desc: features do not import each other; move the shared part to internal/model
+            - pkg: github.com/qunaxis/skenv/internal/features/autostart
+              desc: features do not import each other; move the shared part to internal/model
+            - pkg: github.com/qunaxis/skenv/internal/cli
+              desc: features do not import the command layer
+            - pkg: github.com/qunaxis/skenv/internal/devtools
+              desc: devtools are build-time only
+        features-autostart:
+          files: ["**/internal/features/autostart/**"]
+          deny:
+            - pkg: github.com/qunaxis/skenv/internal/features/skills
+              desc: features do not import each other; move the shared part to internal/model
+            - pkg: github.com/qunaxis/skenv/internal/features/repository
+              desc: features do not import each other; move the shared part to internal/model
+            - pkg: github.com/qunaxis/skenv/internal/features/lint
+              desc: features do not import each other; move the shared part to internal/model
+            - pkg: github.com/qunaxis/skenv/internal/cli
+              desc: features do not import the command layer
+            - pkg: github.com/qunaxis/skenv/internal/devtools
+              desc: devtools are build-time only
+        devtools:
+          # Tests of internal/cli use devtools/clidocs/example to record the
+          # command examples; the binary never links a devtools package.
+          files: ["$all", "!$test", "!**/internal/devtools/**"]
+          deny:
+            - pkg: github.com/qunaxis/skenv/internal/devtools
+              desc: devtools are build-time only, never imported by the binary
     errcheck:
       # Output to the terminal: nothing sensible to do on failure.
       exclude-functions:

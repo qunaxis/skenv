@@ -22,6 +22,9 @@ it would stop Claude Code from loading this file.
   TOML/YAML/JSON, parsing and in-place editing; `legacy.go`: errors for the keys before 0.6), `internal/model/skillname` (skill name validation),
   `internal/features/skills/state`, `internal/devtools/gendocs` (command reference generation tool),
   `internal/devtools/genschemas` (schema generation tool).
+- Layers, enforced by depguard in `.golangci.yml`: `platform` imports no internal
+  package, `model` only `platform` and `model`, features never import each other,
+  and only `devtools` and tests import `devtools`.
 - One template set is embedded, version `skenvfile.LatestTemplates`. A template change
   bumps `skenvfile.LatestTemplates` to the release that ships it; `skenv repo check`
   then reports older repositories and `skenv repo upgrade` moves them
