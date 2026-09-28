@@ -178,3 +178,22 @@ func TestProseFilesScope(t *testing.T) {
 		t.Errorf("proseFiles = %q\nwant %q", got, want)
 	}
 }
+
+// A root of proseRoots that disappears (renamed or deleted) fails the scan
+// and names the root, instead of silently shrinking the checked prose.
+func TestProseFilesMissingRoot(t *testing.T) {
+	root := t.TempDir()
+	for _, f := range []string{"README.md", "docs/index.md", "skills/skenv/SKILL.md", "internal/cli/help/sync.md"} {
+		p := filepath.Join(root, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("# x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := proseFiles(root) // no AGENTS.md
+	if err == nil || !strings.Contains(err.Error(), "prose root AGENTS.md") {
+		t.Errorf("proseFiles without AGENTS.md: err = %v, want one naming the root", err)
+	}
+}
