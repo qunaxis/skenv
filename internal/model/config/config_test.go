@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/BurntSushi/toml"
-
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -293,22 +291,5 @@ func TestSetFormat(t *testing.T) {
 				t.Errorf("mismatch wrote something: %d files\n%s", len(entries), after)
 			}
 		})
-	}
-}
-
-// tomlString must escape U+007F (DEL) to produce valid TOML.
-func TestTomlStringEscapesDEL(t *testing.T) {
-	input := "hello\x7fworld"
-	encoded := tomlString(input)
-
-	// Must produce valid TOML that parses back to the original.
-	tomlContent := "key = " + encoded + "\n"
-	var m map[string]string
-	if _, err := toml.Decode(tomlContent, &m); err != nil {
-		t.Fatalf("invalid TOML: %v\nTOML content: %q", err, tomlContent)
-	}
-
-	if m["key"] != input {
-		t.Errorf("got %q, want %q", m["key"], input)
 	}
 }

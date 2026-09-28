@@ -266,11 +266,7 @@ func SetFormat(home, format, key, value string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", err
 	}
-	mode := os.FileMode(0o644)
-	if fi, err := os.Stat(path); err == nil {
-		mode = fi.Mode().Perm()
-	}
-	return path, atomicfile.Write(path, out, mode)
+	return path, atomicfile.Replace(path, out)
 }
 
 // header is the first comment of a new config file (TOML and YAML; JSON
@@ -282,7 +278,7 @@ const header = "# skenv configuration, written by `skenv init`, `clone` or `use`
 func newFile(ext, key, value string) ([]byte, error) {
 	url := schemas.URL(schemas.Config, schemas.Running())
 	if ext == ".toml" {
-		return fmt.Appendf(nil, "#:schema %s\n%s%s = %s\n", url, header, key, tomlString(value)), nil
+		return fmt.Appendf(nil, "#:schema %s\n%s%s = %s\n", url, header, key, docedit.Quote(value)), nil
 	}
 	d, err := docedit.Open(nil, ext)
 	if err != nil {
@@ -324,13 +320,7 @@ func setKey(data []byte, ext, key, value string) ([]byte, error) {
 	}
 	// TOML: replace the line of the key among the top-level keys, or add
 	// one after them.
-	var lines []string
-	if len(data) > 0 {
-		lines = strings.SplitAfter(string(data), "\n")
-		if lines[len(lines)-1] == "" {
-			lines = lines[:len(lines)-1]
-		}
-	}
+	lines := docedit.SplitLines(data)
 	end := len(lines)
 	for i, l := range lines {
 		t := strings.TrimRight(l, "\r\n")
@@ -340,14 +330,14 @@ func setKey(data []byte, ext, key, value string) ([]byte, error) {
 		}
 		m := tomlKeyRe.FindStringSubmatch(t)
 		if m != nil && strings.Trim(m[2], `"`) == key {
-			lines[i] = m[1] + m[2] + m[3] + tomlString(value) + m[5] + l[len(t):]
+			lines[i] = m[1] + m[2] + m[3] + docedit.Quote(value) + m[5] + l[len(t):]
 			return []byte(strings.Join(lines, "")), nil
 		}
 	}
 	// After the last top-level key, before the blank lines and comments
 	// that lead into the first table.
 	at := end
-	for at > 0 && isBlankOrComment(lines[at-1]) && end < len(lines) {
+	for at > 0 && docedit.IsBlankOrComment(lines[at-1]) && end < len(lines) {
 		at--
 	}
 	nl := "\n"
@@ -357,38 +347,7 @@ func setKey(data []byte, ext, key, value string) ([]byte, error) {
 	if at > 0 && !strings.HasSuffix(lines[at-1], "\n") {
 		lines[at-1] += nl
 	}
-	line := key + " = " + tomlString(value) + nl
+	line := key + " = " + docedit.Quote(value) + nl
 	lines = append(lines[:at], append([]string{line}, lines[at:]...)...)
 	return []byte(strings.Join(lines, "")), nil
-}
-
-func isBlankOrComment(l string) bool {
-	t := strings.TrimSpace(l)
-	return t == "" || strings.HasPrefix(t, "#")
-}
-
-// tomlString renders s as a TOML basic string.
-func tomlString(s string) string {
-	var b strings.Builder
-	b.WriteByte('"')
-	for _, r := range s {
-		switch r {
-		case '"':
-			b.WriteString(`\"`)
-		case '\\':
-			b.WriteString(`\\`)
-		case '\n':
-			b.WriteString(`\n`)
-		case '\t':
-			b.WriteString(`\t`)
-		default:
-			if r < 0x20 || r == 0x7f {
-				fmt.Fprintf(&b, `\u%04X`, r)
-			} else {
-				b.WriteRune(r)
-			}
-		}
-	}
-	b.WriteByte('"')
-	return b.String()
 }
