@@ -133,6 +133,24 @@ func ScanDenylist(root string, files []string, deny *Denylist) []Finding {
 	return out
 }
 
+// PublishScan runs the repository-wide publication checks of P1: the
+// stop-list (ScanDenylist) over every file git would publish, and gitleaks
+// over the whole history. leaks is the redacted gitleaks report, empty when
+// it found nothing.
+func PublishScan(root string, deny *Denylist) (findings []Finding, leaks string, err error) {
+	// The whole repository is published, not only the skills.
+	files, err := RepoFiles(root)
+	if err != nil {
+		return nil, "", err
+	}
+	findings = ScanDenylist(root, files, deny)
+	leaks, err = Gitleaks(root)
+	if err != nil {
+		return nil, "", err
+	}
+	return findings, leaks, nil
+}
+
 type denyMatch struct{ line, entry int }
 
 // normalize lowercases s and collapses whitespace runs to one space; lines

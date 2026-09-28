@@ -54,7 +54,6 @@ skenv lint --publish`,
 }
 
 func runLint(ctx context.Context, env skills.Env, stdin io.Reader, pos []string, staged, publish, hook bool) (int, error) {
-	var err error
 	if hook {
 		// The hook reads its skill from the event: paths, --staged and
 		// --publish would be ignored, so they are rejected instead.
@@ -63,38 +62,9 @@ func runLint(ctx context.Context, env skills.Env, stdin io.Reader, pos []string,
 		}
 		return lintHook(env, stdin)
 	}
-	var skillDirs []string
-	switch {
-	case staged:
-		if len(pos) > 0 {
-			return 0, errors.New("lint: --staged takes no paths")
-		}
-		root, err := gitRoot(ctx, ".")
-		if err != nil {
-			return 0, err
-		}
-		out, err := gitx.Git{}.Run(ctx, root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z")
-		if err != nil {
-			return 0, err
-		}
-		var files []string
-		for f := range strings.SplitSeq(out, "\x00") {
-			if f != "" {
-				files = append(files, f)
-			}
-		}
-		skillDirs = lint.ForFiles(root, files)
-	default:
-		if len(pos) == 0 {
-			pos = []string{"."}
-		}
-		for _, p := range pos {
-			found, err := lint.Find(p)
-			if err != nil {
-				return 0, err
-			}
-			skillDirs = append(skillDirs, found...)
-		}
+	skillDirs, err := lintSkillDirs(ctx, pos, staged)
+	if err != nil {
+		return 0, err
 	}
 	var deny *lint.Denylist
 	if publish {
@@ -102,6 +72,65 @@ func runLint(ctx context.Context, env skills.Env, stdin io.Reader, pos []string,
 			return 0, err
 		}
 	}
+	problems, err := lintReport(ctx, env, skillDirs, pos, publish, deny)
+	if err != nil {
+		return 0, err
+	}
+	fmt.Fprintf(env.Stderr, "lint: %d skills, %d problems\n", len(skillDirs), problems)
+	if problems > 0 {
+		return skills.ExitProblems, nil
+	}
+	return skills.ExitOK, nil
+}
+
+// lintSkillDirs is the skills to check: those with files staged in the git
+// index (--staged) or those found under pos (default ".").
+func lintSkillDirs(ctx context.Context, pos []string, staged bool) ([]string, error) {
+	if staged {
+		if len(pos) > 0 {
+			return nil, errors.New("lint: --staged takes no paths")
+		}
+		return lintStagedSkillDirs(ctx)
+	}
+	if len(pos) == 0 {
+		pos = []string{"."}
+	}
+	var skillDirs []string
+	for _, p := range pos {
+		found, err := lint.Find(p)
+		if err != nil {
+			return nil, err
+		}
+		skillDirs = append(skillDirs, found...)
+	}
+	return skillDirs, nil
+}
+
+// lintStagedSkillDirs is lintSkillDirs's --staged case: the skills
+// containing a file changed in the git index.
+func lintStagedSkillDirs(ctx context.Context) ([]string, error) {
+	root, err := gitRoot(ctx, ".")
+	if err != nil {
+		return nil, err
+	}
+	out, err := gitx.Git{}.Run(ctx, root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z")
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for f := range strings.SplitSeq(out, "\x00") {
+		if f != "" {
+			files = append(files, f)
+		}
+	}
+	return lint.ForFiles(root, files), nil
+}
+
+// lintReport prints the findings of skillDirs (L1-L6, plus P1 with
+// --publish) and, with --publish, the repository-wide P1 findings (the
+// stop-list and gitleaks); it returns the number of problems found. Skill
+// paths are printed relative to the working directory when possible.
+func lintReport(ctx context.Context, env skills.Env, skillDirs, pos []string, publish bool, deny *lint.Denylist) (int, error) {
 	cwd, _ := os.Getwd()
 	problems := 0
 	report := func(fs []lint.Finding) {
@@ -119,35 +148,27 @@ func runLint(ctx context.Context, env skills.Env, stdin io.Reader, pos []string,
 			report(lint.Publish(s))
 		}
 	}
-	if publish {
-		dir := "."
-		if len(pos) > 0 {
-			dir = pos[0]
-		}
-		root, err := gitRoot(ctx, dir)
-		if err != nil {
-			return 0, fmt.Errorf("--publish scans the repository and its history: %w", err)
-		}
-		// The whole repository is published, not only the skills.
-		files, err := lint.RepoFiles(root)
-		if err != nil {
-			return 0, err
-		}
-		report(lint.ScanDenylist(root, files, deny))
-		leaks, err := lint.Gitleaks(root)
-		if err != nil {
-			return 0, err
-		}
-		if leaks != "" {
-			fmt.Fprintf(env.Stdout, "%s: P1: gitleaks found secrets in the history (redacted report below)\n%s", root, leaks)
-			problems++
-		}
+	if !publish {
+		return problems, nil
 	}
-	fmt.Fprintf(env.Stderr, "lint: %d skills, %d problems\n", len(skillDirs), problems)
-	if problems > 0 {
-		return skills.ExitProblems, nil
+	dir := "."
+	if len(pos) > 0 {
+		dir = pos[0]
 	}
-	return skills.ExitOK, nil
+	root, err := gitRoot(ctx, dir)
+	if err != nil {
+		return 0, fmt.Errorf("--publish scans the repository and its history: %w", err)
+	}
+	findings, leaks, err := lint.PublishScan(root, deny)
+	if err != nil {
+		return 0, err
+	}
+	report(findings)
+	if leaks != "" {
+		fmt.Fprintf(env.Stdout, "%s: P1: gitleaks found secrets in the history (redacted report below)\n%s", root, leaks)
+		problems++
+	}
+	return problems, nil
 }
 
 // lintHook handles a Claude Code PostToolUse event on stdin: lint the
@@ -200,9 +221,6 @@ func repoCmd(a *app) *cobra.Command {
 			Example: example,
 			Args:    nArgs(0),
 		}
-		c.RunE = a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
-			return runRepo(ctx, env, name, dir, visibility, ci, format, runner, c.Flags().Changed("runner"), dryRun, force)
-		})
 		if name != "check" {
 			dryRunFlag(c.Flags(), &dryRun, dryRunPlain)
 			c.Flags().BoolVar(&force, "force", false, "replace existing files that skenv does not manage yet")
@@ -235,6 +253,9 @@ func repoCmd(a *app) *cobra.Command {
 	initC.Flags().StringVar(&ci, "ci", "", "CI system: github or gitlab (default: detected from the host of origin, else github)")
 	_ = initC.RegisterFlagCompletionFunc("ci", cobra.FixedCompletions(skenvfile.CIs, cobra.ShellCompDirectiveNoFileComp))
 	formatFlag(initC, &format, "format of a new skenv file: toml, yaml or json (default toml; an existing file keeps its format)")
+	initC.RunE = a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
+		return runRepoInit(ctx, env, dir, visibility, ci, format, runner, initC.Flags().Changed("runner"), dryRun, force)
+	})
 	apply := sub("apply", "apply", "Regenerate the managed files from the repository templates",
 		"Regenerate the managed files and blocks from the templates of\nrepository.template_version; then `lefthook install`. apply never changes\nthe skenv file: template_version is what the repository asks for, and\nthis skenv embeds the templates of "+skenvfile.LatestTemplates+" only. Another version\nis an error: run `skenv repo upgrade` to move the repository to "+skenvfile.LatestTemplates+",\nor use the skenv release it names.\n\nThe CI pipeline follows the table under repository.ci. To switch CI systems,\nreplace [repository.ci.github] with [repository.ci.gitlab] (or back) and run\napply: it writes the pipeline of the new one and removes the managed file\nof the other (.github/workflows/check.yml or .gitlab-ci.yml).\n\n"+
 			"- Reads: the skenv file ([repository]) and the managed files.\n"+
@@ -244,6 +265,9 @@ func repoCmd(a *app) *cobra.Command {
 			"- Preview: --dry-run writes nothing and does not run lefthook install.\n"+
 			"- Next: commit the changed files.",
 		"# Restore a managed file edited by hand\nskenv repo apply")
+	apply.RunE = a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
+		return runRepoApply(ctx, env, dir, dryRun, force)
+	})
 	upgrade := sub("upgrade", "upgrade", "Move the repository to the templates of this skenv",
 		"Set repository.template_version to "+skenvfile.LatestTemplates+", the templates of this skenv,\nand point the schema directive of the skenv file at that version (comments\nand formatting stay), then regenerate the managed files as `skenv repo\napply` does. The generated CI installs the skenv release of\ntemplate_version, so that release must exist before you push.\n\n"+
 			"- Reads: the skenv file ([repository]) and the managed files.\n"+
@@ -253,109 +277,135 @@ func repoCmd(a *app) *cobra.Command {
 			"- Preview: --dry-run writes nothing and does not run lefthook install.\n"+
 			"- Next: commit the skenv file and the changed files.",
 		"# Move the repository to the templates of the installed skenv\nskenv repo upgrade --dry-run\nskenv repo upgrade")
+	upgrade.RunE = a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
+		return runRepoUpgrade(ctx, env, dir, dryRun, force)
+	})
 	check := sub("check", "check", "Compare the managed files with the repository templates",
 		"Compare repository.template_version with the templates of this skenv\n("+skenvfile.LatestTemplates+"), and the managed files and blocks with the templates of that\nversion: a file generated by another version (its header), or edited by\nhand, is drift. Exit code 0: in sync, 1: drift (files listed), 2: error.\nA missing or outdated schema directive in the skenv file is a warning that\ndoes not change the exit code.",
 		"# The managed files match the repository templates\nskenv repo check\n# A managed file was edited by hand\nskenv repo check")
+	check.RunE = a.action(func(ctx context.Context, env skills.Env, _ []string) (int, error) {
+		return runRepoCheck(ctx, env, dir)
+	})
 	c := group("repo", "Set up and check the repository templates of a skills repository", initC, apply, upgrade, check)
 	c.Example = "skenv repo init --visibility private\nskenv repo init --visibility public --ci gitlab\nskenv repo check\nskenv repo apply\nskenv repo upgrade"
 	c.PersistentFlags().StringVar(&dir, "dir", ".", "repository (any directory inside it)")
 	return c
 }
 
-func runRepo(ctx context.Context, env skills.Env, sub, dir, visibility, ci, format string, runner []string, runnerSet, dryRun, force bool) (int, error) {
+// runRepoInit is the RunE of `repo init`.
+func runRepoInit(ctx context.Context, env skills.Env, dir, visibility, ci, format string, runner []string, runnerSet, dryRun, force bool) (int, error) {
 	root, err := gitRoot(ctx, dir)
 	if err != nil {
 		return 0, err
 	}
-	switch sub {
-	case "init":
-		if err := docedit.ValidFormat(format); err != nil {
-			return 0, fmt.Errorf("repo init: %w", err)
+	if err := docedit.ValidFormat(format); err != nil {
+		return 0, fmt.Errorf("repo init: %w", err)
+	}
+	detected := ""
+	switch {
+	case ci == "":
+		ci, detected = detectCI(ctx, env, root)
+	case !slices.Contains(skenvfile.CIs, ci):
+		return 0, fmt.Errorf("repo init: --ci must be github or gitlab, got %q", ci)
+	}
+	if len(runner) == 0 && runnerSet {
+		return 0, errors.New("repo init: --runner needs at least one label")
+	}
+	c, changes, err := repository.Init(root, visibility, ci, format, runner, dryRun, force)
+	printChanges(env, changes, dryRun)
+	if err != nil {
+		return 0, err
+	}
+	if detected != "" {
+		fmt.Fprintf(env.Stdout, "ci %s: %s; --ci overrides it\n", c.Provider, detected)
+	}
+	setUp, run := "set up", "run"
+	if dryRun {
+		setUp, run = "would be set up", "would run"
+	}
+	fmt.Fprintf(env.Stdout, "repository templates %s (%s, ci %s) %s in %s\n", c.TemplateVersion, c.Visibility, c.Provider, setUp, root)
+	if c.Visibility == "private" {
+		key := "repository.ci.github.runs_on"
+		if c.Provider == skenvfile.CIGitLab {
+			key = "repository.ci.gitlab.tags"
 		}
-		detected := ""
-		switch {
-		case ci == "":
-			ci, detected = detectCI(ctx, env, root)
-		case !slices.Contains(skenvfile.CIs, ci):
-			return 0, fmt.Errorf("repo init: --ci must be github or gitlab, got %q", ci)
-		}
-		if len(runner) == 0 && runnerSet {
-			return 0, errors.New("repo init: --runner needs at least one label")
-		}
-		c, changes, err := repository.Init(root, visibility, ci, format, runner, dryRun, force)
-		printChanges(env, changes, dryRun)
-		if err != nil {
-			return 0, err
-		}
-		if detected != "" {
-			fmt.Fprintf(env.Stdout, "ci %s: %s; --ci overrides it\n", c.Provider, detected)
-		}
-		setUp, run := "set up", "run"
-		if dryRun {
-			setUp, run = "would be set up", "would run"
-		}
-		fmt.Fprintf(env.Stdout, "repository templates %s (%s, ci %s) %s in %s\n", c.TemplateVersion, c.Visibility, c.Provider, setUp, root)
-		if c.Visibility == "private" {
-			key := "repository.ci.github.runs_on"
-			if c.Provider == skenvfile.CIGitLab {
-				key = "repository.ci.gitlab.tags"
-			}
-			fmt.Fprintf(env.Stdout, "CI jobs %s on runners %s (%s); to change them, edit it and run `skenv repo apply`\n", run, strings.Join(c.Runner, ", "), key)
-		}
-		printHookTools(env)
-		return lefthookInstall(ctx, env, root, dryRun), nil
-	case "apply":
-		c, err := skenvfile.LoadRepository(root)
-		if err != nil {
-			return 0, err
-		}
-		if c.TemplateVersion != skenvfile.LatestTemplates {
-			return 0, fmt.Errorf("%s: template_version %s is not the template set of this skenv (%s); "+
-				"run `skenv repo upgrade` to move the repository to %s, or use skenv %s", filepath.Base(c.File), c.TemplateVersion, skenvfile.LatestTemplates, skenvfile.LatestTemplates, c.TemplateVersion)
-		}
-		changes, err := repository.Apply(root, c, dryRun, force)
-		printChanges(env, changes, dryRun)
-		if err != nil {
-			return 0, err
-		}
-		if len(changes) == 0 {
-			fmt.Fprintln(env.Stdout, "repo apply: up to date")
-		}
-		return lefthookInstall(ctx, env, root, dryRun), nil
-	case "upgrade":
-		c, err := skenvfile.LoadRepository(root)
-		if err != nil {
-			return 0, err
-		}
-		old := c.TemplateVersion
-		c.TemplateVersion = skenvfile.LatestTemplates
-		// Refuse (foreign files without --force) before the version moves.
-		if _, err := repository.Apply(root, c, true, force); err != nil {
-			return 0, err
-		}
-		// repository.template_version and the schema directive.
-		updated, err := repository.Upgrade(root, skenvfile.LatestTemplates, dryRun)
-		if err != nil {
-			return 0, err
-		}
-		prefix := ""
-		if dryRun {
-			prefix = "would move "
-		}
-		switch {
-		case old != skenvfile.LatestTemplates:
-			fmt.Fprintf(env.Stdout, "%stemplate_version %s → %s\n", prefix, old, skenvfile.LatestTemplates)
-		case updated:
-			printChanges(env, []repository.Change{{Path: filepath.Base(c.File), Action: "update"}}, dryRun)
-		default:
-			fmt.Fprintf(env.Stdout, "template_version is %s already\n", skenvfile.LatestTemplates)
-		}
-		changes, err := repository.Apply(root, c, dryRun, force)
-		printChanges(env, changes, dryRun)
-		if err != nil {
-			return 0, err
-		}
-		return lefthookInstall(ctx, env, root, dryRun), nil
+		fmt.Fprintf(env.Stdout, "CI jobs %s on runners %s (%s); to change them, edit it and run `skenv repo apply`\n", run, strings.Join(c.Runner, ", "), key)
+	}
+	printHookTools(env)
+	return lefthookInstall(ctx, env, root, dryRun), nil
+}
+
+// runRepoApply is the RunE of `repo apply`.
+func runRepoApply(ctx context.Context, env skills.Env, dir string, dryRun, force bool) (int, error) {
+	root, err := gitRoot(ctx, dir)
+	if err != nil {
+		return 0, err
+	}
+	c, err := skenvfile.LoadRepository(root)
+	if err != nil {
+		return 0, err
+	}
+	if c.TemplateVersion != skenvfile.LatestTemplates {
+		return 0, fmt.Errorf("%s: template_version %s is not the template set of this skenv (%s); "+
+			"run `skenv repo upgrade` to move the repository to %s, or use skenv %s", filepath.Base(c.File), c.TemplateVersion, skenvfile.LatestTemplates, skenvfile.LatestTemplates, c.TemplateVersion)
+	}
+	changes, err := repository.Apply(root, c, dryRun, force)
+	printChanges(env, changes, dryRun)
+	if err != nil {
+		return 0, err
+	}
+	if len(changes) == 0 {
+		fmt.Fprintln(env.Stdout, "repo apply: up to date")
+	}
+	return lefthookInstall(ctx, env, root, dryRun), nil
+}
+
+// runRepoUpgrade is the RunE of `repo upgrade`.
+func runRepoUpgrade(ctx context.Context, env skills.Env, dir string, dryRun, force bool) (int, error) {
+	root, err := gitRoot(ctx, dir)
+	if err != nil {
+		return 0, err
+	}
+	c, err := skenvfile.LoadRepository(root)
+	if err != nil {
+		return 0, err
+	}
+	old := c.TemplateVersion
+	c.TemplateVersion = skenvfile.LatestTemplates
+	// Refuse (foreign files without --force) before the version moves.
+	if _, err := repository.Apply(root, c, true, force); err != nil {
+		return 0, err
+	}
+	// repository.template_version and the schema directive.
+	updated, err := repository.Upgrade(root, skenvfile.LatestTemplates, dryRun)
+	if err != nil {
+		return 0, err
+	}
+	prefix := ""
+	if dryRun {
+		prefix = "would move "
+	}
+	switch {
+	case old != skenvfile.LatestTemplates:
+		fmt.Fprintf(env.Stdout, "%stemplate_version %s → %s\n", prefix, old, skenvfile.LatestTemplates)
+	case updated:
+		printChanges(env, []repository.Change{{Path: filepath.Base(c.File), Action: "update"}}, dryRun)
+	default:
+		fmt.Fprintf(env.Stdout, "template_version is %s already\n", skenvfile.LatestTemplates)
+	}
+	changes, err := repository.Apply(root, c, dryRun, force)
+	printChanges(env, changes, dryRun)
+	if err != nil {
+		return 0, err
+	}
+	return lefthookInstall(ctx, env, root, dryRun), nil
+}
+
+// runRepoCheck is the RunE of `repo check`.
+func runRepoCheck(ctx context.Context, env skills.Env, dir string) (int, error) {
+	root, err := gitRoot(ctx, dir)
+	if err != nil {
+		return 0, err
 	}
 	drift, err := repository.Check(root)
 	if err != nil {
