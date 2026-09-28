@@ -10,8 +10,8 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/platform/gitx"
 	"github.com/qunaxis/skenv/internal/state"
 )
 

@@ -30,9 +30,8 @@ import (
 	"github.com/BurntSushi/toml"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/qunaxis/skenv/internal/atomicfile"
-	"github.com/qunaxis/skenv/internal/docedit"
-	"github.com/qunaxis/skenv/internal/fileformat"
+	"github.com/qunaxis/skenv/internal/platform/atomicfile"
+	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -228,7 +227,7 @@ func Target(home, format string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return fileformat.Choose(Dir(home), "config", f.Path, format)
+	return docedit.ChooseFormat(Dir(home), "config", f.Path, format)
 }
 
 // SetFormat is Set with the format of a new file ("toml", "yaml", "json";
@@ -239,7 +238,7 @@ func SetFormat(home, format, key, value string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	path, err := fileformat.Choose(Dir(home), "config", f.Path, format)
+	path, err := docedit.ChooseFormat(Dir(home), "config", f.Path, format)
 	if err != nil {
 		return "", err
 	}

@@ -16,8 +16,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/buildinfo"
-	"github.com/qunaxis/skenv/internal/docedit"
+	"github.com/qunaxis/skenv/internal/platform/buildinfo"
+	"github.com/qunaxis/skenv/internal/platform/docedit"
 )
 
 // Schema file names.

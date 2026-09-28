@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qunaxis/skenv/internal/atomicfile"
 	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/platform/atomicfile"
 )
 
 // The versions of the lock files that the vercel `skills` CLI writes

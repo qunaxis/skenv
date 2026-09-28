@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qunaxis/skenv/internal/fileformat"
 	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -434,7 +434,7 @@ func TestProjectWritesKeepFormat(t *testing.T) {
 			url := schemas.URL(schemas.Skenv, "")
 			text := directive(format, url) + "# my project\n[project]\nmirrors = [\".claude/skills\"] # Claude Code\n"
 			keep := []string{"# my project", "# Claude Code"}
-			switch fileformat.Of("x." + format) {
+			switch docedit.FormatOf("x." + format) {
 			case "yaml":
 				text = directive(format, url) + "# my project\nproject:\n  mirrors: [.claude/skills] # Claude Code\n"
 			case "json":

@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/agents"
-	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/platform/gitx"
 )
 
 // The user scope (the manifest) and the project scope ([project]) own

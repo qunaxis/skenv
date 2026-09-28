@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qunaxis/skenv/internal/gitx"
+	"github.com/qunaxis/skenv/internal/platform/gitx"
 )
 
 // checkManifestEngine opens a read-only UserScope on a manifest with the given

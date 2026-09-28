@@ -9,7 +9,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/qunaxis/skenv/internal/gitx"
+	"github.com/qunaxis/skenv/internal/platform/gitx"
 )
 
 // Kinds and states of `skenv list`.

@@ -1,4 +1,4 @@
-package fileformat
+package docedit
 
 import (
 	"path/filepath"
@@ -24,7 +24,7 @@ func TestChoose(t *testing.T) {
 		{"/r/skenv.toml", "yaml", "", "/r/skenv.toml exists and is TOML; --format yaml does not convert it"},
 		{"/r/skenv.yaml", "json", "", "is YAML; --format json"},
 	} {
-		got, err := Choose(dir, "skenv", c.existing, c.format)
+		got, err := ChooseFormat(dir, "skenv", c.existing, c.format)
 		switch {
 		case c.err != "" && (err == nil || !strings.Contains(err.Error(), c.err)):
 			t.Errorf("Choose(%q, %q): err = %v, want %q", c.existing, c.format, err, c.err)
@@ -36,7 +36,7 @@ func TestChoose(t *testing.T) {
 
 func TestOf(t *testing.T) {
 	for p, want := range map[string]string{"a.toml": "toml", "a.yml": "yaml", "a.yaml": "yaml", "a.json": "json", "a.ini": ""} {
-		if got := Of(p); got != want {
+		if got := FormatOf(p); got != want {
 			t.Errorf("Of(%q) = %q, want %q", p, got, want)
 		}
 	}

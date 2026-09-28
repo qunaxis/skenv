@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qunaxis/skenv/internal/gitx"
+	"github.com/qunaxis/skenv/internal/platform/gitx"
 )
 
 // The order of localeCompare in Node 24, recorded from

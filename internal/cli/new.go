@@ -14,7 +14,7 @@ import (
 	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/lint"
 	"github.com/qunaxis/skenv/internal/manifest"
-	"github.com/qunaxis/skenv/internal/paths"
+	"github.com/qunaxis/skenv/internal/platform/paths"
 )
 
 // newCmd scaffolds a skill (P3) in --dir or in a checkout of the manifest.

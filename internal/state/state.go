@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/qunaxis/skenv/internal/atomicfile"
+	"github.com/qunaxis/skenv/internal/platform/atomicfile"
 )
 
 // Kind of a managed path.

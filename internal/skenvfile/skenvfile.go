@@ -21,7 +21,7 @@
 // ignored) for editors. Each section is decoded strictly: unknown keys are
 // errors.
 //
-// YAML and JSON files are edited with internal/docedit, which keeps
+// YAML and JSON files are edited with internal/platform/docedit, which keeps
 // comments and key order; TOML files are edited as text by their callers.
 package skenvfile
 
@@ -41,7 +41,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/qunaxis/skenv/internal/docedit"
+	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/schemas"
 )
 

@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/agents"
-	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/platform/gitx"
 	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 

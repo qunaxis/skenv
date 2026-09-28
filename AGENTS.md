@@ -5,19 +5,19 @@ it would stop Claude Code from loading this file.
 
 - Go CLI, module `github.com/qunaxis/skenv`, binary `cmd/skenv`. Runtime
   dependency: `git` only. No network services, no other executables.
-- Layout: `internal/agents`, `internal/atomicfile` (atomic file writes),
-  `internal/autostart`, `internal/buildinfo`, `internal/cli` (flags, integration tests),
+- Layout: `internal/agents`, `internal/platform/atomicfile` (atomic file writes),
+  `internal/autostart`, `internal/platform/buildinfo`, `internal/cli` (flags, integration tests),
   `internal/clidocs` (command reference and man pages), `internal/cliexample` (command examples),
   `internal/cli/new.go` (`skenv new`), `internal/config` (tool config),
-  `internal/docedit` (YAML/JSON document editing), `internal/engine`
+  `internal/platform/docedit` (YAML/JSON document editing; `format.go`: `--format` of new files; no write changes a file's
+  format, `TestWritesKeepFormat` covers every write path), `internal/engine`
   (sync, link, doctor, list, vendor, init, clone, use, import; `project*.go`: `[project]` in a
-  project repository), `internal/fileformat` (`--format` of new files; no write changes a file's
-  format, `TestWritesKeepFormat` covers every write path), `internal/gitx`,
+  project repository), `internal/platform/gitx`,
   `internal/harness` (`[repository]`, `repo init|apply|upgrade|check`, templates in
   `internal/harness/templates/`), `internal/lint` (L1-L6; `publish.go`: P1 publication check,
   stop-list phrases are never printed), `internal/manifest` (`[user]` and `[project]`
   parsing and in-place editing), `internal/mdscan` (fenced-code-block scanner for doc
-  example tests), `internal/paths` (file location resolution), `internal/release`
+  example tests), `internal/platform/paths` (file location resolution), `internal/release`
   (tests for `cliff.toml` and the commit check), `internal/schemagen` (JSON Schema generation),
   `internal/skenvfile` (the skenv file: `[repository]`, `[user]` and `[project]`,
   TOML/YAML/JSON; `legacy.go`: errors for the keys before 0.6), `internal/skillname` (skill name validation),

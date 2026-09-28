@@ -12,8 +12,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/harness"
+	"github.com/qunaxis/skenv/internal/platform/gitx"
 )
 
 // Discrepancy classes reported by doctor.

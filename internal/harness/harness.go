@@ -21,10 +21,9 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/qunaxis/skenv/internal/atomicfile"
-	"github.com/qunaxis/skenv/internal/docedit"
-	"github.com/qunaxis/skenv/internal/fileformat"
 	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/platform/atomicfile"
+	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/internal/skenvfile"
 	"github.com/qunaxis/skenv/schemas"
 )
@@ -703,7 +702,7 @@ func Init(root, visibility, ci, format string, runner []string, dryRun, force bo
 	if err != nil {
 		return nil, nil, err
 	}
-	target, err := fileformat.Choose(root, "skenv", file, format)
+	target, err := docedit.ChooseFormat(root, "skenv", file, format)
 	if err != nil {
 		return nil, nil, err
 	}

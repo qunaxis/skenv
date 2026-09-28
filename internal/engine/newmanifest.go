@@ -10,11 +10,11 @@ import (
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/config"
-	"github.com/qunaxis/skenv/internal/fileformat"
-	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/manifest"
-	"github.com/qunaxis/skenv/internal/paths"
+	"github.com/qunaxis/skenv/internal/platform/docedit"
+	"github.com/qunaxis/skenv/internal/platform/gitx"
+	"github.com/qunaxis/skenv/internal/platform/paths"
 	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
@@ -98,7 +98,7 @@ func planManifest(ctx context.Context, env Env, dir, format, remote string) (*ma
 	if err != nil {
 		return nil, err
 	}
-	if p.file, err = fileformat.Choose(root, "skenv", existing, format); err != nil {
+	if p.file, err = docedit.ChooseFormat(root, "skenv", existing, format); err != nil {
 		return nil, err
 	}
 	if existing != "" {
@@ -147,7 +147,7 @@ func planManifest(ctx context.Context, env Env, dir, format, remote string) (*ma
 		return nil, err
 	}
 	if cfg.Path == "" {
-		p.cfgFormat = fileformat.Of(p.file)
+		p.cfgFormat = docedit.FormatOf(p.file)
 	}
 	if p.cfgPath, err = config.Target(env.Home, p.cfgFormat); err != nil {
 		return nil, err

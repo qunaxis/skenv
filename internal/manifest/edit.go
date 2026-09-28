@@ -8,15 +8,15 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/atomicfile"
-	"github.com/qunaxis/skenv/internal/docedit"
+	"github.com/qunaxis/skenv/internal/platform/atomicfile"
+	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
 // The editing helpers below work on the TOML text rather than on the
 // decoded structure so that comments, ordering and formatting survive
 // `skenv vendor add|update|remove` and `skenv import`. YAML and JSON skenv files are edited with
-// internal/docedit, which keeps comments and key order as well.
+// internal/platform/docedit, which keeps comments and key order as well.
 
 var (
 	headerRe     = regexp.MustCompile(`^\s*\[`)

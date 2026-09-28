@@ -9,10 +9,9 @@ import (
 	"testing"
 
 	"github.com/qunaxis/skenv/internal/config"
-	"github.com/qunaxis/skenv/internal/docedit"
-	"github.com/qunaxis/skenv/internal/fileformat"
 	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/internal/skenvfile"
 	"github.com/qunaxis/skenv/schemas"
 )
@@ -27,7 +26,7 @@ func noLefthook(t *testing.T) {
 
 // directive is the schema directive line or key of a file in format.
 func directive(format, url string) string {
-	switch fileformat.Of("x." + format) {
+	switch docedit.FormatOf("x." + format) {
 	case "toml":
 		return "#:schema " + url + "\n"
 	case "yaml":
@@ -40,7 +39,7 @@ func directive(format, url string) string {
 // format has them and a schema directive.
 func manifestIn(format, rev string) string {
 	url := schemas.URL(schemas.Skenv, "")
-	switch fileformat.Of("x." + format) {
+	switch docedit.FormatOf("x." + format) {
 	case "yaml":
 		return directive(format, url) + "# test manifest\nuser:\n  checkouts:\n    skills:\n      repo: me/skills\n      checkout_dir: ~/" + ownPath + "\n" +
 			"  # pinned third-party skill\n  dependencies:\n    archify:\n      repo: ext/tools\n      skill_dir: tools/archify\n      commit: \"" + rev + "\" # keep this comment\n"
@@ -139,7 +138,7 @@ func TestWritesKeepFormat(t *testing.T) {
 
 			cfgKeep := []string{"# my config"}
 			cfgText := directive(format, schemas.URL(schemas.Config, "")) + "# my config\nmanifest = \"/elsewhere\"\n"
-			switch fileformat.Of("x." + format) {
+			switch docedit.FormatOf("x." + format) {
 			case "yaml":
 				cfgText = directive(format, schemas.URL(schemas.Config, "")) + "# my config\nmanifest: /elsewhere\n"
 			case "json":
@@ -175,7 +174,7 @@ func TestWritesKeepFormat(t *testing.T) {
 					w.cloneSync("me/skills", "~/"+ownPath)
 				}, cfgDir, "config", cfgKeep, manifestIs(manifestFile)},
 				{"use with --format of the existing config", func() {
-					w.mustRun(0, "use", "~/"+ownPath, "--format", fileformat.Of("x."+format))
+					w.mustRun(0, "use", "~/"+ownPath, "--format", docedit.FormatOf("x."+format))
 				}, cfgDir, "config", cfgKeep, manifestIs(manifestFile)},
 				{"vendor add", func() {
 					w.mustRun(0, "vendor", "add", "ext/tools", "--path", "tools/other")

@@ -1,5 +1,6 @@
-// Package docedit edits YAML and JSON documents in place, and reads and
-// writes the schema directive of TOML, YAML and JSON files.
+// Package docedit edits YAML and JSON documents in place, reads and
+// writes the schema directive of TOML, YAML and JSON files, and picks the
+// format of a file skenv creates (format.go).
 //
 // YAML is edited as text at the positions the parser reports, so comments,
 // blank lines, quoting and key order of everything else stay byte for byte.

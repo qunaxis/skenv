@@ -12,9 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/qunaxis/skenv/internal/buildinfo"
 	"github.com/qunaxis/skenv/internal/cliexample"
 	"github.com/qunaxis/skenv/internal/harness"
+	"github.com/qunaxis/skenv/internal/platform/buildinfo"
 )
 
 // The examples of every command (cobra's Example field) run here against a

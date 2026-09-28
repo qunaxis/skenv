@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/qunaxis/skenv/internal/paths"
+	"github.com/qunaxis/skenv/internal/platform/paths"
 )
 
 // Names are the built-in agents, the values of user.agents.enabled.

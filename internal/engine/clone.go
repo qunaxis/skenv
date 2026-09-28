@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 
 	"github.com/qunaxis/skenv/internal/config"
-	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/manifest"
-	"github.com/qunaxis/skenv/internal/paths"
+	"github.com/qunaxis/skenv/internal/platform/gitx"
+	"github.com/qunaxis/skenv/internal/platform/paths"
 )
 
 // Clone connects this machine to an existing manifest repository: it

@@ -15,11 +15,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/qunaxis/skenv/internal/engine"
-	"github.com/qunaxis/skenv/internal/fileformat"
-	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/harness"
 	"github.com/qunaxis/skenv/internal/lint"
 	"github.com/qunaxis/skenv/internal/manifest"
+	"github.com/qunaxis/skenv/internal/platform/docedit"
+	"github.com/qunaxis/skenv/internal/platform/gitx"
 	"github.com/qunaxis/skenv/internal/skenvfile"
 )
 
@@ -273,7 +273,7 @@ func runRepo(ctx context.Context, env engine.Env, sub, dir, visibility, ci, form
 		if visibility == "" {
 			return engine.ExitFatal, usageError{"repo init: --visibility private|public is required"}
 		}
-		if err := fileformat.Valid(format); err != nil {
+		if err := docedit.ValidFormat(format); err != nil {
 			return engine.ExitFatal, usageError{"repo init: " + err.Error()}
 		}
 		detected := ""

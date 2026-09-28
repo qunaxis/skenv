@@ -21,9 +21,9 @@ builds:
     flags: [-trimpath]
     ldflags:
       - -s -w
-      - -X github.com/qunaxis/skenv/internal/buildinfo.Version={{ if .IsSnapshot }}0.0.0-dev+{{ .ShortCommit }}{{ else }}{{ .Tag }}{{ end }}
-      - -X github.com/qunaxis/skenv/internal/buildinfo.Commit={{ .FullCommit }}
-      - -X github.com/qunaxis/skenv/internal/buildinfo.Date={{ .CommitDate }}
+      - -X github.com/qunaxis/skenv/internal/platform/buildinfo.Version={{ if .IsSnapshot }}0.0.0-dev+{{ .ShortCommit }}{{ else }}{{ .Tag }}{{ end }}
+      - -X github.com/qunaxis/skenv/internal/platform/buildinfo.Commit={{ .FullCommit }}
+      - -X github.com/qunaxis/skenv/internal/platform/buildinfo.Date={{ .CommitDate }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:

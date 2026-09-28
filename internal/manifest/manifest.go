@@ -17,7 +17,7 @@ import (
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/agents"
-	"github.com/qunaxis/skenv/internal/paths"
+	"github.com/qunaxis/skenv/internal/platform/paths"
 	"github.com/qunaxis/skenv/internal/skenvfile"
 	"github.com/qunaxis/skenv/internal/skillname"
 )

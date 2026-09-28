@@ -17,12 +17,12 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/qunaxis/skenv/internal/autostart"
-	"github.com/qunaxis/skenv/internal/buildinfo"
 	"github.com/qunaxis/skenv/internal/engine"
-	"github.com/qunaxis/skenv/internal/fileformat"
-	"github.com/qunaxis/skenv/internal/gitx"
 	"github.com/qunaxis/skenv/internal/manifest"
-	"github.com/qunaxis/skenv/internal/paths"
+	"github.com/qunaxis/skenv/internal/platform/buildinfo"
+	"github.com/qunaxis/skenv/internal/platform/docedit"
+	"github.com/qunaxis/skenv/internal/platform/gitx"
+	"github.com/qunaxis/skenv/internal/platform/paths"
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -279,7 +279,7 @@ func groupRun(cmd *cobra.Command, args []string) error {
 // formatFlag adds --format with the completion of its values.
 func formatFlag(c *cobra.Command, p *string, usage string) {
 	c.Flags().StringVar(p, "format", "", usage)
-	_ = c.RegisterFlagCompletionFunc("format", cobra.FixedCompletions(fileformat.Names, cobra.ShellCompDirectiveNoFileComp))
+	_ = c.RegisterFlagCompletionFunc("format", cobra.FixedCompletions(docedit.Formats, cobra.ShellCompDirectiveNoFileComp))
 }
 
 // projectFlag adds --project, the scope of a command: the [project]
@@ -395,7 +395,7 @@ skenv init --remote gitlab:example-group/my-skills`,
 			return nil
 		},
 		RunE: a.action(func(ctx context.Context, env engine.Env, _ []string) (int, error) {
-			if err := fileformat.Valid(format); err != nil {
+			if err := docedit.ValidFormat(format); err != nil {
 				return engine.ExitFatal, usageError{"init: " + err.Error()}
 			}
 			if imp {
@@ -455,7 +455,7 @@ skenv clone example-org/skills
 skenv clone example-org/skills ~/src/skills`,
 		Args: rangeArgs(1, 2),
 		RunE: a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
-			if err := fileformat.Valid(format); err != nil {
+			if err := docedit.ValidFormat(format); err != nil {
 				return engine.ExitFatal, usageError{"clone: " + err.Error()}
 			}
 			dir := ""
@@ -498,7 +498,7 @@ second working copy there.
 skenv use .`,
 		Args: nArgs(1),
 		RunE: a.action(func(ctx context.Context, env engine.Env, args []string) (int, error) {
-			if err := fileformat.Valid(format); err != nil {
+			if err := docedit.ValidFormat(format); err != nil {
 				return engine.ExitFatal, usageError{"use: " + err.Error()}
 			}
 			return engine.Use(ctx, env, args[0], format, dryRun)
