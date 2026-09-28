@@ -57,6 +57,18 @@ func TestYAMLPut(t *testing.T) {
 	}
 }
 
+// A scalar that would read back as a different type (a long digit string, a
+// reserved word) is quoted so it round-trips as a string.
+func TestYAMLPutQuotesAmbiguousScalars(t *testing.T) {
+	got := edit(t, ".yaml", "environment: {}\n", func(d Doc) error {
+		return d.Put([]string{"environment"}, "vendor", Map{{"name", "a"}, {"rev", "1234567890123456789012345678901234567890"}, {"path", "yes"}}, false)
+	})
+	want := "environment:\n  vendor:\n    name: a\n    rev: \"1234567890123456789012345678901234567890\"\n    path: \"yes\"\n"
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestYAMLCRLF(t *testing.T) {
 	got := edit(t, ".yaml", "environment:\r\n  vendor: a\r\n", func(d Doc) error {
 		return d.Put([]string{"environment"}, "layout", "b", false)
@@ -238,5 +250,16 @@ func TestRemoveKey(t *testing.T) {
 		if err := d.Remove([]string{"user", "deps", "zzz"}); err == nil {
 			t.Errorf("%s: a missing key must fail", ext)
 		}
+	}
+}
+
+// Remove on a key whose value is an indentless sequence (items dashed at the
+// key's own column, not indented under it) takes the whole list with it.
+func TestRemoveKeyIndentlessSequence(t *testing.T) {
+	in := "environment:\n  vendor:\n  - name: a\n  layout: {}\n"
+	got := edit(t, ".yaml", in, func(d Doc) error { return d.Remove([]string{"environment", "vendor"}) })
+	want := "environment:\n  layout: {}\n"
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
