@@ -189,6 +189,14 @@ func proseResolve(root *cobra.Command, text string) []string {
 		if proseIsPlaceholder(tok) || len(cur.Commands()) == 0 {
 			break // an argument: cur is the resolved command
 		}
+		if strings.Contains(tok, "|") {
+			sub, problem := proseResolveAlternatives(cur, tok)
+			if problem != "" {
+				return []string{problem}
+			}
+			cur = sub
+			continue
+		}
 		sub := proseFindSubcommand(cur, tok)
 		if sub == nil {
 			return []string{fmt.Sprintf("unknown command %q", tok)}
@@ -222,6 +230,28 @@ func proseCommentIndex(tokens []string) int {
 // argument, such as <repo>, [name...] or ..., rather than a real word.
 func proseIsPlaceholder(tok string) bool {
 	return strings.ContainsAny(tok, "<>…[]")
+}
+
+// proseResolveAlternatives resolves a "|"-separated token such as
+// "add|update|remove", cobra's usage idiom for enumerating a subcommand's
+// alternatives (see docs/commands/skenv_repo_init.md's `--visibility
+// private|public`), by resolving each alternative against cur
+// independently. It returns the last alternative's command, or a problem
+// naming the first alternative that does not exist. A Markdown table cell
+// escapes "|" as "\|" (see docs/commands.md); that escaping is undone
+// before splitting, so a table-cell token resolves the same as an
+// unescaped one.
+func proseResolveAlternatives(cur *cobra.Command, tok string) (*cobra.Command, string) {
+	unescaped := strings.ReplaceAll(tok, `\|`, "|")
+	var next *cobra.Command
+	for _, alt := range strings.Split(unescaped, "|") {
+		sub := proseFindSubcommand(cur, alt)
+		if sub == nil {
+			return nil, fmt.Sprintf("unknown command %q", alt)
+		}
+		next = sub
+	}
+	return next, ""
 }
 
 func proseFindSubcommand(cur *cobra.Command, name string) *cobra.Command {
