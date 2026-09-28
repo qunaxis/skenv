@@ -154,14 +154,7 @@ func (f *formatter) message(e *jsonschema.ValidationError, loc []string) string 
 	var msg string
 	switch k := e.ErrorKind.(type) {
 	case *kind.Type:
-		switch {
-		case k.Got == "null":
-			msg = "is empty (null); give it a value or remove it"
-		case slices.Contains(k.Want, "string") && (k.Got == "number" || k.Got == "integer" || k.Got == "boolean"):
-			msg = "must be a string, got a " + k.Got + "; quote it"
-		default:
-			msg = "must be " + typeNames(k.Want) + ", got " + typeName(k.Got)
-		}
+		msg = typeMessage(k)
 	case *kind.InvalidJsonValue:
 		msg = "must be a string, a table or a list, got a date, time or special number; quote it"
 	case *kind.Enum:
@@ -190,6 +183,17 @@ func (f *formatter) message(e *jsonschema.ValidationError, loc []string) string 
 		msg += ". " + hint
 	}
 	return msg
+}
+
+// typeMessage describes a value of the wrong type.
+func typeMessage(k *kind.Type) string {
+	switch {
+	case k.Got == "null":
+		return "is empty (null); give it a value or remove it"
+	case slices.Contains(k.Want, "string") && (k.Got == "number" || k.Got == "integer" || k.Got == "boolean"):
+		return "must be a string, got a " + k.Got + "; quote it"
+	}
+	return "must be " + typeNames(k.Want) + ", got " + typeName(k.Got)
 }
 
 // notMessage is the errorMessage of a failed "not": inside the negated
@@ -223,17 +227,24 @@ func (f *formatter) known(url string) []string {
 // document, nil when it cannot.
 func (f *formatter) subschema(url string) any {
 	_, frag, _ := strings.Cut(url, "#")
-	cur := f.schema
+	var segs []string
 	for tok := range strings.SplitSeq(strings.TrimPrefix(frag, "/"), "/") {
-		if tok == "" {
-			continue
+		if tok != "" {
+			segs = append(segs, strings.NewReplacer("~1", "/", "~0", "~").Replace(tok))
 		}
-		tok = strings.NewReplacer("~1", "/", "~0", "~").Replace(tok)
+	}
+	return walkPointer(f.schema, segs)
+}
+
+// walkPointer follows segs, keys of tables and indexes of lists, from
+// cur; nil when one does not lead anywhere.
+func walkPointer(cur any, segs []string) any {
+	for _, seg := range segs {
 		switch c := cur.(type) {
 		case map[string]any:
-			cur = c[tok]
+			cur = c[seg]
 		case []any:
-			i, err := strconv.Atoi(tok)
+			i, err := strconv.Atoi(seg)
 			if err != nil || i >= len(c) {
 				return nil
 			}
@@ -289,24 +300,7 @@ func (f *formatter) isIndex(loc []string) bool {
 	return ok
 }
 
-func (f *formatter) at(loc []string) any {
-	cur := f.doc
-	for _, seg := range loc {
-		switch c := cur.(type) {
-		case map[string]any:
-			cur = c[seg]
-		case []any:
-			i, err := strconv.Atoi(seg)
-			if err != nil || i >= len(c) {
-				return nil
-			}
-			cur = c[i]
-		default:
-			return nil
-		}
-	}
-	return cur
-}
+func (f *formatter) at(loc []string) any { return walkPointer(f.doc, loc) }
 
 func str(schema any, key string) string {
 	m, _ := schema.(map[string]any)

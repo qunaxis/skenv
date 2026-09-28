@@ -518,12 +518,17 @@ func (e *scope) infof(format string, args ...any) {
 
 func (e *scope) warnf(format string, args ...any) {
 	e.warnings++
-	fmt.Fprintf(e.env.Stderr, "warning: %s\n", gitx.Mask(fmt.Sprintf(format, args...)))
+	e.diag("warning", fmt.Sprintf(format, args...))
 }
 
 func (e *scope) errorf(format string, args ...any) {
 	e.errs++
-	fmt.Fprintf(e.env.Stderr, "error: %s\n", gitx.Mask(fmt.Sprintf(format, args...)))
+	e.diag("error", fmt.Sprintf(format, args...))
+}
+
+// diag prints msg, masked, as a diagnostic of level.
+func (e *scope) diag(level, msg string) {
+	fmt.Fprintf(e.env.Stderr, "%s: %s\n", level, gitx.Mask(msg))
 }
 
 func (e *UserScope) saveState() error {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/qunaxis/skenv/internal/features/skills/state"
 	"github.com/qunaxis/skenv/internal/model/skenvfile"
 	"github.com/qunaxis/skenv/internal/platform/gitx"
 )
@@ -86,6 +87,16 @@ func (e *UserScope) Doctor(asJSON bool) (int, error) {
 	r.Skills = len(skills)
 	want := e.desired(skills)
 
+	e.doctorLinks(skills, add)
+	e.doctorExtra(want, add)
+	e.doctorUnmanaged(want, add)
+
+	r.OK = len(r.Issues) == 0
+	return e.printDoctor(r, asJSON)
+}
+
+// doctorLinks reports, per skill, the links of the agent directories.
+func (e *UserScope) doctorLinks(skills []Skill, add func(class, skill, p, detail string)) {
 	for _, s := range skills {
 		e.doctorStore(s, add)
 		var present, absent []string
@@ -107,7 +118,11 @@ func (e *UserScope) Doctor(asJSON bool) (int, error) {
 			}
 		}
 	}
+}
 
+// doctorExtra reports the paths skenv manages that the manifest no longer
+// wants.
+func (e *UserScope) doctorExtra(want map[string]state.Entry, add func(class, skill, p, detail string)) {
 	for _, p := range e.state.Paths() {
 		if _, ok := want[p]; ok {
 			continue
@@ -121,26 +136,17 @@ func (e *UserScope) Doctor(asJSON bool) (int, error) {
 			add(ClassExtraManaged, skill, p, detail)
 		}
 	}
+}
 
-	for _, dir := range append([]string{e.store}, e.targets...) {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
+// doctorUnmanaged reports the entries of the store and the agent
+// directories that skenv does not manage.
+func (e *UserScope) doctorUnmanaged(want map[string]state.Entry, add func(class, skill, p, detail string)) {
+	e.foreignEntries(func(name, p string) {
+		if _, ok := want[p]; ok {
+			return // reported as conflict by doctorLinks
 		}
-		for _, de := range entries {
-			p := filepath.Join(dir, de.Name())
-			if strings.HasPrefix(de.Name(), ".") || e.isClaudeSynced(p) || e.manifest.IsUnmanaged(de.Name()) || e.owned(p) {
-				continue
-			}
-			if _, ok := want[p]; ok {
-				continue // reported as conflict above
-			}
-			add(ClassUnmanaged, de.Name(), p, "not from the manifest (installed manually or by another tool); left alone")
-		}
-	}
-
-	r.OK = len(r.Issues) == 0
-	return e.printDoctor(r, asJSON)
+		add(ClassUnmanaged, name, p, "not from the manifest (installed manually or by another tool); left alone")
+	})
 }
 
 func (e *UserScope) doctorOwn(add func(class, skill, p, detail string), warn func(string, ...any)) {

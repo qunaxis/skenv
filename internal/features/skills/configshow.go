@@ -131,36 +131,7 @@ func (e *UserScope) Explain(manifestSource string) (*Effective, error) {
 		r.Agents = append(r.Agents, EffectiveAgent{Agent: d.Agent, Dir: show(d.Dir), On: d.On, Why: d.Why})
 	}
 	for _, c := range e.manifest.CheckoutList() {
-		er := EffectiveRepo{ID: c.ID, Repo: gitx.Mask(c.Repo), Dir: show(e.checkoutPath(c)), DirSource: "checkout_dir " + c.CheckoutDir}
-		if remote, err := e.manifest.Remote(c.Repo); err == nil {
-			er.URL = gitx.Mask(remote.URL)
-		}
-		if _, ok := e.rules.CheckoutDirs[c.ID]; ok && e.hasRules {
-			er.DirSource = r.Machine.Rules + ".checkout_dirs"
-		}
-		dir := e.checkoutPath(c)
-		switch fi, err := os.Stat(dir); {
-		case err != nil || !fi.IsDir():
-			er.State = "not cloned: sync clones it"
-			er.Branch = c.Branch
-			if er.Branch == "" {
-				er.Branch = "(default of origin)"
-			}
-		case e.checkoutBlocked(c) != "":
-			er.State = "not used: " + gitx.Mask(e.checkoutBlocked(c))
-		default:
-			er.State = "present"
-			if target, err := e.targetBranchLocal(dir, c); err == nil {
-				er.Branch = target
-				if c.Branch == "" {
-					er.Branch += " (default branch of origin)"
-				}
-				if cur := e.currentBranch(dir); cur != target {
-					er.State = "present, on " + onBranch(cur) + ": local development state, sync does not update it"
-				}
-			}
-		}
-		r.Checkouts = append(r.Checkouts, er)
+		r.Checkouts = append(r.Checkouts, e.effectiveCheckout(c))
 	}
 	skills, err := e.skills()
 	if err != nil {
@@ -170,6 +141,49 @@ func (e *UserScope) Explain(manifestSource string) (*Effective, error) {
 	for _, s := range skills {
 		installed[s.Name] = true
 	}
+	r.Skills = append(r.Skills, e.effectiveSkills(installed)...)
+	return r, nil
+}
+
+// effectiveCheckout is the checkout c as this machine sees it: where it
+// is cloned and why, and its state and branch.
+func (e *UserScope) effectiveCheckout(c *skenvfile.Checkout) EffectiveRepo {
+	er := EffectiveRepo{ID: c.ID, Repo: gitx.Mask(c.Repo), Dir: e.displayPath(e.checkoutPath(c)), DirSource: "checkout_dir " + c.CheckoutDir}
+	if remote, err := e.manifest.Remote(c.Repo); err == nil {
+		er.URL = gitx.Mask(remote.URL)
+	}
+	if _, ok := e.rules.CheckoutDirs[c.ID]; ok && e.hasRules {
+		er.DirSource = e.machineRule() + ".checkout_dirs"
+	}
+	dir := e.checkoutPath(c)
+	switch fi, err := os.Stat(dir); {
+	case err != nil || !fi.IsDir():
+		er.State = "not cloned: sync clones it"
+		er.Branch = c.Branch
+		if er.Branch == "" {
+			er.Branch = "(default of origin)"
+		}
+	case e.checkoutBlocked(c) != "":
+		er.State = "not used: " + gitx.Mask(e.checkoutBlocked(c))
+	default:
+		er.State = "present"
+		if target, err := e.targetBranchLocal(dir, c); err == nil {
+			er.Branch = target
+			if c.Branch == "" {
+				er.Branch += " (default branch of origin)"
+			}
+			if cur := e.currentBranch(dir); cur != target {
+				er.State = "present, on " + onBranch(cur) + ": local development state, sync does not update it"
+			}
+		}
+	}
+	return er
+}
+
+// effectiveSkills is every skill of the manifest's checkouts and
+// dependencies, selected when installed has it, and why.
+func (e *UserScope) effectiveSkills(installed map[string]bool) []EffectiveSkill {
+	var out []EffectiveSkill
 	for _, c := range e.manifest.CheckoutList() {
 		if e.checkoutBlocked(c) != "" {
 			continue
@@ -184,14 +198,14 @@ func (e *UserScope) Explain(manifestSource string) (*Effective, error) {
 			if ok {
 				why = e.machineWhy(name, why)
 			}
-			r.Skills = append(r.Skills, EffectiveSkill{Name: name, Source: "checkout " + c.ID, Selected: ok && installed[name], Why: why})
+			out = append(out, EffectiveSkill{Name: name, Source: "checkout " + c.ID, Selected: ok && installed[name], Why: why})
 		}
 	}
 	for _, d := range e.manifest.DependencyList() {
 		why := e.machineWhy(d.Name, fmt.Sprintf("dependency %s at %.12s (%s)", gitx.Mask(d.Repo), d.Commit, d.SkillDir))
-		r.Skills = append(r.Skills, EffectiveSkill{Name: d.Name, Source: "dependency", Selected: installed[d.Name], Why: why})
+		out = append(out, EffectiveSkill{Name: d.Name, Source: "dependency", Selected: installed[d.Name], Why: why})
 	}
-	return r, nil
+	return out
 }
 
 // machineWhy adds the verdict of the machine rules to why.

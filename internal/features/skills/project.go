@@ -387,20 +387,26 @@ func (e *ProjectScope) syncMirrors() {
 				e.syncMirror(mdir, name)
 			}
 		}
-		entries, _ := os.ReadDir(mdir)
-		for _, de := range entries {
-			name := de.Name()
-			p := filepath.Join(mdir, name)
-			if in[name] || strings.HasPrefix(name, ".") || !e.isMirrorEntry(p, name) {
-				continue
-			}
-			e.changef("remove %s (no skill %s in %s)", e.rel(p), name, e.project.Dir)
-			if e.opts.DryRun {
-				continue
-			}
-			if err := os.RemoveAll(p); err != nil {
-				e.errorf("remove %s: %v", e.rel(p), err)
-			}
+		e.pruneMirror(mdir, in)
+	}
+}
+
+// pruneMirror removes the entries skenv placed in the mirror mdir for
+// skills that are not in dir any more.
+func (e *ProjectScope) pruneMirror(mdir string, in map[string]bool) {
+	entries, _ := os.ReadDir(mdir)
+	for _, de := range entries {
+		name := de.Name()
+		p := filepath.Join(mdir, name)
+		if in[name] || strings.HasPrefix(name, ".") || !e.isMirrorEntry(p, name) {
+			continue
+		}
+		e.changef("remove %s (no skill %s in %s)", e.rel(p), name, e.project.Dir)
+		if e.opts.DryRun {
+			continue
+		}
+		if err := os.RemoveAll(p); err != nil {
+			e.errorf("remove %s: %v", e.rel(p), err)
 		}
 	}
 }
@@ -435,47 +441,14 @@ func (e *ProjectScope) isMirrorEntry(p, name string) bool {
 	return !modified
 }
 
-// syncMirror makes <mirror>/<name> a symlink to or a copy of <dir>/<name>.
-// It replaces a symlink, a copy skenv made, or a directory with the same
-// content freely; anything else only with --adopt, after a backup.
+// syncMirror makes <mirror>/<name> a symlink to or a copy of <dir>/<name>
+// when mirrorReplaceable allows it.
 func (e *ProjectScope) syncMirror(mdir, name string) {
 	p := filepath.Join(mdir, name)
 	src := e.abs(e.project.Dir, name)
 	copyMode := e.project.MirrorsMode == skenvfile.MirrorCopy
-	fi, err := os.Lstat(p)
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-	case err != nil:
-		e.errorf("%s: %v", e.rel(p), err)
+	if !e.mirrorReplaceable(p, mdir, name, copyMode) {
 		return
-	case fi.Mode()&fs.ModeSymlink != 0:
-		dest, _ := os.Readlink(p)
-		if !copyMode && dest == e.linkDest(mdir, name) {
-			return
-		}
-		// A symlink into the repository is skenv's to repoint; one that
-		// leads out of it (to a personal checkout, say) is not.
-		if (filepath.IsAbs(dest) || !e.inRepo(filepath.Join(mdir, dest))) && !e.adoptMirror(p,
-			fmt.Sprintf("is a symlink out of the repository (to %s)", dest)) {
-			return
-		}
-	default:
-		srcHash, _ := treeHash(src)
-		h, err := treeHash(p)
-		if err != nil {
-			e.errorf("%s: %v", e.rel(p), err)
-			return
-		}
-		mk, _ := readMarker(p)
-		ours := mk.Mirror != "" && mk.Hash == h
-		if copyMode && ours && h == srcHash {
-			return
-		}
-		// The hash leaves out .git: a working copy there is never the same.
-		if !ours && (h != srcHash || fileExists(filepath.Join(p, ".git"))) && !e.adoptMirror(p,
-			fmt.Sprintf("differs from %s and was not made by skenv (edited in the mirror?); move the change to %s", e.rel(src), e.rel(src))) {
-			return
-		}
 	}
 	if copyMode {
 		e.changef("copy %s to %s", e.rel(src), e.rel(p))
@@ -493,6 +466,52 @@ func (e *ProjectScope) syncMirror(mdir, name string) {
 			e.errorf("link %s: %v", e.rel(p), err)
 		}
 	}
+}
+
+// mirrorReplaceable reports whether syncMirror is to write the mirror
+// entry p of the skill name: false when it is up to date or may not be
+// replaced. It replaces a symlink, a copy skenv made, or a directory with
+// the same content freely; anything else only with --adopt, after a
+// backup (adoptMirror).
+func (e *ProjectScope) mirrorReplaceable(p, mdir, name string, copyMode bool) bool {
+	src := e.abs(e.project.Dir, name)
+	fi, err := os.Lstat(p)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return true
+	case err != nil:
+		e.errorf("%s: %v", e.rel(p), err)
+		return false
+	case fi.Mode()&fs.ModeSymlink != 0:
+		dest, _ := os.Readlink(p)
+		if !copyMode && dest == e.linkDest(mdir, name) {
+			return false
+		}
+		// A symlink into the repository is skenv's to repoint; one that
+		// leads out of it (to a personal checkout, say) is not.
+		return (!filepath.IsAbs(dest) && e.inRepo(filepath.Join(mdir, dest))) || e.adoptMirror(p,
+			fmt.Sprintf("is a symlink out of the repository (to %s)", dest))
+	}
+	return e.mirrorDirReplaceable(p, src, copyMode)
+}
+
+// mirrorDirReplaceable is mirrorReplaceable for a mirror entry p that is
+// not a symlink; src is the skill in dir.
+func (e *ProjectScope) mirrorDirReplaceable(p, src string, copyMode bool) bool {
+	srcHash, _ := treeHash(src)
+	h, err := treeHash(p)
+	if err != nil {
+		e.errorf("%s: %v", e.rel(p), err)
+		return false
+	}
+	mk, _ := readMarker(p)
+	ours := mk.Mirror != "" && mk.Hash == h
+	if copyMode && ours && h == srcHash {
+		return false
+	}
+	// The hash leaves out .git: a working copy there is never the same.
+	return (ours || (h == srcHash && !fileExists(filepath.Join(p, ".git")))) || e.adoptMirror(p,
+		fmt.Sprintf("differs from %s and was not made by skenv (edited in the mirror?); move the change to %s", e.rel(src), e.rel(src)))
 }
 
 // adoptMirror handles a mirror entry p that skenv may not replace on its

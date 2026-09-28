@@ -17,12 +17,18 @@ import (
 // usage that must not be "fixed".
 const proseIgnoreDirective = "<!-- docs-check: ignore-next -->"
 
-// proseExcludedDirs and proseExcludedFiles, relative to the repository
-// root, are never scanned: generated output (docs/commands, which mirrors
-// --help, not prose) or content this check does not own.
+// proseRoots, relative to the repository root, are the files and
+// directories TestProseCommandsExist scans: the prose the docs checks own
+// (README.md, AGENTS.md, docs/, skills/skenv/, as TestNoRetiredTerms and
+// the schemagen doc-example tests scan it) and internal/cli/help/, the
+// --help text that docs/commands is generated from. Anything else, such
+// as .github/, .devloop/ or notes under the gitignored tmp/, is not
+// user-facing prose and must not fail the check. proseExcludedDirs are
+// skipped inside them: generated output (docs/commands, which mirrors
+// --help) and the ADRs, whose history this check does not own.
 var (
-	proseExcludedDirs  = []string{"docs/commands", "docs/adr"}
-	proseExcludedFiles = []string{"CHANGELOG.md"}
+	proseRoots        = []string{"README.md", "AGENTS.md", "docs", "skills/skenv", "internal/cli/help"}
+	proseExcludedDirs = []string{"docs/commands", "docs/adr"}
 )
 
 // proseCandidate is one "skenv ..." invocation found in Markdown, ready to
@@ -41,7 +47,22 @@ func proseFindingMessage(c proseCandidate, problem string) string {
 // scans, sorted for a stable report.
 func proseFiles(root string) ([]string, error) {
 	var files []string
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	for _, start := range proseRoots {
+		found, err := proseFilesIn(root, start)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, found...)
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+// proseFilesIn lists the Markdown files at start, a file or directory
+// relative to root, skipping proseExcludedDirs.
+func proseFilesIn(root, start string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(filepath.Join(root, filepath.FromSlash(start)), func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -51,21 +72,19 @@ func proseFiles(root string) ([]string, error) {
 		}
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
-			if rel == ".git" || slices.Contains(proseExcludedDirs, rel) {
+			if slices.Contains(proseExcludedDirs, rel) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if filepath.Ext(p) != ".md" || slices.Contains(proseExcludedFiles, rel) {
-			return nil
+		if filepath.Ext(p) == ".md" {
+			files = append(files, rel)
 		}
-		files = append(files, rel)
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prose root %s (proseRoots): %w", start, err)
 	}
-	sort.Strings(files)
 	return files, nil
 }
 

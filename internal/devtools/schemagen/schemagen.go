@@ -157,157 +157,11 @@ type gen struct {
 	docs map[string]string // "pkg.Type" and "pkg.Type.Field" → doc comment
 }
 
+// skenv is the schema of the skenv file, built one function per $def,
+// each at most 40 statements (funlen): a new key goes into the function
+// of its table.
 func (g *gen) skenv() *Schema {
-	user := g.object(reflect.TypeFor[skenvfile.Manifest]())
-	checkout := g.object(reflect.TypeFor[skenvfile.Checkout]())
-	dependency := g.object(reflect.TypeFor[skenvfile.Dependency]())
-	machine := g.object(reflect.TypeFor[skenvfile.Machine]())
-	agentsDef := g.object(reflect.TypeFor[skenvfile.Agents]())
-	storage := g.object(reflect.TypeFor[skenvfile.Storage]())
-	gitHost := g.object(reflect.TypeFor[skenvfile.GitHost]())
-	repo := g.object(reflect.TypeFor[skenvfile.Repository]())
-	ci := g.object(reflect.TypeFor[skenvfile.CIConfig]())
-	github := g.object(reflect.TypeFor[skenvfile.GitHubCI]())
-	gitlab := g.object(reflect.TypeFor[skenvfile.GitLabCI]())
-	project := g.object(reflect.TypeFor[skenvfile.Project]())
-	from := g.object(reflect.TypeFor[skenvfile.From]())
-
-	idNames := &Schema{Pattern: skenvfile.IDPattern, PatternErrorMessage: `An ID is lowercase letters, digits, "-" and "_", starting with a letter or digit.`}
-	skillNames := skillName()
-	skillNames.Type = ""
-
-	checkouts := user.Properties.get("checkouts")
-	checkouts.AdditionalProperties = &Schema{Ref: "#/$defs/checkout"}
-	checkouts.PropertyNames = idNames
-	deps := user.Properties.get("dependencies")
-	deps.AdditionalProperties = &Schema{Ref: "#/$defs/dependency"}
-	deps.PropertyNames = skillNames
-	user.Properties.get("machines").AdditionalProperties = &Schema{Ref: "#/$defs/machine"}
-	unmanaged := user.Properties.get("unmanaged").Items
-	unmanaged.Pattern = `^[^/]+$`
-	unmanaged.PatternErrorMessage = `A glob over entry names, without "/".`
-	hosts := user.Properties.get("git_hosts")
-	hosts.AdditionalProperties = &Schema{Ref: "#/$defs/gitHost"}
-	hosts.PropertyNames = &Schema{
-		Pattern:             skenvfile.AliasPattern,
-		PatternErrorMessage: `An alias is lowercase letters, digits and "-", starting with a letter.`,
-		Not:                 &Schema{Enum: skenvfile.ReservedAliases, ErrorMessage: "This prefix is built in and cannot be declared."},
-	}
-
-	gitHost.Required = []string{"base_url"}
-	hostURL := gitHost.Properties.get("base_url")
-	hostURL.Pattern = `^([Hh][Tt][Tt][Pp][Ss]?://[^/@?#]+|[Ss][Ss][Hh]://([^/:@?#]+@)?[^/@?#]+)(/[^?#]*)?$`
-	hostURL.PatternErrorMessage = `A base URL such as "https://git.example.com" or "ssh://git@git.example.com", without credentials: ` +
-		`use a git credential helper or an ssh key (https://qunaxis.github.io/skenv/git-hosts#authentication).`
-	hostURL.Examples = []any{"https://git.example.com", "ssh://git@git.example.com"}
-	provider := gitHost.Properties.get("provider")
-	provider.Enum = skenvfile.HostTypes
-	provider.Default = skenvfile.TypeGeneric
-
-	storage.Properties.get("dir").Examples = []any{"~/.agents/skills", "~/.local/share/skenv/skills"}
-	// Codex is the agent people expect here; it reads the store instead.
-	agentHint := "Add other directories to user.agents.extra_dirs; Codex needs no entry: " +
-		"it reads the store (user.storage.dir, default ~/.agents/skills) directly."
-	enabled := agentsDef.Properties.get("enabled")
-	enabled.UniqueItems = true
-	enabled.Items.Enum = agents.Names
-	enabled.Items.ErrorMessage = agentHint
-	agentPaths := agentsDef.Properties.get("paths")
-	agentPaths.AdditionalProperties = &Schema{Type: "string", MinLength: 1}
-	agentPaths.PropertyNames = &Schema{Enum: agents.Names, ErrorMessage: agentHint}
-	agentsDef.Properties.get("extra_dirs").Items.MinLength = 1
-
-	selection := func(s *Schema) {
-		include := s.Properties.get("include")
-		include.UniqueItems = true
-		include.Items.Pattern = `^[^/]+$`
-		include.Items.PatternErrorMessage = `A skill name or a glob over names, without "/".`
-		exclude := s.Properties.get("exclude").Items
-		exclude.Pattern = `^[^/]+$`
-		exclude.PatternErrorMessage = `A skill name or a glob over names, without "/".`
-	}
-	selection(checkout)
-	selection(machine)
-	machineDirs := machine.Properties.get("checkout_dirs")
-	machineDirs.AdditionalProperties = &Schema{Type: "string", MinLength: 1}
-	machineDirs.PropertyNames = idNames
-
-	branch := checkout.Properties.get("branch")
-	branch.Pattern = skenvfile.BranchPattern
-	branch.PatternErrorMessage = "A git branch name."
-	branch.Examples = []any{"main"}
-	checkout.Required = []string{"repo", "checkout_dir"}
-	checkout.Properties.get("repo").MinLength = 1
-	checkout.Properties.get("checkout_dir").MinLength = 1
-	skillsDir := checkout.Properties.get("skills_dir")
-	skillsDir.Pattern = RelPathPattern
-	skillsDir.PatternErrorMessage = relPathMessage
-	skillsDir.Default = skenvfile.DefaultSkillsDir
-
-	dependency.Required = []string{"repo", "commit"}
-	dependency.Properties.get("repo").MinLength = 1
-	skillDir := dependency.Properties.get("skill_dir")
-	skillDir.Pattern = RelPathPattern
-	skillDir.PatternErrorMessage = relPathMessage
-	skillDir.Default = "."
-	commit := dependency.Properties.get("commit")
-	commit.Pattern = skenvfile.RevPattern
-	commit.PatternErrorMessage = "A full 40-character lowercase commit SHA; branches, tags and short SHAs are not allowed."
-
-	projectHosts := project.Properties.get("git_hosts")
-	projectHosts.AdditionalProperties = hosts.AdditionalProperties
-	projectHosts.PropertyNames = hosts.PropertyNames
-	projectDeps := project.Properties.get("dependencies")
-	projectDeps.AdditionalProperties = deps.AdditionalProperties
-	projectDeps.PropertyNames = skillNames
-	projectFrom := project.Properties.get("from")
-	projectFrom.AdditionalProperties = &Schema{Ref: "#/$defs/from"}
-	projectFrom.PropertyNames = idNames
-	dir := project.Properties.get("dir")
-	dir.Pattern = RelPathPattern
-	dir.PatternErrorMessage = relPathMessage
-	dir.Not = &Schema{Const: ".", ErrorMessage: `dir must be a directory inside the repository, not its root.`}
-	dir.Default = skenvfile.DefaultProjectDir
-	mirrors := project.Properties.get("mirrors")
-	mirrors.UniqueItems = true
-	mirrors.Items.MinLength = 1
-	mirrors.Items.Pattern = RelPathPattern
-	mirrors.Items.PatternErrorMessage = relPathMessage
-	mirrors.Items.Not = &Schema{Const: ".", ErrorMessage: `A mirror is a directory inside the repository, not its root.`}
-	mirrors.Items.Examples = []any{".claude/skills"}
-	mode := project.Properties.get("mirrors_mode")
-	mode.Enum = skenvfile.MirrorModes
-	mode.Default = skenvfile.MirrorSymlink
-
-	from.Required = []string{"repo", "skills", "commit"}
-	from.Properties.get("repo").MinLength = 1
-	fromDir := from.Properties.get("skills_dir")
-	fromDir.Pattern = RelPathPattern
-	fromDir.PatternErrorMessage = relPathMessage
-	fromDir.Default = skenvfile.DefaultSkillsDir
-	fromSkills := from.Properties.get("skills")
-	fromSkills.MinItems = 1
-	fromSkills.UniqueItems = true
-	fromSkills.Items = skillName()
-	fromCommit := from.Properties.get("commit")
-	*fromCommit = Schema{Type: "string", Description: fromCommit.Description, Pattern: commit.Pattern, PatternErrorMessage: commit.PatternErrorMessage}
-
-	repo.Required = []string{"template_version", "visibility"}
-	h := repo.Properties.get("template_version")
-	h.Pattern = skenvfile.VersionPattern
-	h.PatternErrorMessage = "A version such as " + skenvfile.LatestTemplates + "."
-	h.Examples = []any{skenvfile.LatestTemplates}
-	repo.Properties.get("visibility").Enum = []string{"private", "public"}
-	ci.Not = &Schema{Required: []string{skenvfile.CIGitHub, skenvfile.CIGitLab}, ErrorMessage: "Keep one CI table: github or gitlab."}
-	runner := func(s *Schema, key string) {
-		p := s.Properties.get(key)
-		p.Default = skenvfile.DefaultRunner
-		p.Items.Pattern = `^[A-Za-z0-9._:/-]+$`
-		p.Items.PatternErrorMessage = "A runner label: letters, digits and . _ : / -"
-	}
-	runner(github, "runs_on")
-	runner(gitlab, "tags")
-
+	ci, github, gitlab := g.ciDefs()
 	return &Schema{
 		Title: "skenv file",
 		Description: "The skenv file of a repository: skenv.toml, skenv.yaml, skenv.yml or skenv.json in its root. " +
@@ -336,21 +190,226 @@ func (g *gen) skenv() *Schema {
 			ErrorMessage: "A public repository must not carry [user]: the manifest is personal. Keep it in a private repository.",
 		}}}},
 		Defs: Props{
-			{"repository", repo},
+			{"repository", g.repositoryDef()},
 			{"ci", ci},
 			{"github", github},
 			{"gitlab", gitlab},
-			{"user", user},
-			{"checkout", checkout},
-			{"dependency", dependency},
-			{"machine", machine},
-			{"agents", agentsDef},
-			{"storage", storage},
-			{"gitHost", gitHost},
-			{"project", project},
-			{"from", from},
+			{"user", g.userDef()},
+			{"checkout", g.checkoutDef()},
+			{"dependency", g.dependencyDef()},
+			{"machine", g.machineDef()},
+			{"agents", g.agentsDef()},
+			{"storage", g.storageDef()},
+			{"gitHost", g.gitHostDef()},
+			{"project", g.projectDef()},
+			{"from", g.fromDef()},
 		},
 	}
+}
+
+// commitMessage explains skenvfile.RevPattern.
+const commitMessage = "A full 40-character lowercase commit SHA; branches, tags and short SHAs are not allowed."
+
+// idNames is the schema of checkout and from IDs as property names.
+func idNames() *Schema {
+	return &Schema{Pattern: skenvfile.IDPattern, PatternErrorMessage: `An ID is lowercase letters, digits, "-" and "_", starting with a letter or digit.`}
+}
+
+// skillNames is the schema of skill names as property names.
+func skillNames() *Schema {
+	s := skillName()
+	s.Type = ""
+	return s
+}
+
+// hostNames is the schema of git_hosts aliases as property names.
+func hostNames() *Schema {
+	return &Schema{
+		Pattern:             skenvfile.AliasPattern,
+		PatternErrorMessage: `An alias is lowercase letters, digits and "-", starting with a letter.`,
+		Not:                 &Schema{Enum: skenvfile.ReservedAliases, ErrorMessage: "This prefix is built in and cannot be declared."},
+	}
+}
+
+// relPath makes s a relative path inside the repository.
+func relPath(s *Schema) {
+	s.Pattern = RelPathPattern
+	s.PatternErrorMessage = relPathMessage
+}
+
+// selection constrains the include and exclude lists of s.
+func selection(s *Schema) {
+	include := s.Properties.get("include")
+	include.UniqueItems = true
+	include.Items.Pattern = `^[^/]+$`
+	include.Items.PatternErrorMessage = `A skill name or a glob over names, without "/".`
+	exclude := s.Properties.get("exclude").Items
+	exclude.Pattern = `^[^/]+$`
+	exclude.PatternErrorMessage = `A skill name or a glob over names, without "/".`
+}
+
+func (g *gen) userDef() *Schema {
+	user := g.object(reflect.TypeFor[skenvfile.Manifest]())
+	checkouts := user.Properties.get("checkouts")
+	checkouts.AdditionalProperties = &Schema{Ref: "#/$defs/checkout"}
+	checkouts.PropertyNames = idNames()
+	deps := user.Properties.get("dependencies")
+	deps.AdditionalProperties = &Schema{Ref: "#/$defs/dependency"}
+	deps.PropertyNames = skillNames()
+	user.Properties.get("machines").AdditionalProperties = &Schema{Ref: "#/$defs/machine"}
+	unmanaged := user.Properties.get("unmanaged").Items
+	unmanaged.Pattern = `^[^/]+$`
+	unmanaged.PatternErrorMessage = `A glob over entry names, without "/".`
+	hosts := user.Properties.get("git_hosts")
+	hosts.AdditionalProperties = &Schema{Ref: "#/$defs/gitHost"}
+	hosts.PropertyNames = hostNames()
+	return user
+}
+
+func (g *gen) gitHostDef() *Schema {
+	gitHost := g.object(reflect.TypeFor[skenvfile.GitHost]())
+	gitHost.Required = []string{"base_url"}
+	hostURL := gitHost.Properties.get("base_url")
+	hostURL.Pattern = `^([Hh][Tt][Tt][Pp][Ss]?://[^/@?#]+|[Ss][Ss][Hh]://([^/:@?#]+@)?[^/@?#]+)(/[^?#]*)?$`
+	hostURL.PatternErrorMessage = `A base URL such as "https://git.example.com" or "ssh://git@git.example.com", without credentials: ` +
+		`use a git credential helper or an ssh key (https://qunaxis.github.io/skenv/git-hosts#authentication).`
+	hostURL.Examples = []any{"https://git.example.com", "ssh://git@git.example.com"}
+	provider := gitHost.Properties.get("provider")
+	provider.Enum = skenvfile.HostTypes
+	provider.Default = skenvfile.TypeGeneric
+	return gitHost
+}
+
+func (g *gen) storageDef() *Schema {
+	storage := g.object(reflect.TypeFor[skenvfile.Storage]())
+	storage.Properties.get("dir").Examples = []any{"~/.agents/skills", "~/.local/share/skenv/skills"}
+	return storage
+}
+
+func (g *gen) agentsDef() *Schema {
+	agentsDef := g.object(reflect.TypeFor[skenvfile.Agents]())
+	// Codex is the agent people expect here; it reads the store instead.
+	agentHint := "Add other directories to user.agents.extra_dirs; Codex needs no entry: " +
+		"it reads the store (user.storage.dir, default ~/.agents/skills) directly."
+	enabled := agentsDef.Properties.get("enabled")
+	enabled.UniqueItems = true
+	enabled.Items.Enum = agents.Names
+	enabled.Items.ErrorMessage = agentHint
+	agentPaths := agentsDef.Properties.get("paths")
+	agentPaths.AdditionalProperties = &Schema{Type: "string", MinLength: 1}
+	agentPaths.PropertyNames = &Schema{Enum: agents.Names, ErrorMessage: agentHint}
+	agentsDef.Properties.get("extra_dirs").Items.MinLength = 1
+	return agentsDef
+}
+
+func (g *gen) machineDef() *Schema {
+	machine := g.object(reflect.TypeFor[skenvfile.Machine]())
+	selection(machine)
+	machineDirs := machine.Properties.get("checkout_dirs")
+	machineDirs.AdditionalProperties = &Schema{Type: "string", MinLength: 1}
+	machineDirs.PropertyNames = idNames()
+	return machine
+}
+
+func (g *gen) checkoutDef() *Schema {
+	checkout := g.object(reflect.TypeFor[skenvfile.Checkout]())
+	selection(checkout)
+	branch := checkout.Properties.get("branch")
+	branch.Pattern = skenvfile.BranchPattern
+	branch.PatternErrorMessage = "A git branch name."
+	branch.Examples = []any{"main"}
+	checkout.Required = []string{"repo", "checkout_dir"}
+	checkout.Properties.get("repo").MinLength = 1
+	checkout.Properties.get("checkout_dir").MinLength = 1
+	skillsDir := checkout.Properties.get("skills_dir")
+	relPath(skillsDir)
+	skillsDir.Default = skenvfile.DefaultSkillsDir
+	return checkout
+}
+
+func (g *gen) dependencyDef() *Schema {
+	dependency := g.object(reflect.TypeFor[skenvfile.Dependency]())
+	dependency.Required = []string{"repo", "commit"}
+	dependency.Properties.get("repo").MinLength = 1
+	skillDir := dependency.Properties.get("skill_dir")
+	relPath(skillDir)
+	skillDir.Default = "."
+	commit := dependency.Properties.get("commit")
+	commit.Pattern = skenvfile.RevPattern
+	commit.PatternErrorMessage = commitMessage
+	return dependency
+}
+
+func (g *gen) projectDef() *Schema {
+	project := g.object(reflect.TypeFor[skenvfile.Project]())
+	projectHosts := project.Properties.get("git_hosts")
+	projectHosts.AdditionalProperties = &Schema{Ref: "#/$defs/gitHost"}
+	projectHosts.PropertyNames = hostNames()
+	projectDeps := project.Properties.get("dependencies")
+	projectDeps.AdditionalProperties = &Schema{Ref: "#/$defs/dependency"}
+	projectDeps.PropertyNames = skillNames()
+	projectFrom := project.Properties.get("from")
+	projectFrom.AdditionalProperties = &Schema{Ref: "#/$defs/from"}
+	projectFrom.PropertyNames = idNames()
+	dir := project.Properties.get("dir")
+	relPath(dir)
+	dir.Not = &Schema{Const: ".", ErrorMessage: `dir must be a directory inside the repository, not its root.`}
+	dir.Default = skenvfile.DefaultProjectDir
+	mirrors := project.Properties.get("mirrors")
+	mirrors.UniqueItems = true
+	mirrors.Items.MinLength = 1
+	relPath(mirrors.Items)
+	mirrors.Items.Not = &Schema{Const: ".", ErrorMessage: `A mirror is a directory inside the repository, not its root.`}
+	mirrors.Items.Examples = []any{".claude/skills"}
+	mode := project.Properties.get("mirrors_mode")
+	mode.Enum = skenvfile.MirrorModes
+	mode.Default = skenvfile.MirrorSymlink
+	return project
+}
+
+func (g *gen) fromDef() *Schema {
+	from := g.object(reflect.TypeFor[skenvfile.From]())
+	from.Required = []string{"repo", "skills", "commit"}
+	from.Properties.get("repo").MinLength = 1
+	fromDir := from.Properties.get("skills_dir")
+	relPath(fromDir)
+	fromDir.Default = skenvfile.DefaultSkillsDir
+	fromSkills := from.Properties.get("skills")
+	fromSkills.MinItems = 1
+	fromSkills.UniqueItems = true
+	fromSkills.Items = skillName()
+	fromCommit := from.Properties.get("commit")
+	*fromCommit = Schema{Type: "string", Description: fromCommit.Description, Pattern: skenvfile.RevPattern, PatternErrorMessage: commitMessage}
+	return from
+}
+
+func (g *gen) repositoryDef() *Schema {
+	repo := g.object(reflect.TypeFor[skenvfile.Repository]())
+	repo.Required = []string{"template_version", "visibility"}
+	h := repo.Properties.get("template_version")
+	h.Pattern = skenvfile.VersionPattern
+	h.PatternErrorMessage = "A version such as " + skenvfile.LatestTemplates + "."
+	h.Examples = []any{skenvfile.LatestTemplates}
+	repo.Properties.get("visibility").Enum = []string{"private", "public"}
+	return repo
+}
+
+// ciDefs are the $defs of [repository.ci] and its github and gitlab
+// tables.
+func (g *gen) ciDefs() (ci, github, gitlab *Schema) {
+	ci = g.object(reflect.TypeFor[skenvfile.CIConfig]())
+	github = g.object(reflect.TypeFor[skenvfile.GitHubCI]())
+	gitlab = g.object(reflect.TypeFor[skenvfile.GitLabCI]())
+	ci.Not = &Schema{Required: []string{skenvfile.CIGitHub, skenvfile.CIGitLab}, ErrorMessage: "Keep one CI table: github or gitlab."}
+	runner := func(s *Schema, key string) {
+		p := s.Properties.get(key)
+		p.Default = skenvfile.DefaultRunner
+		p.Items.Pattern = `^[A-Za-z0-9._:/-]+$`
+		p.Items.PatternErrorMessage = "A runner label: letters, digits and . _ : / -"
+	}
+	runner(github, "runs_on")
+	runner(gitlab, "tags")
+	return ci, github, gitlab
 }
 
 // skillName is the schema of a skill name in the manifest.
@@ -463,32 +522,42 @@ func readDocs(root string, dirs ...string) (map[string]string, error) {
 			if err != nil {
 				return nil, err
 			}
-			for _, decl := range f.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.TYPE {
-					continue
-				}
-				for _, spec := range gd.Specs {
-					ts := spec.(*ast.TypeSpec)
-					doc := ts.Doc
-					if doc == nil {
-						doc = gd.Doc
-					}
-					docs[pkg+"."+ts.Name.Name] = firstParagraph(doc)
-					st, ok := ts.Type.(*ast.StructType)
-					if !ok {
-						continue
-					}
-					for _, fld := range st.Fields.List {
-						for _, n := range fld.Names {
-							docs[pkg+"."+ts.Name.Name+"."+n.Name] = clean(fld.Doc)
-						}
-					}
-				}
-			}
+			typeDocs(docs, pkg, f)
 		}
 	}
 	return docs, nil
+}
+
+// typeDocs adds the doc comments of the types and struct fields of f to
+// docs, as readDocs keys them.
+func typeDocs(docs map[string]string, pkg string, f *ast.File) {
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			ts := spec.(*ast.TypeSpec)
+			doc := ts.Doc
+			if doc == nil {
+				doc = gd.Doc
+			}
+			docs[pkg+"."+ts.Name.Name] = firstParagraph(doc)
+			if st, ok := ts.Type.(*ast.StructType); ok {
+				fieldDocs(docs, pkg+"."+ts.Name.Name, st)
+			}
+		}
+	}
+}
+
+// fieldDocs adds the doc comments of the fields of st to docs, keyed
+// "<typ>.Field".
+func fieldDocs(docs map[string]string, typ string, st *ast.StructType) {
+	for _, fld := range st.Fields.List {
+		for _, n := range fld.Names {
+			docs[typ+"."+n.Name] = clean(fld.Doc)
+		}
+	}
 }
 
 func clean(cg *ast.CommentGroup) string {

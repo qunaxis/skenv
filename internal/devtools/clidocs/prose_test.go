@@ -11,7 +11,8 @@ import (
 )
 
 // Every skenv command and flag quoted in the repository's prose (README,
-// AGENTS.md, docs/, skills/skenv/) must still exist, so a rename or
+// AGENTS.md, docs/, skills/skenv/, and the --help text in
+// internal/cli/help/; see proseRoots) must still exist, so a rename or
 // removal fails here instead of leaving stale examples; see issue #79.
 func TestProseCommandsExist(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
@@ -141,5 +142,58 @@ func TestProseFinding(t *testing.T) {
 	}
 	if !strings.Contains(msg, "unknown command") {
 		t.Fatal("sanity: message should mention the problem")
+	}
+}
+
+// proseFiles scans the prose the docs harness owns (#76 H3), nothing else:
+// a note under tmp/, .github/ or .devloop/ cannot fail the check.
+func TestProseFilesScope(t *testing.T) {
+	root := t.TempDir()
+	for _, f := range []string{
+		"README.md", "AGENTS.md", "CHANGELOG.md", "notes.md",
+		"docs/index.md", "docs/sub/page.md", "docs/commands/skenv_sync.md", "docs/adr/0001-x.md", "docs/schemas/README.md",
+		"skills/skenv/SKILL.md", "skills/skenv/references/r.md", "skills/other/SKILL.md",
+		"internal/cli/help/sync.md", "internal/cli/other.md",
+		"tmp/orchestrate/brief.md", ".github/pull_request_template.md", ".devloop/status.md",
+	} {
+		p := filepath.Join(root, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("`skenv nope --x`\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := proseFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"AGENTS.md", "README.md",
+		"docs/index.md", "docs/schemas/README.md", "docs/sub/page.md",
+		"internal/cli/help/sync.md",
+		"skills/skenv/SKILL.md", "skills/skenv/references/r.md",
+	}
+	if !equalStrings(got, want) {
+		t.Errorf("proseFiles = %q\nwant %q", got, want)
+	}
+}
+
+// A root of proseRoots that disappears (renamed or deleted) fails the scan
+// and names the root, instead of silently shrinking the checked prose.
+func TestProseFilesMissingRoot(t *testing.T) {
+	root := t.TempDir()
+	for _, f := range []string{"README.md", "docs/index.md", "skills/skenv/SKILL.md", "internal/cli/help/sync.md"} {
+		p := filepath.Join(root, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("# x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := proseFiles(root) // no AGENTS.md
+	if err == nil || !strings.Contains(err.Error(), "prose root AGENTS.md") {
+		t.Errorf("proseFiles without AGENTS.md: err = %v, want one naming the root", err)
 	}
 }
