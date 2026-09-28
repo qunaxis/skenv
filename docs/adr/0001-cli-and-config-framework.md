@@ -32,7 +32,8 @@ allowed and marked `!` in the commit that makes them. Compatibility with
 earlier releases therefore did not count for or against any option below.
 Exit codes 0/1/2, `--dry-run`, `--json` and short English messages are
 product rules and stay. The comment-preserving edit of the manifest by
-`vendor add|bump|remove` also stays. The only runtime dependency is still `git`.
+`vendor add|update|remove` also stays (`update` was `vendor bump` when this
+ADR was written; renamed in v0.5.0, #27). The only runtime dependency is still `git`.
 
 ## Options
 
@@ -59,7 +60,7 @@ Each option was prototyped on its own branch from `main`, and none of these
 branches will be merged:
 
 - cobra: `spike/cli-framework`. The whole command tree was migrated.
-- kong: `spike/cli-kong`, which migrated `sync`, `link`, `vendor add|bump|remove` and `repo init|apply|check`.
+- kong: `spike/cli-kong`, which migrated `sync`, `link`, `vendor add|bump|remove` and `repo init|apply|check`. `bump` was renamed to `update` in v0.5.0, #27.
 - urfave/cli v3: `spike/cli-urfave`, with the same commands as kong.
 - viper, koanf and the plain loader: `spike/config-viper`, `spike/config-koanf` and `spike/config-plain`.
 
@@ -110,7 +111,7 @@ was removed, kong never had one, and urfave accepts `-flag` natively.
 
 | Scope | stdlib | cobra | kong | urfave v3 |
 |---|---|---|---|---|
-| `sync`/`link`, `vendor add\|bump\|remove`, `repo init\|apply\|check`, with shared helpers and repo logic | 176 | 232 | 201 | 243 |
+| `sync`/`link`, `vendor add\|bump\|remove` (`bump` renamed to `update` in v0.5.0, #27), `repo init\|apply\|check`, with shared helpers and repo logic | 176 | 232 | 201 | 243 |
 | root and dispatch | 57 | 58 | 85 | 74 |
 | all of `internal/cli/*.go` without tests | 713 | 766 (full migration) | 776 (partial) | 807 (partial) |
 
@@ -252,7 +253,7 @@ sections.** The file is `skenv.toml`, `skenv.yaml`, `skenv.yml` or
 - The tool config stays separate, in `~/.config/skenv/config.*`. It
   belongs to the machine, not to a repository.
 - **Formats:** all four formats are read the same way.
-  - `vendor add|bump|remove`, `repo init` and `repo apply` edit TOML as
+  - `vendor add|update|remove`, `repo init` and `repo apply` edit TOML as
     text, which keeps comments, order and formatting.
   - YAML and JSON are decoded, changed and encoded again, so YAML comments
     and key order are lost. skenv prints a note when it does this.
