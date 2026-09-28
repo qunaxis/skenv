@@ -64,6 +64,7 @@ same PR:
 | new/moved/removed package | this file's layout list above |
 | breaking change | `!` in the commit, docs, `skills/skenv/` |
 | repository templates | the template version bump rules above |
+| any user-facing code change | docs update (README.md, docs/*, AGENTS.md, skills/skenv/*), or label `docs:none`, or line in PR body: `Docs: none — <reason>` (≥10 chars) |
 
 Run `make check`; the docs tests (docs harness epic) fail on stale commands,
 flags, keys and package lists.
