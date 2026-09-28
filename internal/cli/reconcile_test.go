@@ -272,7 +272,7 @@ func TestCheckoutBranch(t *testing.T) {
 	}
 	w.mustBeLinked("stable-only")
 	w.mustRun(0, "doctor")
-	if _, errOut := w.mustRun(2, "doctor", "--manifest", writeManifestWith(t, w, "branch = \"-x\"")); !strings.Contains(errOut, `branch "-x" is not a branch name`) {
+	if _, errOut := w.mustRun(2, "doctor", "--manifest", writeManifestWith(t, w, "branch = \"a..b\"")); !strings.Contains(errOut, `branch "a..b" is not a branch name`) {
 		t.Errorf("bad branch: %s", errOut)
 	}
 }

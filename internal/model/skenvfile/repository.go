@@ -177,8 +177,7 @@ const VersionPattern = `^[0-9]+\.[0-9]+\.[0-9]+$`
 var VersionRe = regexp.MustCompile(VersionPattern)
 
 // ParseRepository decodes and validates the [repository] section of a skenv file in
-// the format of ext, with the rule that a public repository has no
-// [user]. ok is false when there is no [repository].
+// the format of ext. ok is false when there is no [repository].
 func ParseRepository(data []byte, ext string) (c *Repository, ok bool, err error) {
 	doc, err := Parse(data, ext)
 	if err != nil || !doc.Has(SectionRepository) {
@@ -190,9 +189,6 @@ func ParseRepository(data []byte, ext string) (c *Repository, ok bool, err error
 	}
 	if err := c.Validate(); err != nil {
 		return nil, true, err
-	}
-	if c.Visibility == "public" && c.HasUser {
-		return nil, true, errors.New(PublicUserReason)
 	}
 	return c, true, nil
 }

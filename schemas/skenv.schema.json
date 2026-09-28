@@ -355,7 +355,8 @@
             "enum": [
               "claude",
               "pi"
-            ]
+            ],
+            "errorMessage": "Codex is not a link destination: it reads the store (user.storage.dir, default ~/.agents/skills) directly. Add other directories to user.agents.extra_dirs."
           },
           "uniqueItems": true
         },
@@ -370,7 +371,8 @@
             "enum": [
               "claude",
               "pi"
-            ]
+            ],
+            "errorMessage": "Codex is not a link destination: it reads the store (user.storage.dir, default ~/.agents/skills) directly. Add other directories to user.agents.extra_dirs."
           }
         },
         "extra_dirs": {

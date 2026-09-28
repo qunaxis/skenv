@@ -2,6 +2,7 @@ package docedit
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -50,4 +51,15 @@ func Quote(s string) string {
 	}
 	b.WriteByte('"')
 	return b.String()
+}
+
+var bareKeyRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// QuoteKey renders k as a key of a TOML dotted path: bare when it can be,
+// a basic string otherwise.
+func QuoteKey(k string) string {
+	if bareKeyRe.MatchString(k) {
+		return k
+	}
+	return Quote(k)
 }

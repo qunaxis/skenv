@@ -20,8 +20,8 @@
 // replacement (legacy.go); there is no legacy reading.
 //
 // Nothing else may appear at the top level, except "$schema" (a string,
-// ignored) for editors. Each section is decoded strictly: unknown keys are
-// errors.
+// ignored) for editors. The structure (types, required and unknown keys,
+// patterns, enums) is the JSON Schema's, checked by Parse.
 //
 // YAML and JSON files are edited with internal/platform/docedit, which keeps
 // comments and key order; TOML files are edited as text by their callers.
@@ -32,17 +32,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/schemas"
 )
 
@@ -121,7 +118,8 @@ func Read(path string) (*Doc, error) {
 }
 
 // Parse parses data in the format of ext (".toml", ".yaml", ".yml",
-// ".json") and checks the top level.
+// ".json") and validates it against the JSON Schema of the skenv file
+// (schemas.Skenv). Go code checks only what a schema cannot express.
 func Parse(data []byte, ext string) (*Doc, error) {
 	d := &Doc{ext: ext}
 	var err error
@@ -153,71 +151,10 @@ func Parse(data []byte, ext string) (*Doc, error) {
 	if err := legacyError(d.raw); err != nil {
 		return nil, err
 	}
-	var unknown []string
-	for k := range d.raw {
-		if !slices.Contains(Sections, k) && k != docedit.SchemaKey {
-			unknown = append(unknown, k)
-		}
-	}
-	if len(unknown) > 0 {
-		slices.Sort(unknown)
-		return nil, fmt.Errorf("unknown top-level keys: %s (settings live under [repository], [user] and [project])", strings.Join(unknown, ", "))
-	}
-	for _, s := range Sections {
-		if v, ok := d.raw[s]; ok {
-			if _, isMap := v.(map[string]any); !isMap {
-				return nil, fmt.Errorf("%s must be a table", s)
-			}
-			if err := stringLeaves(s, v); err != nil {
-				return nil, err
-			}
-		}
-	}
-	if v, ok := d.raw[docedit.SchemaKey]; ok {
-		if _, isString := v.(string); !isString {
-			return nil, fmt.Errorf("%s must be a string (the URL of the schema, for editors)", docedit.SchemaKey)
-		}
+	if err := schemas.Validate(schemas.Skenv, d.raw); err != nil {
+		return nil, err
 	}
 	return d, nil
-}
-
-// stringLeaves checks that every value in a section is a table, a list or a
-// string: the file has no other kind of value, and YAML would otherwise
-// turn null, 1 or an all-digit commit SHA into something the schema
-// rejects.
-func stringLeaves(path string, v any) error {
-	switch v := v.(type) {
-	case string:
-		return nil
-	case map[string]any:
-		keys := make([]string, 0, len(v))
-		for k := range v {
-			keys = append(keys, k)
-		}
-		slices.Sort(keys)
-		for _, k := range keys {
-			if err := stringLeaves(path+"."+k, v[k]); err != nil {
-				return err
-			}
-		}
-	case []map[string]any: // TOML arrays of tables
-		for i, x := range v {
-			if err := stringLeaves(fmt.Sprintf("%s[%d]", path, i), x); err != nil {
-				return err
-			}
-		}
-	case []any:
-		for i, x := range v {
-			if err := stringLeaves(fmt.Sprintf("%s[%d]", path, i), x); err != nil {
-				return err
-			}
-		}
-	case nil:
-		return fmt.Errorf("%s is empty (null); give it a value or remove it", path)
-	default:
-		return fmt.Errorf("%s must be a string, got %v; quote it", path, v)
-	}
-	return nil
 }
 
 // Has reports whether the document has section.
@@ -226,7 +163,7 @@ func (d *Doc) Has(section string) bool {
 	return ok
 }
 
-// Decode decodes section into out, rejecting unknown keys. out keeps its
+// Decode decodes section into out; Parse has validated it. out keeps its
 // zero value when the section is absent.
 func (d *Doc) Decode(section string, out any) error {
 	if !d.Has(section) {
@@ -243,15 +180,6 @@ func (d *Doc) Decode(section string, out any) error {
 		if err := md.PrimitiveDecode(top[section], out); err != nil {
 			return fmt.Errorf("[%s]: %w", section, err)
 		}
-		var unknown []string
-		for _, k := range md.Undecoded() {
-			if len(k) > 1 && k[0] == section {
-				unknown = append(unknown, k.String())
-			}
-		}
-		if len(unknown) > 0 {
-			return fmt.Errorf("unknown keys: %s", strings.Join(unknown, ", "))
-		}
 		return nil
 	default: // YAML and JSON
 		node := d.yam[section]
@@ -259,9 +187,7 @@ func (d *Doc) Decode(section string, out any) error {
 		if err != nil {
 			return err
 		}
-		dec := yaml.NewDecoder(bytes.NewReader(b))
-		dec.KnownFields(true)
-		if err := dec.Decode(out); err != nil && !errors.Is(err, io.EOF) {
+		if err := yaml.Unmarshal(b, out); err != nil {
 			return fmt.Errorf("%s: %w", section, err)
 		}
 		return nil

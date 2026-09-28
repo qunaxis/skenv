@@ -204,12 +204,16 @@ func (g *gen) skenv() *Schema {
 	provider.Default = skenvfile.TypeGeneric
 
 	storage.Properties.get("dir").Examples = []any{"~/.agents/skills", "~/.local/share/skenv/skills"}
+	// Codex is the agent people expect here; it reads the store instead.
+	agentHint := "Codex is not a link destination: it reads the store (user.storage.dir, default ~/.agents/skills) directly. " +
+		"Add other directories to user.agents.extra_dirs."
 	enabled := agentsDef.Properties.get("enabled")
 	enabled.UniqueItems = true
 	enabled.Items.Enum = agents.Names
+	enabled.Items.ErrorMessage = agentHint
 	agentPaths := agentsDef.Properties.get("paths")
 	agentPaths.AdditionalProperties = &Schema{Type: "string", MinLength: 1}
-	agentPaths.PropertyNames = &Schema{Enum: agents.Names}
+	agentPaths.PropertyNames = &Schema{Enum: agents.Names, ErrorMessage: agentHint}
 	agentsDef.Properties.get("extra_dirs").Items.MinLength = 1
 
 	selection := func(s *Schema) {

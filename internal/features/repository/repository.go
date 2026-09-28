@@ -240,9 +240,6 @@ func Check(root string) ([]Drift, error) {
 	}
 	var out []Drift
 	file := filepath.Base(c.File)
-	if c.Visibility == "public" && c.HasUser {
-		out = append(out, Drift{Path: file, Reason: skenvfile.PublicUserReason})
-	}
 	if c.TemplateVersion != skenvfile.LatestTemplates {
 		return append(out, Drift{Path: file, Reason: fmt.Sprintf("template_version %s; this skenv generates %s: run `skenv repo upgrade`", c.TemplateVersion, skenvfile.LatestTemplates)}), nil
 	}

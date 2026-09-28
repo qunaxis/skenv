@@ -112,13 +112,13 @@ func TestBadFiles(t *testing.T) {
 	}
 	home := t.TempDir()
 	write(t, home, "config.toml", "\"$schema\" = 1\n")
-	if _, _, err := Resolve(home, env(nil), "manifest", "", ""); err == nil || !strings.Contains(err.Error(), "$schema must be a string") {
+	if _, _, err := Resolve(home, env(nil), "manifest", "", ""); err == nil || !strings.Contains(err.Error(), `"$schema": must be a string, got a number; quote it`) {
 		t.Errorf("$schema = 1: %v", err)
 	}
 	// null is not a string (the schema says the same).
 	home = t.TempDir()
 	write(t, home, "config.yaml", "manifest: null\n")
-	if _, _, err := Resolve(home, env(nil), "manifest", "", "d"); err == nil || !strings.Contains(err.Error(), "manifest must be a string") {
+	if _, _, err := Resolve(home, env(nil), "manifest", "", "d"); err == nil || !strings.Contains(err.Error(), "manifest: is empty (null)") {
 		t.Errorf("manifest: null: %v", err)
 	}
 	// Empty files are valid.

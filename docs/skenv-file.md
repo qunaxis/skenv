@@ -180,6 +180,16 @@ names it in a directive: a first line `#:schema <url>` in TOML,
 Editors then complete keys, describe them on hover and mark mistakes. See
 [Editor support](editor-support.md) for the URLs and editor setup.
 
+skenv validates every skenv file it reads against the same schema, so
+skenv and your editor report the same mistakes. An error names the file,
+the key as a TOML path and the fix, one line per mistake:
+
+```text
+skenv.toml: 2 errors:
+  [user.checkouts.a] checkout_dir: is required
+  [user.dependencies.x] commit: invalid value. A full 40-character lowercase commit SHA; branches, tags and short SHAs are not allowed.
+```
+
 ## Where skenv looks
 
 - The manifest: `--manifest`, then `$SKENV_MANIFEST`, then `manifest` in the

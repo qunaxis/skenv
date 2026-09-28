@@ -7,13 +7,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 
-	"github.com/qunaxis/skenv/internal/model/agents"
 	"github.com/qunaxis/skenv/internal/model/skillname"
+	"github.com/qunaxis/skenv/internal/platform/docedit"
 	"github.com/qunaxis/skenv/internal/platform/paths"
 )
 
@@ -161,14 +159,6 @@ type Storage struct {
 	Dir string `toml:"dir" yaml:"dir" json:"dir"`
 }
 
-var (
-	shaRe = regexp.MustCompile(RevPattern)
-	idRe  = regexp.MustCompile(IDPattern)
-
-	bareKeyRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
-	branchRe  = regexp.MustCompile(BranchPattern)
-)
-
 // RevPattern is a full lowercase commit SHA (M2).
 const RevPattern = `^[0-9a-f]{40}$`
 
@@ -265,32 +255,24 @@ func ParseManifestIn(data []byte, ext, dir string) (*Manifest, error) {
 	return &m, nil
 }
 
-// Validate checks the rules that do not need the file system: required
-// fields, full SHAs (M2), IDs, patterns and agent names. Name clashes
-// between checkouts and dependencies are checked by CheckNames once the
-// checkouts are listed.
+// Validate checks the rules that do not need the file system and that the
+// schema cannot express (Parse checked the rest): repo values resolve,
+// branch names, glob syntax and literal skill names in selections, and
+// checkout_dirs naming a checkout. Name clashes between checkouts and
+// dependencies are checked by CheckNames once the checkouts are listed.
 func (m *Manifest) Validate() error {
 	var errs []error
 	errs = append(errs, checkGlobs("user.unmanaged", m.Unmanaged)...)
 	errs = append(errs, m.GitHosts.validate()...)
 	for _, c := range m.CheckoutList() {
 		where := "user.checkouts." + c.ID
-		if !idRe.MatchString(c.ID) {
-			errs = append(errs, fmt.Errorf("%s: the ID must be lowercase letters, digits, \"-\" and \"_\", starting with a letter or digit", where))
-		}
-		if c.Repo == "" {
-			errs = append(errs, fmt.Errorf("%s: repo is required", where))
-		} else if _, err := m.Remote(c.Repo); err != nil {
+		if _, err := m.Remote(c.Repo); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", where, err))
 		}
-		if c.CheckoutDir == "" {
-			errs = append(errs, fmt.Errorf("%s: checkout_dir is required", where))
-		}
-		if !cleanRel(c.SkillsDir) {
-			errs = append(errs, fmt.Errorf("%s: skills_dir %q must be a relative path inside the repository", where, c.SkillsDir))
-		}
-		if c.Branch != "" && (!branchRe.MatchString(c.Branch) || strings.Contains(c.Branch, "..") || strings.Contains(c.Branch, "//") ||
-			strings.HasSuffix(c.Branch, "/") || strings.HasSuffix(c.Branch, ".lock") || strings.HasSuffix(c.Branch, ".")) {
+		// The schema has the characters of a branch name; git forbids
+		// these sequences as well.
+		if strings.Contains(c.Branch, "..") || strings.Contains(c.Branch, "//") ||
+			strings.HasSuffix(c.Branch, "/") || strings.HasSuffix(c.Branch, ".lock") || strings.HasSuffix(c.Branch, ".") {
 			errs = append(errs, fmt.Errorf("%s: branch %q is not a branch name", where, c.Branch))
 		}
 		errs = append(errs, checkSelection(where, c.Include, c.Exclude)...)
@@ -300,85 +282,41 @@ func (m *Manifest) Validate() error {
 	}
 	for _, name := range slices.Sorted(maps.Keys(m.Machines)) {
 		mc := m.Machines[name]
-		where := fmt.Sprintf("user.machines.%s", quoteKey(name))
+		where := fmt.Sprintf("user.machines.%s", docedit.QuoteKey(name))
 		errs = append(errs, checkSelection(where, mc.Include, mc.Exclude)...)
 		for _, id := range slices.Sorted(maps.Keys(mc.CheckoutDirs)) {
 			if _, ok := m.Checkouts[id]; !ok {
 				errs = append(errs, fmt.Errorf("%s.checkout_dirs: %q is not a checkout ID (known: %s)", where, id, strings.Join(slices.Sorted(maps.Keys(m.Checkouts)), ", ")))
-			} else if mc.CheckoutDirs[id] == "" {
-				errs = append(errs, fmt.Errorf("%s.checkout_dirs.%s is empty", where, id))
 			}
 		}
 	}
-	errs = append(errs, m.Agents.validate()...)
 	return errors.Join(errs...)
-}
-
-func (a Agents) validate() []error {
-	var errs []error
-	check := func(where, name string) {
-		switch {
-		case name == "codex":
-			errs = append(errs, fmt.Errorf("%s: codex is not a link destination: Codex reads the store (user.storage.dir, default ~/.agents/skills) directly; "+
-				"to keep skills away from it, move storage.dir elsewhere, and add ~/.agents/skills to extra_dirs to give it links", where))
-		case !slices.Contains(agents.Names, name):
-			errs = append(errs, fmt.Errorf("%s: unknown agent %q (built in: %s; add other directories to user.agents.extra_dirs)", where, name, strings.Join(agents.Names, ", ")))
-		}
-	}
-	seen := map[string]bool{}
-	for _, n := range a.Enabled {
-		check("user.agents.enabled", n)
-		if seen[n] {
-			errs = append(errs, fmt.Errorf("user.agents.enabled lists %q twice", n))
-		}
-		seen[n] = true
-	}
-	for _, n := range slices.Sorted(maps.Keys(a.Paths)) {
-		check("user.agents.paths", n)
-		if a.Paths[n] == "" {
-			errs = append(errs, fmt.Errorf("user.agents.paths.%s is empty", n))
-		}
-	}
-	for _, d := range a.ExtraDirs {
-		if d == "" {
-			errs = append(errs, errors.New("user.agents.extra_dirs: an entry is empty"))
-		}
-	}
-	return errs
 }
 
 // checkSelection validates an include/exclude pair.
 func checkSelection(where string, include, exclude []string) []error {
-	errs := checkPatterns(where+".include", include)
-	errs = append(errs, checkPatterns(where+".exclude", exclude)...)
-	seen := map[string]bool{}
-	for _, n := range include {
-		if seen[n] {
-			errs = append(errs, fmt.Errorf("%s.include lists %q twice", where, n))
-		}
-		seen[n] = true
-	}
-	return errs
+	return append(checkPatterns(where+".include", include), checkPatterns(where+".exclude", exclude)...)
 }
 
-// checkGlobs validates glob patterns over entry names: any name, since
-// they match paths of other tools too.
+// checkGlobs checks the glob syntax of patterns over entry names: any
+// name, since they match paths of other tools too.
 func checkGlobs(where string, pats []string) []error {
 	var errs []error
 	for _, pat := range pats {
-		if _, err := path.Match(pat, ""); err != nil || pat == "" || strings.Contains(pat, "/") {
-			errs = append(errs, fmt.Errorf("%s: %q must be a glob over entry names (no \"/\")", where, pat))
+		if _, err := path.Match(pat, ""); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %q is not a valid glob", where, pat))
 		}
 	}
 	return errs
 }
 
-// checkPatterns validates skill names and glob patterns over names.
+// checkPatterns checks the glob syntax of patterns over skill names and
+// the rule of literal names.
 func checkPatterns(where string, pats []string) []error {
 	var errs []error
 	for _, pat := range pats {
-		if _, err := path.Match(pat, ""); err != nil || pat == "" || strings.Contains(pat, "/") {
-			errs = append(errs, fmt.Errorf("%s: %q must be a skill name or a glob over names (no \"/\")", where, pat))
+		if _, err := path.Match(pat, ""); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %q must be a skill name or a glob over names", where, pat))
 		} else if !IsPattern(pat) {
 			if err := ValidName(pat); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", where, err))
@@ -462,14 +400,6 @@ func sortedValues[V any](m map[string]V) []*V {
 	return out
 }
 
-// quoteKey writes a table key as TOML needs it in a dotted path.
-func quoteKey(k string) string {
-	if bareKeyRe.MatchString(k) {
-		return k
-	}
-	return strconv.Quote(k)
-}
-
 // ValidName reports whether name can be used as a skill name: the shared
 // rule of package skillname, and not Reserved.
 func ValidName(name string) error {
@@ -480,14 +410,6 @@ func ValidName(name string) error {
 		return fmt.Errorf("name %q is reserved (~/.claude/skills/%s is managed by Claude)", Reserved, Reserved)
 	}
 	return nil
-}
-
-func cleanRel(p string) bool {
-	if p == "" || path.IsAbs(p) {
-		return false
-	}
-	c := path.Clean(p)
-	return c == p && c != ".." && !strings.HasPrefix(c, "../")
 }
 
 // CheckoutList returns the checkouts sorted by ID.
