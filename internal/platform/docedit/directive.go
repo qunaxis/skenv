@@ -22,11 +22,11 @@ var (
 func Directive(data []byte, ext string) (string, bool) {
 	switch ext {
 	case ".toml":
-		if i, url := tomlDirective(lines(data)); i >= 0 {
+		if i, url := tomlDirective(SplitLines(data)); i >= 0 {
 			return url, true
 		}
 	case ".yaml", ".yml":
-		if i, url := yamlDirective(lines(data)); i >= 0 {
+		if i, url := yamlDirective(SplitLines(data)); i >= 0 {
 			return url, true
 		}
 	case ".json":
@@ -54,7 +54,7 @@ func SetDirective(data []byte, ext, url string) ([]byte, error) {
 	}
 	switch ext {
 	case ".toml", ".yaml", ".yml":
-		ls := lines(data)
+		ls := SplitLines(data)
 		var i int
 		var line string
 		if ext == ".toml" {
@@ -88,17 +88,6 @@ func SetDirective(data []byte, ext, url string) ([]byte, error) {
 	return nil, fmt.Errorf("docedit: unsupported format %q", ext)
 }
 
-func lines(data []byte) []string {
-	if len(data) == 0 {
-		return nil
-	}
-	ls := strings.SplitAfter(string(data), "\n")
-	if ls[len(ls)-1] == "" {
-		ls = ls[:len(ls)-1]
-	}
-	return ls
-}
-
 // tomlDirective finds "#:schema" among the comments and blank lines at the
 // top of the file, where Taplo reads it.
 func tomlDirective(ls []string) (int, string) {
@@ -107,7 +96,7 @@ func tomlDirective(ls []string) (int, string) {
 		if m := tomlDirectiveRe.FindStringSubmatch(t); m != nil {
 			return i, m[1]
 		}
-		if !isBlankOrComment(t) {
+		if !IsBlankOrComment(t) {
 			break
 		}
 	}

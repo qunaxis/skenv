@@ -31,3 +31,13 @@ func Write(file string, data []byte, mode fs.FileMode) (err error) {
 	}
 	return os.Rename(tmp.Name(), file)
 }
+
+// Replace atomically replaces file with data, keeping its current
+// permissions, or 0644 if it does not exist yet.
+func Replace(file string, data []byte) error {
+	mode := os.FileMode(0o644)
+	if fi, err := os.Stat(file); err == nil {
+		mode = fi.Mode().Perm()
+	}
+	return Write(file, data, mode)
+}
