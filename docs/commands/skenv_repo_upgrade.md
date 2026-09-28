@@ -76,5 +76,5 @@ lefthook install: hooks active
 
 ### SEE ALSO
 
-* [skenv repo](skenv_repo.md)	 - Set up and check the harness of a skills repository
+* [skenv repo](skenv_repo.md)	 - Set up and check the repository templates of a skills repository
 

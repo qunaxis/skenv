@@ -61,10 +61,10 @@ Every command that reads the manifest accepts `--manifest FILE`; see
 | ---- | ------- | ----- |
 | Scaffold a skill | [`skenv new <name> --dir .`](commands/skenv_new.md) | [Create a skill](create-skill.md) |
 | Check skills; the publication check | [`skenv lint`](commands/skenv_lint.md), `skenv lint --publish` | [Validation and publication](lint.md) |
-| Set up hooks and CI for a skills repository (optional) | [`skenv repo init`](commands/skenv_repo_init.md) | [Repository checks and CI](harness.md) |
-| Move a repository to the templates of the installed skenv | [`skenv repo upgrade`](commands/skenv_repo_upgrade.md) | [Harness versions](harness.md#harness-versions) |
-| Regenerate the managed files from `template_version` | [`skenv repo apply`](commands/skenv_repo_apply.md) | [Repository checks and CI](harness.md#skenv-repo-apply) |
-| Compare the managed files with the templates | [`skenv repo check`](commands/skenv_repo_check.md) | [Repository checks and CI](harness.md#skenv-repo-check) |
+| Set up hooks and CI for a skills repository (optional) | [`skenv repo init`](commands/skenv_repo_init.md) | [Repository checks and CI](repository.md) |
+| Move a repository to the templates of the installed skenv | [`skenv repo upgrade`](commands/skenv_repo_upgrade.md) | [Template versions](repository.md#template-versions) |
+| Regenerate the managed files from `template_version` | [`skenv repo apply`](commands/skenv_repo_apply.md) | [Repository checks and CI](repository.md#skenv-repo-apply) |
+| Compare the managed files with the templates | [`skenv repo check`](commands/skenv_repo_check.md) | [Repository checks and CI](repository.md#skenv-repo-check) |
 
 ## Projects
 

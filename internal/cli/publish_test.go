@@ -28,7 +28,7 @@ func publicSkill(name, extra string) string {
 
 func TestLintPublish(t *testing.T) {
 	needTool(t, "gitleaks")
-	w, repo := harnessRepo(t)
+	w, repo := newRepoWorld(t)
 	writeFile(t, filepath.Join(repo, "skills/ok/SKILL.md"), publicSkill("ok", ""))
 	w.git(repo, "add", "-A")
 	w.git(repo, "commit", "-q", "-m", "feat: ok")
@@ -76,7 +76,7 @@ func TestLintPublish(t *testing.T) {
 }
 
 func TestLintHook(t *testing.T) {
-	w, repo := harnessRepo(t)
+	w, repo := newRepoWorld(t)
 	skill := filepath.Join(repo, "skills/demo")
 	writeFile(t, filepath.Join(skill, "SKILL.md"), skillMD("demo", ""))
 	hook := func(event string) (int, string) {
@@ -171,8 +171,8 @@ func TestNewSkill(t *testing.T) {
 }
 
 // Without --dir, new writes to the only own repository of the manifest,
-// harness or not; among several, to the one whose [repository] has the
-// visibility.
+// with repository templates set up or not; among several, to the one whose
+// [repository] has the visibility.
 func TestNewSkillTarget(t *testing.T) {
 	w := newWorld(t)
 	w.initStandard("")

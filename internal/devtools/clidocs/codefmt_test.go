@@ -12,7 +12,7 @@ func TestCodeFormat(t *testing.T) {
 		{"directories", "Create skills/<name>/ with references/ in", "Create `skills/<name>/` with `references/` in"},
 		{"absolute path", "under /etc/skenv or /", "under `/etc/skenv` or /"},
 		{"file names", "SKILL.md, config.toml, lefthook.yml, *.md and .gitignore", "`SKILL.md`, `config.toml`, `lefthook.yml`, `*.md` and `.gitignore`"},
-		{"dotted keys", "an older repo.harness", "an older `repo.harness`"},
+		{"dotted keys", "an older repository.template_version", "an older `repository.template_version`"},
 		{"sections", "the [environment] section; Refuses if [repo] exists.", "the `[environment]` section; Refuses if `[repo]` exists."},
 		{"quoted command", `"skenv init" records it.`, "`skenv init` records it."},
 		{"quoted key", `its one key is "manifest", which`, "its one key is `manifest`, which"},

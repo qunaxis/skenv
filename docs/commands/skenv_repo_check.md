@@ -2,7 +2,7 @@
 
 ## skenv repo check
 
-Compare the managed files with the harness templates
+Compare the managed files with the repository templates
 
 ### Synopsis
 
@@ -19,11 +19,11 @@ skenv repo check [flags]
 
 ### Examples
 
-The managed files match the harness:
+The managed files match the repository templates:
 
 ```console
 $ skenv repo check
-repo check: managed files match the harness
+repo check: managed files match the repository templates
 ```
 
 A managed file was edited by hand:
@@ -50,5 +50,5 @@ Exit code 1.
 
 ### SEE ALSO
 
-* [skenv repo](skenv_repo.md)	 - Set up and check the harness of a skills repository
+* [skenv repo](skenv_repo.md)	 - Set up and check the repository templates of a skills repository
 

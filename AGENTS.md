@@ -30,10 +30,10 @@ it would stop Claude Code from loading this file.
   then reports older repositories and `skenv repo upgrade` moves them
   (`repository.template_version` is desired state: `repo apply` never
   edits it).
-- The harness version doubles as the skenv release that generated CI
+- The template version doubles as the skenv release that generated CI
   installs (`SKENV_VERSION` in `check.yml` and `gitlab-ci.yml`): release
   it before any repository runs `repo upgrade`; lint changes reach CI only
-  through a new harness version.
+  through a new template version.
 - No backward-compatibility guarantee before 1.0: breaking CLI, config and
   file-format changes are allowed and marked `!` (see
   `docs/adr/0001-cli-and-config-framework.md`; the format of the skenv file:
@@ -69,5 +69,5 @@ same PR:
 | repository templates | the template version bump rules above |
 | any user-facing code change | docs update (README.md, docs/*, AGENTS.md, skills/skenv/*), or label `docs:none`, or line in PR body: `Docs: none — <reason>` (≥10 chars) |
 
-Run `make check`; the docs tests (docs harness epic) fail on stale commands,
+Run `make check`; the docs consistency tests fail on stale commands,
 flags, keys and package lists.

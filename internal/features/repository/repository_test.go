@@ -183,7 +183,7 @@ func TestConfig(t *testing.T) {
 	cfg := filepath.Join(root, skenvfile.DefaultName)
 	write(t, cfg, "[repository]\ntemplate_version = \"9.9.9\"\nvisibility = \"private\"\n")
 	if _, err := skenvfile.LoadRepository(root); err == nil || !strings.Contains(err.Error(), "newer than") {
-		t.Errorf("newer harness: %v", err)
+		t.Errorf("newer template_version: %v", err)
 	}
 	write(t, cfg, "[repository]\ntemplate_version = \"0.4.0\"\nvisibility = \"internal\"\n")
 	if _, err := skenvfile.LoadRepository(root); err == nil {
@@ -218,14 +218,14 @@ func TestConfig(t *testing.T) {
 	// Update only touches the template_version line under [repository],
 	// and adds the schema directive of that version.
 	write(t, cfg, "# keep\n[user.storage]\ndir = \"x\"\n\n[repository]\ntemplate_version = \"0.1.0\" # old\nvisibility = \"public\"\n")
-	if changed, err := Update(root, "0.4.0", false); err != nil || !changed {
+	if changed, err := Upgrade(root, "0.4.0", false); err != nil || !changed {
 		t.Fatal(changed, err)
 	}
 	want := "#:schema " + schemas.URL(schemas.Skenv, "0.4.0") + "\n# keep\n[user.storage]\ndir = \"x\"\n\n[repository]\ntemplate_version = \"0.4.0\" # old\nvisibility = \"public\"\n"
 	if got := read(t, cfg); got != want {
 		t.Errorf("Update:\n%s", got)
 	}
-	if changed, err := Update(root, "0.4.0", false); err != nil || changed {
+	if changed, err := Upgrade(root, "0.4.0", false); err != nil || changed {
 		t.Errorf("second Update: %v %v", changed, err)
 	}
 }
@@ -283,19 +283,19 @@ func TestInitNextToUser(t *testing.T) {
 
 // A repository whose desired template_version is older is reported by
 // check and moved to skenvfile.LatestTemplates by Update (what `repo upgrade` does).
-func TestOlderHarness(t *testing.T) {
+func TestOlderTemplateVersion(t *testing.T) {
 	root := t.TempDir()
 	if _, _, err := Init(root, "private", "", "", nil, false, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Update(root, "0.3.0", false); err != nil {
+	if _, err := Upgrade(root, "0.3.0", false); err != nil {
 		t.Fatal(err)
 	}
 	d, _ := Check(root)
 	if len(d) != 1 || !strings.Contains(d[0].Reason, "template_version 0.3.0; this skenv generates "+skenvfile.LatestTemplates+": run `skenv repo upgrade`") {
 		t.Fatalf("drift = %v", d)
 	}
-	if _, err := Update(root, skenvfile.LatestTemplates, false); err != nil {
+	if _, err := Upgrade(root, skenvfile.LatestTemplates, false); err != nil {
 		t.Fatal(err)
 	}
 	if d, _ := Check(root); len(d) != 0 {
@@ -463,7 +463,7 @@ func TestInitAndUpdateKeepYAMLAndJSON(t *testing.T) {
 			if c.update == "" {
 				return
 			}
-			if _, err := Update(root, "0.1.0", false); err != nil {
+			if _, err := Upgrade(root, "0.1.0", false); err != nil {
 				t.Fatal(err)
 			}
 			if got := read(t, file); got != c.update {

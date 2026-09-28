@@ -236,7 +236,7 @@ func TestWritesKeepFormat(t *testing.T) {
 			}
 			w.mustRun(0, "repo", "check", "--dir", own)
 			w.git(own, "add", "-A")
-			w.git(own, "commit", "--quiet", "-m", "chore: harness")
+			w.git(own, "commit", "--quiet", "-m", "chore: repository templates")
 			w.git(own, "push", "--quiet")
 			w.mustRun(0, "doctor")
 
@@ -321,7 +321,7 @@ func TestRepoInitFormat(t *testing.T) {
 	for _, format := range formats {
 		t.Run(format, func(t *testing.T) {
 			noLefthook(t)
-			w, repo := harnessRepo(t)
+			w, repo := newRepoWorld(t)
 			w.mustRun(0, "repo", "init", "--visibility", "private", "--format", format, "--dir", repo)
 			parse := func(data []byte, ext string) error {
 				_, ok, err := skenvfile.ParseRepository(data, ext)
@@ -343,7 +343,7 @@ func TestRepoInitFormat(t *testing.T) {
 			assertKept(t, repo, "skenv", format, keep, parse)
 		})
 	}
-	w, repo := harnessRepo(t)
+	w, repo := newRepoWorld(t)
 	writeFile(t, filepath.Join(repo, "skenv.toml"), "# mine\n[user]\n")
 	before := snapshot(t, repo)
 	_, errOut := w.mustRun(2, "repo", "init", "--visibility", "private", "--format", "yaml", "--dir", repo)
@@ -394,7 +394,7 @@ func TestCloneConfigFormat(t *testing.T) {
 func TestInitStartsManifest(t *testing.T) {
 	for _, format := range append([]string{""}, formats...) {
 		t.Run("format="+format, func(t *testing.T) {
-			w, repo := harnessRepo(t)
+			w, repo := newRepoWorld(t)
 			args := []string{"init", "--dir", repo}
 			if format != "" {
 				args = append(args, "--format", format)
@@ -463,10 +463,10 @@ func TestInitStartsManifestWithOwnRepository(t *testing.T) {
 // directory outside git are errors that write nothing.
 func TestInitStartsManifestInExistingFile(t *testing.T) {
 	noLefthook(t)
-	w, repo := harnessRepo(t)
+	w, repo := newRepoWorld(t)
 	w.mustRun(0, "repo", "init", "--visibility", "private", "--dir", repo)
 	file := filepath.Join(repo, "skenv.toml")
-	withRepo := strings.Replace(readFile(t, file), "[repository]\n", "# my harness\n[repository]\n", 1)
+	withRepo := strings.Replace(readFile(t, file), "[repository]\n", "# mine\n[repository]\n", 1)
 	writeFile(t, file, withRepo)
 	w.mustRun(0, "init", "--dir", repo)
 	text := readFile(t, file)
@@ -501,7 +501,7 @@ func TestInitStartsManifestInExistingFile(t *testing.T) {
 // directory; a config that cannot be updated stops it before the skenv
 // file is written.
 func TestInitStartsManifestInCurrentDirectory(t *testing.T) {
-	w, repo := harnessRepo(t)
+	w, repo := newRepoWorld(t)
 	sub := filepath.Join(repo, "sub")
 	mustMkdir(t, sub)
 	t.Chdir(sub)

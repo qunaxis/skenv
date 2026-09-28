@@ -23,10 +23,10 @@ Generated from `skenv --help`. Start with [skenv](skenv.md).
 - [skenv lint](skenv_lint.md): Check skills for format, links, size and secrets
 - [skenv list](skenv_list.md): List the skills of the manifest and whether they are installed
 - [skenv new](skenv_new.md): Scaffold a skill
-- [skenv repo](skenv_repo.md): Set up and check the harness of a skills repository
-- [skenv repo apply](skenv_repo_apply.md): Regenerate the managed files of the harness
-- [skenv repo check](skenv_repo_check.md): Compare the managed files with the harness templates
-- [skenv repo init](skenv_repo_init.md): Set up the harness of a skills repository
+- [skenv repo](skenv_repo.md): Set up and check the repository templates of a skills repository
+- [skenv repo apply](skenv_repo_apply.md): Regenerate the managed files of the repository templates
+- [skenv repo check](skenv_repo_check.md): Compare the managed files with the repository templates
+- [skenv repo init](skenv_repo_init.md): Set up the repository templates of a skills repository
 - [skenv repo upgrade](skenv_repo_upgrade.md): Move the repository to the templates of this skenv
 - [skenv schema](skenv_schema.md): Print the JSON Schema of the skenv file or the tool config
 - [skenv sync](skenv_sync.md): Apply the manifest to this machine, or sync a project

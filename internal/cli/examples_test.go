@@ -479,8 +479,8 @@ func (f *exampleWorld) upstreamChanges() {
 	}, "feat: write-tests, diagrams with SVG")
 }
 
-// publicRepo is a public skills repository with its harness set up and
-// one committed skill.
+// publicRepo is a public skills repository with its repository templates
+// set up and one committed skill.
 func (f *exampleWorld) publicRepo() string {
 	repo := f.path("src/public-skills")
 	mustMkdir(f.t, repo)

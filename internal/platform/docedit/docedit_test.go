@@ -80,8 +80,8 @@ host: {}
 			want: "environment:\n  layout:\n    store: x\n  vendor:\n    - name: b\n      repo: ext/tools\n      path: tools/b\n      rev: " + sha + "\n# end\n",
 		},
 		"missing section": {
-			in:   "repo:\n    harness: 0.4.0\n",
-			want: "repo:\n    harness: 0.4.0\nenvironment:\n    vendor:\n        - name: b\n          repo: ext/tools\n          path: tools/b\n          rev: " + sha + "\n",
+			in:   "repo:\n    template_version: 0.4.0\n",
+			want: "repo:\n    template_version: 0.4.0\nenvironment:\n    vendor:\n        - name: b\n          repo: ext/tools\n          path: tools/b\n          rev: " + sha + "\n",
 		},
 		"empty document": {
 			in:   "# only a comment",
@@ -118,13 +118,13 @@ func TestYAMLFlowListIsRefused(t *testing.T) {
 }
 
 func TestYAMLSetString(t *testing.T) {
-	in := "repo:\n  harness: 0.3.0   # old\n  visibility: 'private'\nenvironment:\n  vendor:\n    - name: a\n      rev: \"aaaa\" # pinned\n"
+	in := "repo:\n  template_version: 0.3.0   # old\n  visibility: 'private'\nenvironment:\n  vendor:\n    - name: a\n      rev: \"aaaa\" # pinned\n"
 	got := edit(t, ".yaml", in,
-		func(d Doc) error { return d.SetString([]any{"repo", "harness"}, "0.4.0") },
+		func(d Doc) error { return d.SetString([]any{"repo", "template_version"}, "0.4.0") },
 		func(d Doc) error { return d.SetString([]any{"repo", "visibility"}, "it's") },
 		func(d Doc) error { return d.SetString([]any{"environment", "vendor", 0, "rev"}, sha) },
 	)
-	want := "repo:\n  harness: 0.4.0   # old\n  visibility: 'it''s'\nenvironment:\n  vendor:\n    - name: a\n      rev: \"" + sha + "\" # pinned\n"
+	want := "repo:\n  template_version: 0.4.0   # old\n  visibility: 'it''s'\nenvironment:\n  vendor:\n    - name: a\n      rev: \"" + sha + "\" # pinned\n"
 	if got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
@@ -165,15 +165,15 @@ func TestYAMLRemove(t *testing.T) {
 }
 
 func TestYAMLPut(t *testing.T) {
-	repo := Map{{"harness", "0.4.0"}, {"visibility", "private"}, {"runner", []string{"self-hosted", "linux"}}}
+	repo := Map{{"template_version", "0.4.0"}, {"visibility", "private"}, {"runner", []string{"self-hosted", "linux"}}}
 	in := "# yaml-language-server: $schema=https://example.org/s.json\n# my manifest\nenvironment:\n  layout: {}\n"
 	got := edit(t, ".yaml", in, func(d Doc) error { return d.Put(nil, "repo", repo, true) })
-	want := "# yaml-language-server: $schema=https://example.org/s.json\nrepo:\n  harness: 0.4.0\n  visibility: private\n  runner: [self-hosted, linux]\n# my manifest\nenvironment:\n  layout: {}\n"
+	want := "# yaml-language-server: $schema=https://example.org/s.json\nrepo:\n  template_version: 0.4.0\n  visibility: private\n  runner: [self-hosted, linux]\n# my manifest\nenvironment:\n  layout: {}\n"
 	if got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
-	got = edit(t, ".yaml", "$schema: x\nenvironment: {}\n", func(d Doc) error { return d.Put(nil, "repo", Map{{"harness", "0.4.0"}}, true) })
-	if want := "$schema: x\nrepo:\n  harness: 0.4.0\nenvironment: {}\n"; got != want {
+	got = edit(t, ".yaml", "$schema: x\nenvironment: {}\n", func(d Doc) error { return d.Put(nil, "repo", Map{{"template_version", "0.4.0"}}, true) })
+	if want := "$schema: x\nrepo:\n  template_version: 0.4.0\nenvironment: {}\n"; got != want {
 		t.Errorf("after $schema, got:\n%s\nwant:\n%s", got, want)
 	}
 	got = edit(t, ".yaml", "environment:\n  layout: {}\n", func(d Doc) error { return d.Put([]string{"environment", "layout"}, "store", "~/s", false) })
@@ -224,14 +224,14 @@ func TestJSON(t *testing.T) {
 	got := edit(t, ".json", in,
 		appendVendor("b"),
 		func(d Doc) error {
-			return d.Put(nil, "repo", Map{{"harness", "0.4.0"}, {"runner", []string{"a"}}}, true)
+			return d.Put(nil, "repo", Map{{"template_version", "0.4.0"}, {"runner", []string{"a"}}}, true)
 		},
 		func(d Doc) error { return d.SetString([]any{"environment", "vendor", 0, "rev"}, "<new>") },
 	)
 	want := `{
   "$schema": "https://example.org/s.json?a=1&b=2",
   "repo": {
-    "harness": "0.4.0",
+    "template_version": "0.4.0",
     "runner": [
       "a"
     ]
@@ -320,16 +320,16 @@ func TestYAMLRefusesAnchorsAndTags(t *testing.T) {
 			}
 		}
 	}
-	d, _ := Open([]byte("repo:\n  harness: &h 0.3.0\n"), ".yaml")
-	if err := d.SetString([]any{"repo", "harness"}, "0.4.0"); err == nil {
+	d, _ := Open([]byte("repo:\n  template_version: &h 0.3.0\n"), ".yaml")
+	if err := d.SetString([]any{"repo", "template_version"}, "0.4.0"); err == nil {
 		t.Error("an anchored scalar must be refused")
 	}
 }
 
 func TestYAMLEdgeCases(t *testing.T) {
 	// An empty document still nests new keys.
-	got := edit(t, ".yaml", "---\n", func(d Doc) error { return d.Put(nil, "repo", Map{{"harness", "0.4.0"}}, true) })
-	if got != "---\nrepo:\n  harness: 0.4.0\n" {
+	got := edit(t, ".yaml", "---\n", func(d Doc) error { return d.Put(nil, "repo", Map{{"template_version", "0.4.0"}}, true) })
+	if got != "---\nrepo:\n  template_version: 0.4.0\n" {
 		t.Errorf("empty document:\n%q", got)
 	}
 	// A byte order mark is kept and does not shift the columns.
@@ -338,10 +338,10 @@ func TestYAMLEdgeCases(t *testing.T) {
 		t.Errorf("BOM:\n%q", got)
 	}
 	// A comment after a tab; a # inside a plain value is not a comment.
-	got = edit(t, ".yaml", "repo:\n  harness: 0.3.0\t# old\n  x: a#b # c\n",
-		func(d Doc) error { return d.SetString([]any{"repo", "harness"}, "0.4.0") },
+	got = edit(t, ".yaml", "repo:\n  template_version: 0.3.0\t# old\n  x: a#b # c\n",
+		func(d Doc) error { return d.SetString([]any{"repo", "template_version"}, "0.4.0") },
 		func(d Doc) error { return d.SetString([]any{"repo", "x"}, "y") })
-	if got != "repo:\n  harness: 0.4.0\t# old\n  x: \"y\" # c\n" && got != "repo:\n  harness: 0.4.0\t# old\n  x: y # c\n" {
+	if got != "repo:\n  template_version: 0.4.0\t# old\n  x: \"y\" # c\n" && got != "repo:\n  template_version: 0.4.0\t# old\n  x: y # c\n" {
 		t.Errorf("comments:\n%q", got)
 	}
 }
