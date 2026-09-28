@@ -5,7 +5,6 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/manifest"
@@ -329,12 +328,12 @@ func (e *base) findSkillPath(cache, rev, want string) (string, error) {
 		return "", err
 	}
 	var dirs []string
-	for _, f := range strings.Split(out, "\n") {
+	for f := range strings.SplitSeq(out, "\n") {
 		if path.Base(f) == "SKILL.md" {
 			dirs = append(dirs, path.Dir(f))
 		}
 	}
-	sort.Strings(dirs)
+	slices.Sort(dirs)
 	switch len(dirs) {
 	case 0:
 		return "", fmt.Errorf("no SKILL.md found at %.12s", rev)

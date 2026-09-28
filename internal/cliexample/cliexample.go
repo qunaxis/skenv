@@ -25,7 +25,7 @@ type Example struct {
 func Parse(field string) []Example {
 	var out []Example
 	var comment []string
-	for _, line := range strings.Split(field, "\n") {
+	for line := range strings.SplitSeq(field, "\n") {
 		line = strings.TrimSpace(line)
 		switch {
 		case line == "":

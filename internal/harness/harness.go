@@ -897,7 +897,7 @@ func writeKeepMode(file string, data []byte) error {
 // Pre-release or build suffixes are ignored.
 func Compare(a, b string) int {
 	pa, pb := parts(a), parts(b)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		switch {
 		case pa[i] < pb[i]:
 			return -1

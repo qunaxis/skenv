@@ -390,8 +390,7 @@ func (g *gen) config() *Schema {
 func (g *gen) object(t reflect.Type) *Schema {
 	key := path.Base(t.PkgPath()) + "." + t.Name()
 	s := &Schema{Type: "object", Description: describe(t.Name(), g.docs[key]), AdditionalProperties: false}
-	for i := range t.NumField() {
-		f := t.Field(i)
+	for f := range t.Fields() {
 		tag := f.Tag.Get("json")
 		if tag == "" || tag == "-" {
 			continue

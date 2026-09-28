@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -377,7 +377,7 @@ func TestRelPathPattern(t *testing.T) {
 			paths = append(paths, seg+seg2, "/"+seg+seg2)
 		}
 	}
-	sort.Strings(paths)
+	slices.Sort(paths)
 	for _, p := range paths {
 		text := "[user.dependencies.x]\nrepo = \"a/b\"\ncommit = \"" + sha + "\"\nskill_dir = " + fmt.Sprintf("%q", p) + "\n"
 		_, err := manifest.Parse([]byte(text), ".toml")

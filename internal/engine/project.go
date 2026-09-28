@@ -7,7 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/qunaxis/skenv/internal/gitx"
@@ -363,7 +363,7 @@ func (e *ProjectEngine) skillNames() []string {
 	for n := range set {
 		names = append(names, n)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }
 

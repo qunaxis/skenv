@@ -11,7 +11,7 @@ import (
 // (after leading whitespace) contains want; config show lists one skill per
 // line, and the tabwriter column widths shift with the names.
 func nameLineContains(out, name, want string) bool {
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), name+" ") && strings.Contains(line, want) {
 			return true
 		}

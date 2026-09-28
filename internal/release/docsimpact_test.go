@@ -180,8 +180,7 @@ func TestDocsImpact(t *testing.T) {
 				}
 			} else {
 				if err != nil {
-					var ee *exec.ExitError
-					if errors.As(err, &ee) {
+					if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 						t.Errorf("script should have passed (exit %d):\n%s", ee.ExitCode(), outStr)
 					} else {
 						t.Errorf("script should have passed: %v\n%s", err, outStr)

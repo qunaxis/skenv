@@ -70,8 +70,8 @@ func NormalizeURL(raw string) string {
 	}
 	if !strings.Contains(s, "://") {
 		host, p, _ := strings.Cut(s, ":") // scp-like [user@]host:path
-		if j := strings.LastIndex(host, "@"); j >= 0 {
-			host = host[j+1:]
+		if _, after, found := strings.CutLast(host, "@"); found {
+			host = after
 		}
 		return strings.ToLower(host) + "/" + trimRepoPath(p)
 	}
@@ -81,8 +81,8 @@ func NormalizeURL(raw string) string {
 		// an "@" in the authority, so no credentials reach the key.
 		_, rest, _ := strings.Cut(s, "://")
 		authority, p, _ := strings.Cut(rest, "/")
-		if j := strings.LastIndex(authority, "@"); j >= 0 {
-			authority = authority[j+1:]
+		if _, after, found := strings.CutLast(authority, "@"); found {
+			authority = after
 		}
 		return strings.ToLower(authority) + "/" + trimRepoPath(p)
 	}

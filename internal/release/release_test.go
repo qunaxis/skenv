@@ -54,8 +54,7 @@ func (r *repo) run(name string, args ...string) string {
 	out, err := cmd.Output()
 	if err != nil {
 		var stderr string
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			stderr = string(ee.Stderr)
 		}
 		r.t.Fatalf("%s %s: %v\n%s%s", name, strings.Join(args, " "), err, out, stderr)
@@ -198,11 +197,10 @@ func TestCheckCommitsRange(t *testing.T) {
 		cmd.Dir = r.dir
 		cmd.Env = r.env
 		out, err := cmd.CombinedOutput()
-		var ee *exec.ExitError
-		switch {
-		case err == nil:
+		if err == nil {
 			return 0, string(out)
-		case errors.As(err, &ee):
+		}
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			return ee.ExitCode(), string(out)
 		}
 		t.Fatalf("check-commits.sh %s: %v", rng, err)

@@ -134,7 +134,7 @@ type projectImport struct {
 // just added), prints the report and the diff, and returns the new text
 // and the lock entries to remove.
 func (e *ProjectEngine) importLock(before, start []byte, fresh bool) (*projectImport, error) {
-	r := &projectImport{imported: imported{before: before, out: start}}
+	r := &projectImport{before: before, out: start}
 	lock, err := readSkillsLock(filepath.Join(e.root, projectLockName), projectLockVersion)
 	if err != nil {
 		return nil, err

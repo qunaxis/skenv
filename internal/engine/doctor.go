@@ -7,7 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -299,10 +299,13 @@ func (e *base) printReport(report any, asJSON bool, warnings []string, issues []
 
 // sortIssues orders issues by class, then path.
 func sortIssues(issues []Issue) {
-	sort.SliceStable(issues, func(a, b int) bool {
-		if issues[a].Class != issues[b].Class {
-			return issues[a].Class < issues[b].Class
+	slices.SortStableFunc(issues, func(a, b Issue) int {
+		if a.Class != b.Class {
+			if a.Class < b.Class {
+				return -1
+			}
+			return 1
 		}
-		return issues[a].Path < issues[b].Path
+		return strings.Compare(a.Path, b.Path)
 	})
 }

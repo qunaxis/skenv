@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -168,8 +169,6 @@ func TestSkillOf(t *testing.T) {
 // controls its files.
 func mergeDelete(files map[string]string) map[string]string {
 	out := map[string]string{"references/guide.md": "<delete>", "assets/a b.png": "<delete>"}
-	for k, v := range files {
-		out[k] = v
-	}
+	maps.Copy(out, files)
 	return out
 }

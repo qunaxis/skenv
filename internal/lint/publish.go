@@ -9,7 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -104,7 +104,7 @@ func RepoFiles(root string) ([]string, error) {
 	for f := range set {
 		out = append(out, f)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out, nil
 }
 
@@ -192,11 +192,20 @@ func (d *Denylist) matchText(data []byte) []denyMatch {
 			from += i + len(e.phrase)
 		}
 	}
-	sort.Slice(out, func(a, b int) bool {
-		if out[a].line != out[b].line {
-			return out[a].line < out[b].line
+	slices.SortFunc(out, func(a, b denyMatch) int {
+		if a.line != b.line {
+			if a.line < b.line {
+				return -1
+			}
+			return 1
 		}
-		return out[a].entry < out[b].entry
+		if a.entry < b.entry {
+			return -1
+		}
+		if a.entry > b.entry {
+			return 1
+		}
+		return 0
 	})
 	return out
 }

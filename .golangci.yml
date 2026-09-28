@@ -8,6 +8,7 @@ linters:
     - nilerr
     - unconvert
     - usestdlibvars
+    - modernize
   settings:
     errcheck:
       # Output to the terminal: nothing sensible to do on failure.

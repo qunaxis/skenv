@@ -36,7 +36,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -160,7 +159,7 @@ func Parse(data []byte, ext string) (*Doc, error) {
 		}
 	}
 	if len(unknown) > 0 {
-		sort.Strings(unknown)
+		slices.Sort(unknown)
 		return nil, fmt.Errorf("unknown top-level keys: %s (settings live under [repository], [user] and [project])", strings.Join(unknown, ", "))
 	}
 	for _, s := range Sections {
@@ -194,7 +193,7 @@ func stringLeaves(path string, v any) error {
 		for k := range v {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			if err := stringLeaves(path+"."+k, v[k]); err != nil {
 				return err
