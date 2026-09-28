@@ -12,7 +12,7 @@ import (
 	"github.com/qunaxis/skenv/internal/gitx"
 )
 
-// checkManifestEngine opens a read-only Engine on a manifest with the given
+// checkManifestEngine opens a read-only UserScope on a manifest with the given
 // text, for a package-level test of checkManifest (#56): the CLI never
 // drives it into a parse error or a resolveMachine error (importUser only
 // appends text it built itself, and the machine that opened successfully

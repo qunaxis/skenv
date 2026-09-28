@@ -8,7 +8,7 @@ import (
 	"syscall"
 )
 
-// acquireLock takes an exclusive, non-blocking flock on ~/.local/state/skenv/acquireLock
+// acquireLock takes an exclusive, non-blocking flock on ~/.local/state/skenv/lock
 // so that autostart and a manual run never interleave their state writes.
 func (e *scope) acquireLock() error {
 	dir := e.layout.State()
@@ -30,7 +30,7 @@ func (e *scope) acquireLock() error {
 	return nil
 }
 
-// Close releases the lock taken by Open.
+// Close releases the lock taken by OpenUser or OpenProject.
 func (e *scope) Close() {
 	if e.lockFile != nil {
 		_ = syscall.Flock(int(e.lockFile.Fd()), syscall.LOCK_UN)

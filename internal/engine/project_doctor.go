@@ -11,7 +11,7 @@ import (
 	"github.com/qunaxis/skenv/internal/manifest"
 )
 
-// ProjectReport is the result of ProjectEngine.Doctor.
+// ProjectReport is the result of ProjectScope.Doctor.
 type ProjectReport struct {
 	OK          bool     `json:"ok"`
 	File        string   `json:"file"`
