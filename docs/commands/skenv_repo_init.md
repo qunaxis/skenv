@@ -28,7 +28,7 @@ Docker runner). `--runner` ubuntu-latest picks the GitHub-hosted runners.
 Afterwards `repository.ci.github.runs_on` (or `repository.ci.gitlab.tags`) holds
 it; change it there and run `skenv repo apply`.
 
-The generated git hooks need lefthook, uv and gitleaks on PATH; the output
+The generated git hooks need lefthook, uv, npx and gitleaks on PATH; the output
 says which of them are missing. Skill management and sync need none of
 them: these repository templates are optional tooling for a repository you
 publish or share.
@@ -69,8 +69,8 @@ create AGENTS.md
 create .gitignore
 create .claude/settings.json
 ci github: the default, the repository has no origin; --ci overrides it
-repository templates 0.6.0 (public, ci github) set up in ~/src/public-skills
-git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
+repository templates 0.8.0 (public, ci github) set up in ~/src/public-skills
+git hooks need lefthook, uv, npx and gitleaks: found lefthook, uv, npx, gitleaks; missing none
 lefthook install: hooks active
 ```
 
@@ -88,9 +88,9 @@ create .markdownlint.yaml
 create AGENTS.md
 create .gitignore
 create .claude/settings.json
-repository templates 0.6.0 (private, ci gitlab) set up in ~/src/team-skills
+repository templates 0.8.0 (private, ci gitlab) set up in ~/src/team-skills
 CI jobs run on runners self-hosted, linux, docker (repository.ci.gitlab.tags); to change them, edit it and run `skenv repo apply`
-git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
+git hooks need lefthook, uv, npx and gitleaks: found lefthook, uv, npx, gitleaks; missing none
 lefthook install: hooks active
 ```
 
@@ -109,9 +109,9 @@ create AGENTS.md
 create .gitignore
 create .claude/settings.json
 ci github: the default, the repository has no origin; --ci overrides it
-repository templates 0.6.0 (private, ci github) set up in ~/src/my-skills
+repository templates 0.8.0 (private, ci github) set up in ~/src/my-skills
 CI jobs run on runners ubuntu-latest (repository.ci.github.runs_on); to change them, edit it and run `skenv repo apply`
-git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
+git hooks need lefthook, uv, npx and gitleaks: found lefthook, uv, npx, gitleaks; missing none
 lefthook install: hooks active
 ```
 

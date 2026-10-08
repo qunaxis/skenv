@@ -70,7 +70,7 @@ Pull, vendor and link:
 
 ```console
 $ skenv sync
-pull ~/src/skills (714da16 → 9232059)
+pull ~/src/skills (d8673c7 → eb7f7b7)
 skenv: manifest ~/src/skills/skenv.toml: toml: line 1: expected '.' or '=', but got '[' instead
 ```
 
@@ -80,7 +80,7 @@ In a project: copy its pinned skills and update the mirrors:
 
 ```console
 $ skenv sync --project
-copy .agents/skills/code-review from example-org/skills@714da1650871 (skills/code-review)
+copy .agents/skills/code-review from example-org/skills@d8673c7fe4c5 (skills/code-review)
 copy .agents/skills/diagrams from example-vendor/tools@27f221f8f2a4 (tools/diagrams)
 link .claude/skills/code-review → ../../.agents/skills/code-review
 link .claude/skills/deploy → ../../.agents/skills/deploy

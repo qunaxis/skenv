@@ -56,9 +56,9 @@
           "type": "string",
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
           "examples": [
-            "0.6.0"
+            "0.8.0"
           ],
-          "patternErrorMessage": "A version such as 0.6.0."
+          "patternErrorMessage": "A version such as 0.8.0."
         },
         "visibility": {
           "description": "The declared publication policy: \"private\" or \"public\". skenv never reads or changes the access setting on the hosting service. A public repository must not carry [user], and its CI runs `skenv lint --publish` on the runners of the host (ubuntu-latest on GitHub, the shared runners on GitLab).",

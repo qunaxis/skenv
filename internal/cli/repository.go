@@ -319,7 +319,7 @@ var lookLefthook = exec.LookPath
 // hookTools are the programs the generated git hooks run besides skenv and
 // git (templates/lefthook.yml); lookTool is replaced in tests.
 var (
-	hookTools = []string{"uv", "gitleaks"}
+	hookTools = []string{"uv", "npx", "gitleaks"}
 	lookTool  = exec.LookPath
 )
 
@@ -346,7 +346,7 @@ func printHookTools(env skills.Env) {
 		}
 		return strings.Join(names, ", ")
 	}
-	fmt.Fprintf(env.Stdout, "git hooks need lefthook, uv and gitleaks: found %s; missing %s\n", list(found), list(missing))
+	fmt.Fprintf(env.Stdout, "git hooks need lefthook, uv, npx and gitleaks: found %s; missing %s\n", list(found), list(missing))
 	if len(missing) > 0 {
 		fmt.Fprintf(env.Stderr, "warning: the git hooks need %s, not found on PATH; install them before committing here\n", strings.Join(missing, ", "))
 	}

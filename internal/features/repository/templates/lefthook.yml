@@ -1,5 +1,5 @@
 # Git hooks for a skills repository; `lefthook install` activates them.
-# Needs skenv, uv and gitleaks on PATH[[ if not .Private ]] and the stop-list
+# Needs skenv, uv, Node (npx) and gitleaks on PATH[[ if not .Private ]] and the stop-list
 # ~/.config/skenv/denylist.txt[[ end ]].
 pre-commit:
   commands:
@@ -23,10 +23,17 @@ pre-commit:
           esac
         done
         [ -z "$files" ] || uvx --from shellcheck-py==0.11.0.1 shellcheck -x $files
+    markdownlint:
+      # the same version and rules (.markdownlint.yaml) as the CI lint job
+      glob: "*.md"
+      run: npx --yes markdownlint-cli2@0.23.3 {staged_files}
     gitleaks:
       run: gitleaks git --pre-commit --staged --redact --no-banner .
 pre-push:
   commands:
+    repo-check:
+      # managed files match the templates, as in the CI skenv job
+      run: skenv repo check
 [[- if not .Private ]]
     publish-check:
       # Public repository: nothing leaves the machine without the publication

@@ -6,7 +6,7 @@ Move the repository to the templates of this skenv
 
 ### Synopsis
 
-Set `repository.template_version` to 0.6.0, the templates of this skenv,
+Set `repository.template_version` to 0.8.0, the templates of this skenv,
 and point the schema directive of the skenv file at that version (comments
 and formatting stay), then regenerate the managed files as `skenv repo
 apply` does. The generated CI installs the skenv release of
@@ -32,7 +32,7 @@ Move the repository to the templates of the installed skenv:
 
 ```console
 $ skenv repo upgrade --dry-run
-would move template_version 0.5.0 → 0.6.0
+would move template_version 0.5.0 → 0.8.0
 would update lefthook.yml
 would update .github/workflows/check.yml
 would update ruff.toml
@@ -47,7 +47,7 @@ would run lefthook install
 
 ```console
 $ skenv repo upgrade
-template_version 0.5.0 → 0.6.0
+template_version 0.5.0 → 0.8.0
 update lefthook.yml
 update .github/workflows/check.yml
 update ruff.toml

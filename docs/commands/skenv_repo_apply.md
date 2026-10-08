@@ -9,8 +9,8 @@ Regenerate the managed files from the repository templates
 Regenerate the managed files and blocks from the templates of
 `repository.template_version`; then `lefthook install`. apply never changes
 the skenv file: template_version is what the repository asks for, and
-this skenv embeds the templates of 0.6.0 only. Another version
-is an error: run `skenv repo upgrade` to move the repository to 0.6.0,
+this skenv embeds the templates of 0.8.0 only. Another version
+is an error: run `skenv repo upgrade` to move the repository to 0.8.0,
 or use the skenv release it names.
 
 The CI pipeline follows the table under `repository.ci`. To switch CI systems,

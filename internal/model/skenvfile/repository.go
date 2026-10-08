@@ -25,7 +25,7 @@ const DefaultName = "skenv.toml"
 // write it as repository.template_version, and `repo apply` generates it
 // only. The CI workflow installs this skenv release. It lives in the file
 // model because validation refuses a template_version newer than it.
-const LatestTemplates = "0.6.0"
+const LatestTemplates = "0.8.0"
 
 // DefaultRunner is the runner of private repositories (the self-hosted
 // Docker runner): the runs-on labels on GitHub, the tags on GitLab.

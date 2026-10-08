@@ -31,12 +31,13 @@ repository:
 | [lefthook](https://github.com/evilmartians/lefthook) | installs and runs the git hooks (`lefthook install`) |
 | skenv | the pre-commit hook runs `skenv lint --staged`; the Claude Code hook runs `skenv lint --hook` |
 | [uv](https://docs.astral.sh/uv/) | the pre-commit hook runs ruff and shellcheck through `uvx` |
+| [Node.js](https://nodejs.org) | the pre-commit hook runs markdownlint through `npx` |
 | [gitleaks](https://github.com/gitleaks/gitleaks) | the pre-commit hook scans staged changes for secrets; `skenv lint --publish` scans the history |
 
 A **public** repository also needs a stop-list
 (`~/.config/skenv/denylist.txt` or `$SKENV_DENYLIST`): its pre-push hook
 runs the publication check (see [Validation and publication](lint.md)).
-`skenv repo init` lists which of lefthook, uv and gitleaks it found on
+`skenv repo init` lists which of lefthook, uv, npx and gitleaks it found on
 `PATH` and warns about the missing ones; without them, commits in the
 repository fail.
 
@@ -73,7 +74,7 @@ create .github/workflows/check.yml
 ...
 repository templates 0.6.0 (private, ci github) set up in ~/src/<skills-repo>
 CI jobs run on runners ubuntu-latest (repository.ci.github.runs_on); to change them, edit it and run `skenv repo apply`
-git hooks need lefthook, uv and gitleaks: found lefthook, uv, gitleaks; missing none
+git hooks need lefthook, uv, npx and gitleaks: found lefthook, uv, npx, gitleaks; missing none
 lefthook install: hooks active
 ```
 
@@ -234,7 +235,8 @@ template version that generated them:
 
 - `lefthook.yml` — pre-commit: `skenv lint --staged`, ruff (format, check)
   on staged `*.py`, shellcheck on staged `*.sh` and shell executables,
-  gitleaks on the staged diff; pre-push: `check` of changed skills and, in
+  markdownlint on staged `*.md`, gitleaks on the staged diff; pre-push:
+  `skenv repo check`, `check` of changed skills and, in
   public repositories, `skenv lint --publish` (needs the local stop-list),
   so nothing is pushed before the publication check.
 - The CI pipeline of `repository.ci`: `.github/workflows/check.yml`
