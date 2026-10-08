@@ -1,5 +1,5 @@
 exit 0
-would move template_version 0.5.0 → 0.6.0
+would move template_version 0.5.0 → 0.8.0
 would update lefthook.yml
 would update .github/workflows/check.yml
 would update ruff.toml

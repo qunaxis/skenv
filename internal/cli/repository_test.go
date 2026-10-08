@@ -366,7 +366,7 @@ func TestRepoInitRunner(t *testing.T) {
 	if !strings.Contains(out, "CI jobs run on runners ubuntu-latest (repository.ci.github.runs_on)") {
 		t.Errorf("init output:\n%s", out)
 	}
-	if !strings.Contains(out, "git hooks need lefthook, uv and gitleaks: found uv; missing lefthook, gitleaks\n") {
+	if !strings.Contains(out, "git hooks need lefthook, uv, npx and gitleaks: found uv, npx; missing lefthook, gitleaks\n") {
 		t.Errorf("found tools:\n%s", out)
 	}
 	if !strings.Contains(errOut, "the git hooks need lefthook, gitleaks, not found on PATH") {

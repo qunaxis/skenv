@@ -1,5 +1,5 @@
 exit 0
-template_version 0.5.0 → 0.6.0
+template_version 0.5.0 → 0.8.0
 update lefthook.yml
 update .github/workflows/check.yml
 update ruff.toml

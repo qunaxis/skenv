@@ -30,8 +30,8 @@ local instructions go outside this block.
   (frontmatter, name, limits, relative links, file size and secret-like
   files, shebangs).
 - `lefthook install` once: pre-commit runs `skenv lint --staged`, ruff,
-  shellcheck and gitleaks on staged files; pre-push runs `check` of changed
-  skills.
+  shellcheck, markdownlint and gitleaks on staged files; pre-push runs
+  `skenv repo check` and `check` of changed skills.
 [[- if .GitLab ]]
 - CI (`.gitlab-ci.yml`, GitLab CI): `skenv repo check`, `skenv lint`, ruff,
   pyright, shellcheck, markdownlint, gitleaks and the skill checks[[ if not .Private ]],

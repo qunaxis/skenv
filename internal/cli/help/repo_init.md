@@ -20,7 +20,7 @@ Docker runner). --runner ubuntu-latest picks the GitHub-hosted runners.
 Afterwards repository.ci.github.runs_on (or repository.ci.gitlab.tags) holds
 it; change it there and run `skenv repo apply`.
 
-The generated git hooks need lefthook, uv and gitleaks on PATH; the output
+The generated git hooks need lefthook, uv, npx and gitleaks on PATH; the output
 says which of them are missing. Skill management and sync need none of
 them: these repository templates are optional tooling for a repository you
 publish or share.

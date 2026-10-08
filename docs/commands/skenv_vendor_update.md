@@ -69,7 +69,7 @@ diagrams 27f221f8f2a4..2571138a038f:
 2571138 docs(diagrams): list the shapes
 ebb66f9 feat(diagrams): prefer SVG
 update dependency diagrams 27f221f8f2a4 → 2571138a038f in [project] of ~/src/web-app/skenv.toml
-from.team example-org/skills (code-review) is already at 714da1650871
+from.team example-org/skills (code-review) is already at d8673c7fe4c5
 update .agents/skills/diagrams 27f221f8f2a4 → 2571138a038f (example-vendor/tools, tools/diagrams)
 the project skills changed; to commit them:
   git -C ~/src/web-app add -- skenv.toml .agents/skills .claude/skills
