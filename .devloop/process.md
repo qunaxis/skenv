@@ -68,18 +68,24 @@ treats such a decision without a comment or ADR as a blocker.
 4. Wave 1 of the simplification epic (#60 → #61 → #62) touches most files:
    while one of them is open, start no other code task.
 
-## Review by risk
+## Review
 
-Every PR gets one independent `pr-review-toolkit:code-reviewer` with the acceptance criteria
-and base/head SHA. Add `pr-review-toolkit:silent-failure-hunter` for error handling, file or
-git operations; `pr-review-toolkit:pr-test-analyzer` for new test strategy or large test
-changes. A blocker is a broken criterion, a correctness, safety or data-loss
-defect, or a failing check; style and extra scope become follow-up issues.
+The coordinator reviews every PR with the `review-plan` skill: its
+`scripts/plan.py` picks the review kinds (`review-acceptance`,
+`review-correctness`, `review-contract`, `review-tests`, `review-deps`,
+`review-slop` and others) from the paths, importers and size of the diff and
+from `review:<kind>` labels on the task. skenv's path overrides are in
+`[review.paths]` of `devloop.toml`. The executor does not review its own PR:
+it fixes every `blocker` in the review threads, answers in each thread with
+the commit SHA and pushes; the next round reviews the delta, at most three
+rounds, then the task goes to Blocked. Style and extra scope become follow-up
+issues.
 
-`MERGE_READY` means: CI is green (`gh pr checks <pr> --watch`), the chosen
-reviewers ran, the title is a Conventional Commit with the issue number, all
-acceptance boxes are ticked, and a test claimed to catch a defect was shown
-red on the code before the fix.
+`MERGE_READY` means: CI is green (`gh pr checks <pr> --watch`), the
+`review-plan` round has no open `blocker` thread (`publish.py gate` exits 0),
+the title is a Conventional Commit with the issue number, all acceptance boxes
+are ticked, and a test claimed to catch a defect was shown red on the code
+before the fix.
 
 ## Definition of done
 

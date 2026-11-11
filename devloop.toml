@@ -46,6 +46,31 @@ decisions = ""
 [orchestrate]
 worker_model = "sonnet"
 max_workers = 3
-reviewers = ["pr-review-toolkit:code-reviewer"]
-risk_reviewers = ["pr-review-toolkit:silent-failure-hunter", "pr-review-toolkit:pr-test-analyzer"]
 brief_rules = "Public repository: no secrets, tokens, private paths or internal data. Tests use a temporary $HOME and local bare repositories; never run sync, link, init, clone, use or autostart against the real home (the only exception is written in the issue itself). make check before every push."
+
+# Review kinds come from the diff (review-plan skill, scripts/plan.py). Each
+# key of [review.paths] replaces that key's default globs, so a list below is
+# the default list plus or minus the skenv-specific entries.
+[review.paths]
+# Default minus **/templates/** and **/layouts/**: the repository templates
+# are YAML, Markdown and JSON written into user repositories, not UI.
+ui = [
+  "**/*.{css,scss,sass,less,styl,pcss}",
+  "**/*.{tsx,jsx,vue,svelte,astro,html,htm}",
+  "**/theme/**",
+]
+# Default plus the CI workflows and agent settings that `repo init` writes
+# into every user repository (check.yml pins SKENV_VERSION).
+deps = [
+  "**/package.json",
+  "**/{package-lock.json,pnpm-lock.yaml,yarn.lock,bun.lockb,npm-shrinkwrap.json}",
+  "**/{.npmrc,.nvmrc,.node-version,.tool-versions,.python-version}",
+  "**/pyproject.toml",
+  "**/{requirements*.txt,uv.lock,poetry.lock,Pipfile,Pipfile.lock,setup.py,setup.cfg}",
+  "**/{go.mod,go.sum,Cargo.toml,Cargo.lock,Gemfile,Gemfile.lock,composer.json,composer.lock}",
+  ".github/**",
+  "**/{Dockerfile,Dockerfile.*,docker-compose*.yml,compose*.yml,.gitlab-ci.yml}",
+  "**/*.{sh,bash,zsh}",
+  "**/lefthook.yml",
+  "internal/features/repository/templates/{check.yml,gitlab-ci.yml,claude-settings.json}",
+]
