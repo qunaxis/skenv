@@ -23,11 +23,11 @@ model_label_prefix = "model:"
 # Areas: values of the Area field and labels area:<name>; skills are loaded by
 # the executor before touching code.
 [areas.code]
-skills = ["golang-refactoring", "golang-naming", "anti-slop-code"]
+skills = ["golang-refactoring", "golang-naming", "review-slop"]
 description = "Go code and its tests"
 
 [areas.docs]
-skills = ["no-ai-slop"]
+skills = ["review-slop"]
 description = "README, docs/, AGENTS.md, skills/skenv"
 
 [areas.ci]
