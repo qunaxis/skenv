@@ -28,6 +28,6 @@ Docs: none — <reason> -->
 
 ## Review
 
-<!-- code-reviewer plus risk reviewers and why (.devloop/process.md) -->
+<!-- review-plan: review kinds and the review URL (.devloop/process.md) -->
 
 - [ ] `.devloop/status.md` and `CHANGELOG.md` untouched
